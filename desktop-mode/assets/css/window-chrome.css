@@ -1,0 +1,744 @@
+/**
+ * Desktop Mode — Window chrome.
+ *
+ * Everything that renders the base window frame: title bar, icon +
+ * title text, control buttons, focused / unfocused colour variants,
+ * the ⋯ actions menu panel, screen-meta buttons, the tab strip (for
+ * submenu + external tabs), the window body, the primary iframe, and
+ * the native-body variant. State-driven rules (dragging / resizing /
+ * maximized / fullscreen / overview / minimized / closing) live in
+ * sibling files loaded via `windows.css`.
+ *
+ * @since 6.9.0
+ */
+
+/* Base window. */
+.desktop-mode-window {
+	/*
+	 * border-box sizing is essential for pixel-perfect maximize.
+	 * `Window.maximize()` sets inline `width = parent.clientWidth`,
+	 * which is the area's inner width. Under content-box sizing, the
+	 * window's 1px border would add 2 extra pixels to the rendered
+	 * element, pushing its right + bottom borders past the
+	 * overflow-hidden boundary of `.desktop-mode-area` and making them
+	 * look clipped/offscreen. With border-box, width/height INCLUDE
+	 * the border, so `width = clientWidth` fits exactly.
+	 *
+	 * WP admin CSS does set `*, *::before, *::after { box-sizing:
+	 * border-box }` globally, but setting it explicitly here
+	 * insulates us from stylesheets or embeds that might reset the
+	 * universal rule — the correctness of maximize geometry is too
+	 * important to depend on ambient CSS.
+	 */
+	box-sizing: border-box;
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	background: var(--desktop-mode-window-bg);
+	border: 1px solid var(--desktop-mode-window-border);
+	border-radius: var(--desktop-mode-window-radius);
+	box-shadow: var(--desktop-mode-window-shadow);
+	overflow: hidden;
+	min-width: 320px;
+	min-height: 200px;
+	transform-origin: center center;
+	transition:
+		left 0.25s cubic-bezier(0.2, 0, 0.2, 1),
+		top 0.25s cubic-bezier(0.2, 0, 0.2, 1),
+		width 0.25s cubic-bezier(0.2, 0, 0.2, 1),
+		height 0.25s cubic-bezier(0.2, 0, 0.2, 1),
+		border-radius 0.25s ease,
+		transform 0.2s ease,
+		opacity 0.2s ease,
+		box-shadow 0.2s ease;
+}
+
+/*
+ * Suppress the left/top/width/height transition during drag or resize —
+ * otherwise every pointer move lerps and the window lags the cursor.
+ *
+ * Also during a viewport reflow (`--reflowing`) — when the browser
+ * window is being dragged smaller, the ResizeObserver fires many
+ * times per second and each style write would restart the 250 ms
+ * transition, leaving maximized / snapped windows ~250 ms behind the
+ * viewport the whole time. The class is added by
+ * `reflowStatefulWindows` and cleared ~140 ms after the last tick.
+ */
+.desktop-mode-window--dragging,
+.desktop-mode-window--resizing,
+.desktop-mode-window--reflowing {
+	transition: none;
+}
+
+/*
+ * Snap-to-grid drag/resize: re-enable a SHORT transition so each
+ * cell-to-cell jump animates smoothly instead of teleporting. The
+ * `--snap-drag` class is added by the window class only when snap
+ * is on at drag/resize start; it composes with `--dragging` /
+ * `--resizing` and the source-order ensures it wins. Kept short
+ * (90 ms) so the window still feels glued to the cursor — anything
+ * longer reads as lag.
+ */
+.desktop-mode-window--snap-drag {
+	transition:
+		left 0.09s ease-out,
+		top 0.09s ease-out,
+		width 0.09s ease-out,
+		height 0.09s ease-out;
+}
+
+/* Focused window gets elevated shadow and distinct title bar. */
+.desktop-mode-window--focused {
+	box-shadow: var(--desktop-mode-window-shadow-focused);
+}
+
+/* Title bar. */
+.desktop-mode-window__titlebar {
+	position: relative;
+	/* Promote the titlebar into its own stacking context above the
+	 * body. Without this, the body (which comes later in source order
+	 * and inherits z-auto) wins document-order overlap battles —
+	 * notably any sticky-positioned content inside the body (e.g. the
+	 * native Posts table's sticky header at z-index 20–40) would
+	 * paint over the titlebar's ⋯ menu popover. */
+	z-index: 21;
+	display: flex;
+	align-items: center;
+	height: var(--desktop-mode-titlebar-height);
+	padding: 0 8px;
+	background: var(--desktop-mode-titlebar-bg);
+	color: var(--desktop-mode-titlebar-color);
+	cursor: default;
+	user-select: none;
+	flex-shrink: 0;
+	gap: 8px;
+}
+
+.desktop-mode-window--focused .desktop-mode-window__titlebar {
+	background: var(--desktop-mode-titlebar-bg-focused);
+	color: var(--desktop-mode-titlebar-color-focused);
+}
+
+/* Window icon in title bar. */
+.desktop-mode-window__icon {
+	font-size: 18px;
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+}
+
+/* Activity indicator slot — sits between the icon and the title.
+ * Reserves a fixed width so the indicator's blink animation can't
+ * shift the title text horizontally. The inner `<wpd-save-status>`
+ * paints a 12px modem-style dot (always visible, accent-colored).
+ *
+ * `--wp-admin-theme-color` is forwarded as `color` on the host so
+ * the inner shadow-DOM stylesheet's `currentColor` references
+ * (used in the box-shadow glow) resolve to the live accent. */
+.desktop-mode-window__activity {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	flex-shrink: 0;
+	margin-inline-start: 6px;
+	margin-inline-end: 4px;
+	color: var(--wp-admin-theme-color, #2271b1);
+}
+
+/* Window title text. */
+.desktop-mode-window__title {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 14px;
+	font-weight: 500;
+	line-height: var(--desktop-mode-titlebar-height);
+}
+
+/* Window control buttons container. */
+.desktop-mode-window__controls {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+/*
+ * Layer-3 slot hosts.
+ *
+ * Most in-titlebar slots wrap canonical chrome elements without
+ * contributing to the flex layout themselves — `display: contents`
+ * removes the wrapper's box so the inner element (icon span with
+ * `flex-shrink: 0`, before/after spacers, etc.) keeps its
+ * original layout role.
+ *
+ * The `title` slot is the exception: it's the flex-grow region of
+ * the title bar (`flex: 1`). When a plugin replaces the default
+ * title with custom HTML or a render callback, we want the new
+ * content to inherit the same "fill the remaining horizontal
+ * space" behaviour — so the slot itself owns `flex: 1` and the
+ * default title element's own `flex: 1` cooperates inside the
+ * nested flex.
+ *
+ * before/after-titlebar slots are flex-column children of
+ * `.desktop-mode-window` (siblings of the title bar). They're real
+ * boxes — plugins can paint backgrounds, padding, borders. Empty
+ * hosts collapse via `:empty` so they take no space until populated.
+ *
+ * @since 0.6.0
+ */
+.desktop-mode-window__slot--before-icon,
+.desktop-mode-window__slot--icon,
+.desktop-mode-window__slot--after-title,
+.desktop-mode-window__slot--before-controls,
+.desktop-mode-window__slot--after-controls {
+	display: contents;
+}
+
+.desktop-mode-window__slot--title {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+}
+
+.desktop-mode-window__slot--before-titlebar,
+.desktop-mode-window__slot--after-titlebar {
+	display: block;
+	flex-shrink: 0;
+}
+
+.desktop-mode-window__slot--before-titlebar:empty,
+.desktop-mode-window__slot--after-titlebar:empty {
+	display: none;
+}
+
+/* ---------------------------------------------------------------
+ * Window control buttons.
+ *
+ * Flat, icon-only buttons styled to feel at home in the WordPress
+ * admin: transparent by default, subtle tinted hover, focus ring in
+ * the active admin theme color, inline SVG icons inheriting
+ * currentColor so they adapt to focused / unfocused title bars.
+ *
+ * The close button gets a destructive red wash on hover only —
+ * never as a default state — so it reads as safe until interacted
+ * with, matching the WordPress admin's pattern of reserving color
+ * for semantic signal.
+ * --------------------------------------------------------------- */
+/*
+ * Title-bar chrome buttons render as `<wpd-window-button>`.
+ * Shadow DOM can't reach across the window's focus class, so we
+ * drive the coloring via custom properties that inherit through
+ * the boundary. The component reads `--wpd-btn-color`,
+ * `--wpd-btn-bg-hover`, etc. and paints accordingly.
+ */
+.desktop-mode-window--focused {
+	--wpd-btn-color: rgba( 255, 255, 255, 0.7 );
+	--wpd-btn-color-hover: #fff;
+	--wpd-btn-bg-hover: rgba( 255, 255, 255, 0.18 );
+	--wpd-btn-bg-active: rgba( 255, 255, 255, 0.25 );
+	--wpd-btn-outline: rgba( 255, 255, 255, 0.65 );
+	--wpd-btn-danger-hover: #d63638;
+}
+
+.desktop-mode-window:not( .desktop-mode-window--focused ) {
+	--wpd-btn-color: rgba( 0, 0, 0, 0.45 );
+	--wpd-btn-color-hover: rgba( 0, 0, 0, 0.85 );
+	--wpd-btn-bg-hover: rgba( 0, 0, 0, 0.08 );
+	--wpd-btn-bg-active: rgba( 0, 0, 0, 0.12 );
+	--wpd-btn-outline: var( --wp-admin-theme-color, #2271b1 );
+	--wpd-btn-danger-hover: #d63638;
+}
+
+/* ---------------------------------------------------------------
+ * Title-bar actions menu (leading edge, before icon + title).
+ *
+ * Trigger is a standard `.desktop-mode-window__btn` — inherits focused /
+ * unfocused coloring from the existing control-button rules. The only
+ * bespoke rule is margin: it sits at the leading edge so a small trailing
+ * gap separates it from the icon without affecting overall title-bar gap.
+ *
+ * Panel is an absolute dropdown anchored to the title bar (which is now
+ * position: relative). Visibility is driven by the `hidden` attribute on
+ * the element itself — no separate `--open` class to keep in sync with
+ * aria-expanded.
+ * --------------------------------------------------------------- */
+/*
+ * ⋯ button sits between the screen-meta cluster and the window
+ * controls, as the "last page-level chrome" item. When present it
+ * takes over the divider duty: screen-meta drops its own trailing
+ * divider, and the controls container gains a leading one — so a
+ * single clean line always sits between page chrome and window
+ * chrome regardless of which combination is visible.
+ */
+.desktop-mode-window__titlebar:has(.desktop-mode-window__menu-btn) .desktop-mode-window__screen-meta {
+	margin-inline-end: 0;
+	padding-inline-end: 0;
+	border-inline-end: none;
+}
+
+.desktop-mode-window__titlebar:has(.desktop-mode-window__menu-btn) .desktop-mode-window__controls {
+	margin-inline-start: 8px;
+	padding-inline-start: 8px;
+	border-inline-start: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.desktop-mode-window:not(.desktop-mode-window--focused) .desktop-mode-window__titlebar:has(.desktop-mode-window__menu-btn) .desktop-mode-window__controls {
+	border-inline-start-color: rgba(0, 0, 0, 0.1);
+}
+
+/*
+ * Menu popover lives inside the title bar's absolute-positioned
+ * coordinate system — positioning is caller-specific and stays
+ * outer. Background, border, items, checkbox styling all moved
+ * into `<wpd-menu>` / `<wpd-menu-item>`.
+ */
+.desktop-mode-window__menu-panel {
+	position: absolute;
+	top: calc( var( --desktop-mode-titlebar-height ) + 2px );
+	inset-inline-end: 60px;
+	z-index: 2;
+}
+
+/* ---------------------------------------------------------------
+ * Screen Meta buttons (Screen Options / Help) in the title bar.
+ * Positioned right after the title text, visually separated from
+ * the close / maximize / minimize cluster by a subtle divider.
+ * Sized to meet WCAG 2.2 target size (24x24 minimum).
+ * --------------------------------------------------------------- */
+.desktop-mode-window__screen-meta {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+	flex-shrink: 0;
+	margin-inline-end: 8px;
+	padding-inline-end: 8px;
+	border-inline-end: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Hide the divider when there are no screen-meta buttons. */
+.desktop-mode-window__screen-meta:empty {
+	display: none;
+}
+
+.desktop-mode-window__meta-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	padding: 0;
+	background: transparent;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.desktop-mode-window__meta-btn .dashicons {
+	font-size: 18px;
+	width: 18px;
+	height: 18px;
+}
+
+/* Focused window: meta buttons visible. */
+.desktop-mode-window--focused .desktop-mode-window__meta-btn {
+	color: rgba(255, 255, 255, 0.65);
+}
+.desktop-mode-window--focused .desktop-mode-window__meta-btn:hover {
+	color: #fff;
+	background: rgba(255, 255, 255, 0.18);
+}
+.desktop-mode-window--focused .desktop-mode-window__meta-btn:focus-visible {
+	color: #fff;
+	background: rgba(255, 255, 255, 0.18);
+	outline: 2px solid rgba(255, 255, 255, 0.6);
+	outline-offset: 1px;
+}
+.desktop-mode-window--focused .desktop-mode-window__meta-btn--active {
+	color: #fff;
+	background: rgba(255, 255, 255, 0.25);
+}
+
+/* Unfocused window: divider and buttons adapt to light title bar. */
+.desktop-mode-window:not(.desktop-mode-window--focused) .desktop-mode-window__screen-meta {
+	border-inline-end-color: rgba(0, 0, 0, 0.1);
+}
+.desktop-mode-window:not(.desktop-mode-window--focused) .desktop-mode-window__meta-btn {
+	color: rgba(0, 0, 0, 0.3);
+}
+.desktop-mode-window:not(.desktop-mode-window--focused) .desktop-mode-window__meta-btn:hover {
+	color: rgba(0, 0, 0, 0.6);
+	background: rgba(0, 0, 0, 0.08);
+}
+.desktop-mode-window:not(.desktop-mode-window--focused) .desktop-mode-window__meta-btn--active {
+	color: rgba(0, 0, 0, 0.6);
+	background: rgba(0, 0, 0, 0.12);
+}
+
+/* ---------------------------------------------------------------
+ * Tab strip — submenu navigation rendered in the parent shell, just
+ * below the title bar. Each tab swaps the iframe URL in place; no
+ * new window opens. Horizontally scrollable on narrow windows so the
+ * same component works on tablet and mobile shells unchanged.
+ * --------------------------------------------------------------- */
+.desktop-mode-window__tabs {
+	display: flex;
+	flex-shrink: 0;
+	gap: 2px;
+	padding: 0 8px;
+	background: var(--desktop-mode-tabs-bg, #f6f7f7);
+	border-bottom: 1px solid var(--desktop-mode-window-border);
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: thin;
+	/*
+	 * Soft edge fades so overflowing tabs tell the user "scroll for
+	 * more." The mask is always applied — when the strip doesn't
+	 * overflow, the faded ends are empty area beyond the last tab so
+	 * the cosmetic is invisible. When it DOES overflow, the last-
+	 * visible tab fades under the mask, creating the affordance.
+	 * `overscroll-behavior-x: contain` keeps horizontal trackpad
+	 * swipes inside the strip instead of triggering browser back.
+	 */
+	mask-image: linear-gradient(
+		to right,
+		transparent 0,
+		#000 16px,
+		#000 calc(100% - 16px),
+		transparent 100%
+	);
+	-webkit-mask-image: linear-gradient(
+		to right,
+		transparent 0,
+		#000 16px,
+		#000 calc(100% - 16px),
+		transparent 100%
+	);
+	overscroll-behavior-x: contain;
+}
+
+/*
+ * When JS assigns the --has-overflow marker (future enhancement), the
+ * mask is stronger. For now the CSS-only mask is subtle enough to be
+ * invisible on non-overflowing strips — mask cut-offs land outside the
+ * flex content.
+ */
+
+.desktop-mode-window__tab {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	height: 32px;
+	padding: 0 12px;
+	border: none;
+	background: transparent;
+	color: var(--desktop-mode-tabs-color, #50575e);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -1px;
+	white-space: nowrap;
+	transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.desktop-mode-window__tab:hover {
+	color: var(--wp-admin-theme-color, #2271b1);
+	background: rgba(0, 0, 0, 0.03);
+}
+
+.desktop-mode-window__tab:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+	outline-offset: -2px;
+}
+
+.desktop-mode-window__tab--active {
+	color: var(--wp-admin-theme-color, #2271b1);
+	border-bottom-color: var(--wp-admin-theme-color, #2271b1);
+	font-weight: 600;
+}
+
+/*
+ * External sub-tab. Same shape as a submenu tab, plus two inline
+ * chips: detach (↗) and close (×). Chips are painted as spans
+ * (rather than nested buttons — nested interactive elements are a
+ * pain for a11y). The tab's click handler routes chip clicks via
+ * the `data-tab-action` dataset attribute.
+ */
+.desktop-mode-window__tab--external {
+	/* Slightly wider gap between the label and the chip cluster, and
+	 * more breathing room at the trailing edge so the chips aren't
+	 * flush against the tab boundary. */
+	gap: 10px;
+	padding-inline-end: 4px;
+}
+
+.desktop-mode-window__tab-label {
+	max-width: 180px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* External-tab action chips moved to `<wpd-tab-chip>`. Spacing
+ * between chips handled by a single host-level rule since the
+ * component doesn't know about its siblings. */
+wpd-tab-chip + wpd-tab-chip {
+	margin-inline-start: 4px;
+}
+
+/* Window body: contains the iframe. */
+.desktop-mode-window__body {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+}
+
+/* Iframe fills the window body. */
+.desktop-mode-window__iframe {
+	width: 100%;
+	height: 100%;
+	border: none;
+	display: block;
+	background: var(--desktop-mode-window-bg);
+	opacity: 1;
+	transition: opacity 0.25s ease;
+}
+
+/*
+ * Loading-state overlay — painted by `src/window/dom.ts` into
+ * every window's body and removed once the body's content reports
+ * ready. The `<wpd-spinner>` inside is sized responsively against
+ * the window's width via `clamp(96px, 14vw, 192px)` so a tiny
+ * popover gets a small spinner and a maximized window gets a big
+ * one. Placed above the body content (iframe / native render
+ * output) and kept aria-hidden so the spinner's own SR-label is
+ * the only loading announcement.
+ *
+ * `transition-delay` on the overlay's fade-in means a render
+ * that lands within ~120ms never paints the spinner — the
+ * overlay only becomes visible when there's actually a wait
+ * worth surfacing. This keeps the affordance from flashing on
+ * fast local-dev loads while still covering the slow production
+ * iframe boots that motivated it.
+ */
+.desktop-mode-window__loading {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	background: var(--desktop-mode-window-bg);
+	opacity: 0;
+	/* Default (loaded → loading-removed) — fade out immediately. */
+	transition: opacity 0.25s ease;
+	z-index: 1;
+}
+
+.desktop-mode-window__body--loading > .desktop-mode-window__iframe,
+.desktop-mode-window__body--loading > :not(.desktop-mode-window__loading) {
+	opacity: 0;
+	transition: opacity 0.25s ease;
+}
+
+.desktop-mode-window__body--loading > .desktop-mode-window__loading {
+	opacity: 1;
+	/* Entry transition with a small delay — loads that finish in
+	 * under ~120ms never paint the spinner, so fast local-dev /
+	 * hot-cache fires don't flash. Slow production iframe boots
+	 * still see the spinner. */
+	transition-delay: 0.12s;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-window__iframe,
+	.desktop-mode-window__loading,
+	.desktop-mode-window__body--loading > .desktop-mode-window__iframe,
+	.desktop-mode-window__body--loading > :not(.desktop-mode-window__loading) {
+		transition: none;
+	}
+}
+
+/*
+ * External sub-tab iframes stack in the same body as the primary
+ * iframe. Only one is visible at a time (managed by `switchToTab`
+ * via `style.display`). Absolute positioning so they don't push the
+ * primary iframe around when added to the DOM; `display: none` on
+ * inactive iframes is set inline by the JS.
+ */
+.desktop-mode-window__iframe--external {
+	position: absolute;
+	inset: 0;
+}
+
+/*
+ * Native window body — fills the window but lets its contents scroll
+ * independently. Iframe bodies use `overflow: hidden` so the iframe
+ * controls its own scroll; native bodies render real document content
+ * that needs the parent to manage overflow.
+ */
+.desktop-mode-window__body--native {
+	overflow: auto;
+	color: #1d2327;
+	background: var(--desktop-mode-window-bg);
+}
+
+/*
+ * Highlight rings. Toggled from JS by `Window.setHighlight()` —
+ * used by plugins that need to point at a window from outside it
+ * (e.g. a "connect to" dropdown that previews candidate windows on
+ * hover). `--wp-window-highlight-color` is overridable per-instance
+ * via `setHighlight( mode, { color } )` or globally via the
+ * variable.
+ */
+.wp-window {
+	--wp-window-highlight-color: var(
+		--wp-admin-theme-color, #2271b1
+	);
+}
+.wp-window--highlight-preview {
+	box-shadow: 0 0 0 3px var( --wp-window-highlight-color ),
+		0 0 24px 4px var( --wp-window-highlight-color );
+	transition: box-shadow 0.12s ease;
+	z-index: 9999;
+}
+.wp-window--highlight-persistent {
+	box-shadow: 0 0 0 2px var( --wp-window-highlight-color );
+	transition: box-shadow 0.12s ease;
+}
+
+/*
+ * Slots for plugin-registered title-bar buttons. Empty by default
+ * — `display: contents` hides them entirely from layout when no
+ * plugin has registered a button for the window. When buttons ARE
+ * present, they sit inline next to the title (left slot) or just
+ * before the window controls (right slot).
+ */
+.desktop-mode-window__custom-buttons {
+	display: contents;
+}
+.desktop-mode-window__btn--custom {
+	margin: 0 2px;
+}
+/*
+ * Plugin-supplied icons render in the host's light DOM so the
+ * global Dashicons stylesheet reaches them (shadow DOM doesn't
+ * inherit page CSS).
+ *
+ * Dashicons render at their native 20×20 — that's the size the
+ * font is hinted for and the only one where glyph metrics put
+ * the visual centre on the geometric centre. Earlier we tried
+ * down-scaling them to 14×14 to match the built-in chrome icons,
+ * but font-size: 14 on a Dashicon shifts the glyph 1–2 pixels
+ * off centre because the font's ascent/descent ratio doesn't
+ * scale linearly. The 30×30 button has 5px of padding around a
+ * 20×20 glyph — comfortable, and visually consistent with the
+ * 14×14 chrome icons because both are flex-centred in the same
+ * box.
+ *
+ * For inline-SVG icons that plugin authors ship without explicit
+ * width/height, we DO clamp to 18×18 — those are the cases where
+ * a bare `<svg>` would otherwise size to its viewBox or default
+ * to 300×150 (the spec default) and overflow the button.
+ */
+.desktop-mode-window__btn--custom svg:not( [ width ] ):not( [ height ] ) {
+	width: 18px;
+	height: 18px;
+	display: block;
+}
+
+/* ----------------------------------------------------------------
+ * Custom-chrome marker — hides every framework-shipped titlebar
+ * child while a plugin's chrome is mounted.
+ *
+ * The window gets the `desktop-mode-window--custom-chrome` class the
+ * moment `mountWindowChrome` succeeds (BEFORE the plugin's
+ * `render()` runs). Default children carry the
+ * `data-desktop-mode-default-chrome` attribute stamped at element-
+ * creation time. The combination is a load-bearing guarantee:
+ * even if the plugin's render() doesn't clear `titlebar.innerHTML`,
+ * even if a plugin's destroy() leaks the standard chrome back into
+ * place, even mid-fade during a window close — the default chrome
+ * NEVER becomes visible while the marker class is active.
+ *
+ * The class is removed only when the chrome is swapped to standard
+ * (in `Window.remountWindowChrome`); during a window close it
+ * persists until `element.remove()` runs in `onDone()`, which is
+ * after the fade has reached opacity 0 — so the user never sees
+ * the swap.
+ *
+ * @since 0.18.0
+ * ---------------------------------------------------------------- */
+
+.desktop-mode-window--custom-chrome
+	> .desktop-mode-window__titlebar
+	> [ data-desktop-mode-default-chrome ] {
+	display: none !important;
+}
+
+/* ---------------------------------------------------------------
+ * Reload button feedback.
+ *
+ * Click feedback is decoupled from the loading state:
+ *
+ *   1. On click, the icon performs a single 360° rotation with a
+ *      fast-start / slow-end ease curve — confirms the user's
+ *      gesture independently of how long the page takes to load.
+ *      The `--spinning` class is added by the click handler and
+ *      removed on `animationend` so a subsequent click restarts
+ *      the animation cleanly.
+ *
+ *   2. While the window body is in the `--loading` state (set by
+ *      `markContentLoading()` and cleared on the iframe's
+ *      `desktop-mode-ready` postMessage), the button is dimmed and
+ *      non-interactive so a second click can't desync the
+ *      chromeless bridge's loading handshake.
+ *
+ * `:has()` is used instead of mirroring the `--loading` modifier
+ * onto the window root because upstream's loading API only
+ * decorates the body element. Browsers without :has() (very old)
+ * fall back to a static dimmed button — feature, not bug.
+ * --------------------------------------------------------------- */
+
+.desktop-mode-window:has( .desktop-mode-window__body--loading )
+	.desktop-mode-window__btn--reload {
+	pointer-events: none;
+	opacity: 0.55;
+}
+
+/*
+ * Click feedback animation. The custom easing — `cubic-bezier( 0.05,
+ * 0.7, 0.1, 1 )` — is a steeper-than-default ease-out: ~70% of the
+ * rotation lands in the first 30% of the duration, then it decelerates.
+ * Reads as "snap, then settle" rather than the linear glide of a
+ * loading-spinner, reinforcing that this is a one-shot acknowledgement
+ * of the gesture rather than progress through a long task. The `0.6s`
+ * duration is short enough to never block the user but long enough
+ * that the deceleration is legible.
+ */
+.desktop-mode-window__btn--reload.desktop-mode-window__btn--spinning {
+	animation: wpd-reload-spin-once 0.6s cubic-bezier( 0.05, 0.7, 0.1, 1 );
+}
+
+@keyframes wpd-reload-spin-once {
+	from {
+		transform: rotate( 0deg );
+	}
+	to {
+		transform: rotate( 360deg );
+	}
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-window__btn--reload.desktop-mode-window__btn--spinning {
+		animation: none;
+	}
+}

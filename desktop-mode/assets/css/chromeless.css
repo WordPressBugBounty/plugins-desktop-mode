@@ -1,0 +1,372 @@
+/**
+ * Desktop Mode — Chromeless Overrides.
+ *
+ * CSS adjustments for legacy admin pages rendered inside desktop mode
+ * iframes (chromeless mode). All rules are scoped to .desktop-mode-chromeless
+ * so they never affect the classic admin or the desktop shell.
+ *
+ * Plugin and theme developers: to add your own chromeless overrides,
+ * enqueue a stylesheet on the 'desktop_mode_chromeless_styles' action.
+ * Your CSS just needs to target .desktop-mode-chromeless as the body class.
+ *
+ * Example:
+ *   add_action( 'desktop_mode_chromeless_styles', function() {
+ *       wp_enqueue_style( 'my-plugin-chromeless', plugin_dir_url( __FILE__ ) . 'chromeless.css' );
+ *   } );
+ *
+ * @since 0.1.0
+ */
+
+/* ---------------------------------------------------------------
+ * Hide the classic admin chrome elements. These would otherwise
+ * reserve space (sidebar gutter, footer, admin bar) around the
+ * chromeless page content.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless #adminmenuwrap,
+.desktop-mode-chromeless #adminmenuback,
+.desktop-mode-chromeless #wpfooter,
+.desktop-mode-chromeless #wpadminbar,
+.desktop-mode-chromeless .wp-responsive-toggle,
+.desktop-mode-chromeless #collapse-menu {
+	display: none !important;
+}
+
+/*
+ * _wp_admin_html_begin() adds the `wp-toolbar` class to <html> whenever
+ * is_admin_bar_showing() is true — which, in admin, is unconditional.
+ * The class carries a `padding-top: var(--wp-admin--admin-bar--height)`
+ * that would leave a 32px (or 46px) dead gap at the top of the iframe.
+ * Zero it out inside chromeless iframes.
+ *
+ * We also rebind `--wp-admin--admin-bar--height` (and the derived
+ * `--wp-admin--admin-bar--position-offset` from block-library) to 0px
+ * inside chromeless so plugins that position UI relative to the admin
+ * bar resolve their math against the iframe's actual chrome state.
+ *
+ * WooCommerce's activity-panel wrapper, the block editor's sticky
+ * header, and several others use `top: var(--wp-admin--admin-bar--height)`
+ * to clear the bar. Without this override they reserve a 32px (or 46px
+ * on small screens) gap that no longer exists, producing visible jumps
+ * on first paint and dead space at the top of the content area.
+ */
+html.wp-toolbar:has( body.desktop-mode-chromeless ) {
+	padding-top: 0 !important;
+	--wp-admin--admin-bar--height: 0px;
+	--wp-admin--admin-bar--position-offset: 0px;
+}
+
+/* Remove the sidebar gutter on #wpcontent and let the body fill the frame. */
+.desktop-mode-chromeless #wpcontent {
+	margin-inline-start: 0 !important;
+	padding-inline-start: 0 !important;
+}
+
+/*
+ * WooCommerce sidebar-reservation override.
+ *
+ * `.woocommerce-layout__header` is a `position: fixed` bar WC
+ * mounts on every wc-admin and wc-embedded page. Its width is
+ * compiled from the SCSS source (header/style.scss) as a literal:
+ *
+ *       position: fixed;
+ *       top: 32px;                       // $adminbar-height
+ *       width: calc(100% - 160px);        // reserves classic sidebar
+ *       z-index: 1001;
+ *
+ * The 160px subtraction is the classic admin menu width — WC bakes
+ * it in at build time so the header doesn't overlap the sidebar
+ * in standard admin. Inside chromeless we hide the sidebar, but
+ * the header keeps the reservation — so the header ends 160px
+ * short of the iframe right edge, and `.woocommerce-layout__activity-panel-wrapper`
+ * (`position: absolute; right: 0; top: 100%; transform: translateX(100%)`,
+ * containing block = the fixed header) translates past the
+ * header's right edge, NOT past the iframe's right edge. The
+ * resulting visible strip is exactly 160px wide — the size of the
+ * sidebar gap WC reserved for nothing.
+ *
+ * Reclaim the reservation: pin the header to full iframe width
+ * inside chromeless. The activity panel then translates past the
+ * iframe edge as WC's design intended, the gray strip disappears,
+ * and the header's content uses the full window width. No
+ * transform / overflow / visibility tricks needed.
+ */
+.desktop-mode-chromeless .woocommerce-layout__header {
+	width: 100% !important;
+}
+
+/* ---------------------------------------------------------------
+ * Screen Meta (Screen Options / Help panels)
+ * The toggle buttons (#screen-meta-links) are hidden because
+ * the parent desktop shell adds its own buttons to the window
+ * title bar. The panels themselves stay visible and functional —
+ * they're toggled via postMessage from the parent.
+ *
+ * Collapse all margins on the hidden links and the panel container
+ * so they don't leave a gap at the top of the iframe content.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless #screen-meta-links {
+	display: none;
+	margin: 0;
+}
+
+.desktop-mode-chromeless #screen-meta {
+	margin: 0;
+	border: none;
+}
+
+/* ---------------------------------------------------------------
+ * Wrap container
+ * Remove the default left margin that accounts for the sidebar
+ * which doesn't exist in chromeless mode.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless .wrap {
+	margin: 0;
+}
+
+/* ---------------------------------------------------------------
+ * Page title & header
+ * The window title bar already shows the page title, and the
+ * submenu tab strip below it already exposes actions like
+ * "Add New". Hide the in-page <h1>, the adjacent action button
+ * (.page-title-action), and the header separator (.wp-header-end)
+ * so the window content starts flush without a redundant header.
+ *
+ * Plugins that need their action button to remain visible can
+ * override these rules by enqueueing CSS on the
+ * 'desktop_mode_chromeless_styles' action.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless .wrap > h1,
+.desktop-mode-chromeless .wrap > h1.wp-heading-inline,
+.desktop-mode-chromeless #wpbody-content > .wrap > h1,
+.desktop-mode-chromeless .wrap > .page-title-action,
+.desktop-mode-chromeless .wrap > .wp-header-end {
+	display: none;
+}
+
+/*
+ * Exceptions: keep .page-title-action visible where it's the only
+ * entry point to a sub-flow:
+ *  - plugin-install.php → "Upload Plugin"
+ *  - theme-install.php  → "Upload Theme"
+ *
+ * themes.php's native "Add Theme" page-title-action used to live
+ * here, but the iframe scrolled past it on load (the focus-target
+ * heuristic on the visible theme grid stole the scroll position),
+ * which made the only entry point to theme-install.php disappear.
+ * The Appearance window now ships an "Add Theme" tab in the
+ * submenu strip (see desktop_mode_inject_appearance_tabs in
+ * includes/themes-tabs.php), so the in-page button is redundant
+ * and stays hidden.
+ *
+ * The theme-install.php "Upload Theme" exception is necessary
+ * because the upload form is its own sub-flow with no equivalent
+ * affordance elsewhere in the chromeless shell — without this
+ * rule, users who want to install a .zip theme have no entry
+ * point.
+ *
+ * See issue #38.
+ */
+.desktop-mode-chromeless.plugin-install-php .wrap > .page-title-action,
+.desktop-mode-chromeless.theme-install-php .wrap > .page-title-action {
+	display: inline-block;
+	margin-top: 12px;
+}
+
+/* ---------------------------------------------------------------
+ * Dashboard welcome panel
+ * The default 16px top margin pushes the panel down and creates a
+ * visible gap at the top of the iframe. Collapse it in chromeless
+ * mode so the panel sits flush with the top of the window body.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless #welcome-panel,
+.desktop-mode-chromeless .welcome-panel {
+	margin-top: 0.5em;
+}
+
+/* ---------------------------------------------------------------
+ * Footer
+ * The classic footer is not rendered in chromeless mode,
+ * but some pages have bottom padding assuming it exists.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless #wpbody-content {
+	margin: 0;
+	padding: 0 8px 8px;
+	float: none;
+	width: auto;
+}
+
+/* ---------------------------------------------------------------
+ * Block Editor — hide Gutenberg chrome that would break the window.
+ *
+ * The fullscreen-mode close button (the "W" logo top-left of the editor)
+ * is an <a href="/wp-admin/edit.php"> that navigates the iframe to a
+ * non-chromeless URL — which re-renders the entire classic admin
+ * inside our desktop window. The link interceptor in the chromeless
+ * bridge catches it too, but hiding the button removes the visual
+ * affordance so users never try to click "back to dashboard" inside
+ * what looks like a self-contained window.
+ *
+ * The site editor's equivalent navigation affordances (site hub toggle,
+ * "back to dashboard" link) get the same treatment.
+ *
+ * The welcome guide is intentionally NOT hidden anymore. Earlier
+ * iterations both CSS-hid the dialog AND flipped `core/edit-post:
+ * welcomeGuide` to `false` at the data layer on every chromeless
+ * mount — but Gutenberg already persists the user's "Get started"
+ * dismissal to user meta the moment they close it, so the override
+ * was permanently stealing the one-time orientation tour from every
+ * user who never got to see it. Modal's focus trap is Tab-only and
+ * doesn't fight the shell. Let it run. (See git history for the
+ * removed `desktop_mode_chromeless_editor_preferences` override.)
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless .edit-post-fullscreen-mode-close,
+.desktop-mode-chromeless .edit-post-fullscreen-mode-close__view-mode-toggle,
+.desktop-mode-chromeless .edit-site-navigation-link,
+.desktop-mode-chromeless .edit-site-site-hub,
+.desktop-mode-chromeless .edit-site-site-hub__toggle {
+	display: none !important;
+}
+
+/* ---------------------------------------------------------------
+ * Block Editor & Site Editor — full-bleed layouts.
+ * Gutenberg owns its entire viewport (its own header bar, side
+ * panels, etc.). Any padding around #wpbody-content crops the
+ * editor and breaks its layout, so reset to zero on those pages
+ * and let the editor render edge-to-edge.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless.block-editor-page #wpbody-content,
+.desktop-mode-chromeless.site-editor-php #wpbody-content,
+.desktop-mode-chromeless.is-fullscreen-mode #wpbody-content {
+	padding: 0;
+}
+
+/* ---------------------------------------------------------------
+ * "Boot" SPA pages (Font Library, Options → Connectors).
+ *
+ * These screens mount a React app into `.boot-layout-container` and
+ * paint `#wpwrap` a dark `#1e1e1e` via inline <style>. Our 8px
+ * right/bottom padding on `#wpbody-content` lets that dark color
+ * bleed through as two black gaps on the right and bottom edges of
+ * the window. Zero the padding for any page hosting a boot layout
+ * — detection is purely structural (`:has()`), so a plugin that
+ * adopts the same container class inherits the fix automatically.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless #wpbody-content:has( .boot-layout-container ) {
+	padding: 0;
+}
+
+.desktop-mode-chromeless:has( .boot-layout-container ) #wpwrap {
+	/* Neutralize the inline dark background so any stray overflow
+	 * matches the window body instead of flashing black. */
+	background: transparent;
+}
+
+/*
+ * `boot-layout__surfaces` is the white card the React app draws its
+ * content onto. In classic admin it sits on the dark #wpwrap with
+ * rounded corners and a margin that makes it read as a "card." Inside
+ * a desktop window the surface IS the content — rounded corners and
+ * side margins leave ugly bleed at the edges. Collapse it to a plain
+ * edge-to-edge surface.
+ */
+.desktop-mode-chromeless .boot-layout__surfaces,
+.desktop-mode-chromeless .boot-layout__stage,
+.desktop-mode-chromeless .boot-layout__canvas {
+	border-radius: 0 !important;
+	margin: 0 !important;
+}
+
+/*
+ * The boot screens render their own H1 (`.boot-navigation-screen__title`,
+ * e.g., "Fonts") at the top of the surface. The desktop window already
+ * shows the page title in its title bar, so the in-page title is
+ * redundant. Visually hide it but keep it in the DOM for screen readers
+ * and for the boot app's own focus management.
+ */
+.desktop-mode-chromeless .boot-navigation-screen__title,
+.desktop-mode-chromeless .boot-navigation-screen__title-icon {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect( 0, 0, 0, 0 );
+	white-space: nowrap;
+	border: 0;
+}
+
+/* ---------------------------------------------------------------
+ * Snackbars
+ *
+ * `components-snackbar-list` (Gutenberg `@wordpress/components`) and
+ * `boot-notices__snackbar` (Font Library / Connectors) position
+ * themselves `fixed` at the viewport bottom. Because a chromeless
+ * iframe IS its own viewport, those anchors already land inside the
+ * window — but our 8px bottom padding on `#wpbody-content` (applied
+ * to non-boot pages) plus some plugin-level `bottom: 40px` offsets
+ * meant for the classic admin footer can push them out of sight.
+ *
+ * Pin them flush to the bottom of the iframe and make sure nothing
+ * in the window chrome can occlude them.
+ *
+ * Triggering a snackbar to verify (desktop mode enabled):
+ *   - Open Posts → Add New, save/publish → "Post published" toast.
+ *   - Open Media, upload a file → "Uploaded" toast.
+ *   - Open Appearance → Fonts, install a Google Font → toast.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless .components-snackbar-list,
+.desktop-mode-chromeless .boot-notices__snackbar {
+	bottom: 16px !important;
+	z-index: 100000;
+}
+
+/*
+ * Force the Gutenberg interface skeleton to fill the iframe regardless
+ * of fullscreen state. When fullscreenMode is off, Gutenberg hardcodes
+ * `top: 32px` (admin bar reservation) and `left: 160px` (sidebar
+ * reservation) on `.interface-interface-skeleton` — both chromes we've
+ * already hidden, so those offsets become dead gaps at the top and
+ * left of the window. Zero them out unconditionally.
+ *
+ * The default is fullscreen (inset: 0), but users who turned fullscreen
+ * off in classic admin carry that preference into chromeless via the
+ * shared persistence layer. This rule keeps chromeless rendering
+ * edge-to-edge either way.
+ */
+.desktop-mode-chromeless .interface-interface-skeleton {
+	top: 0 !important;
+	left: 0 !important;
+	right: 0 !important;
+	bottom: 0 !important;
+}
+
+/* ---------------------------------------------------------------
+ * Notices
+ * Give notices a bit of top margin since there's no admin bar above.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless .notice:first-child {
+	margin-top: 4px;
+}
+
+/* ---------------------------------------------------------------
+ * Update nag
+ * Red top border signals a pending WordPress update; keep it so
+ * the nag reads as urgent even without the surrounding admin chrome.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless .update-nag {
+	border-top: 1px solid #d63638;
+}
+
+/* ---------------------------------------------------------------
+ * Suppress WordPress's native command palette inside chromeless
+ * iframes. The chromeless bridge intercepts Cmd+K and forwards to
+ * the desktop shell, but if an in-page component triggers the
+ * palette via another path (programmatic dispatch, a menu item)
+ * the dialog would still render. Hide it so the shell's palette
+ * stays the only surface users ever see.
+ * --------------------------------------------------------------- */
+.desktop-mode-chromeless .commands-command-menu__container,
+.desktop-mode-chromeless .commands-command-menu {
+	display: none !important;
+}

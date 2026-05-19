@@ -1,0 +1,468 @@
+/**
+ * Desktop Mode — Overview.
+ *
+ * Zoom-out grid view: windows transform into thumbnails, floating
+ * labels sit above them, and a top bar lists every virtual desktop
+ * with one tile per space plus a "+" to add a new one. The dock
+ * collapses in parallel with the enter transition.
+ *
+ * Windows keep their `left/top/width/height` intact; only `transform`
+ * animates (translate + scale) so the layout change is a GPU
+ * composite, not a reflow. `transform-origin: top left` makes
+ * translate + scale compose cleanly — a target coordinate maps to
+ * the window's top-left corner pre-scale. Iframes go
+ * `pointer-events: none` inside overview so clicks hit the window
+ * wrapper (and bubble to the desktop-area click handler) instead of
+ * the iframe content, which would otherwise eat the click.
+ *
+ * Base chrome lives in window-chrome.css; non-overview state classes
+ * live in window-states.css.
+ *
+ * @since 6.9.0
+ */
+.desktop-mode-area--overview {
+	/* Darken the backdrop and tint it so windows feel like they're
+	 * floating over a neutral canvas, not the wallpaper. */
+	background-color: rgba( 0, 0, 0, 0.45 );
+	transition: background-color 0.28s ease;
+}
+
+.desktop-mode-window--overview {
+	transform-origin: top left;
+	transition:
+		transform 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		box-shadow 0.2s ease,
+		opacity 0.2s ease;
+	cursor: pointer;
+	/* Hover effects apply a thick outline rather than another
+	 * transform (which would fight the layout's own transform).
+	 * Box-shadow is composite-only, so it's cheap. */
+	box-shadow: 0 10px 30px rgba( 0, 0, 0, 0.35 );
+	/* Overview thumbnails are click targets, not reading surfaces —
+	 * suppress text selection so a drag across a thumbnail doesn't
+	 * highlight paragraphs inside the title bar / native body. */
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/*
+ * While in overview, treat each window as a single click target —
+ * every inner element (title bar, buttons, iframe, native body) goes
+ * transparent to pointer events so drags/taps never start a drag,
+ * trip a close button, or launch an in-iframe action. Only the
+ * window's root element receives pointer events; our desktop-level
+ * pointerdown/pointerup handlers drive selection from there.
+ */
+.desktop-mode-window--overview * {
+	pointer-events: none;
+}
+
+.desktop-mode-window--overview {
+	pointer-events: auto;
+}
+
+.desktop-mode-window--overview:hover {
+	box-shadow:
+		0 14px 38px rgba( 0, 0, 0, 0.45 ),
+		0 0 0 3px var( --wp-admin-theme-color, #2271b1 );
+	z-index: 1;
+}
+
+/*
+ * Mission-Control-style dimming: once ANY window is hovered, every
+ * OTHER window dims and desaturates slightly — creating a clear
+ * focal point without needing the hovered one to grow or lift.
+ * `:has()` lands in every evergreen browser we target (Chrome 105,
+ * Safari 15.4, Firefox 121+); older engines miss the dimming but
+ * keep the accent-ring affordance, so it degrades gracefully.
+ */
+.desktop-mode-area--overview:has( .desktop-mode-window--overview:hover )
+	.desktop-mode-window--overview:not( :hover ) {
+	opacity: 0.5;
+	filter: brightness( 0.75 );
+	transition:
+		transform 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		opacity 0.18s ease,
+		filter 0.18s ease;
+}
+
+/*
+ * Dock slides out smoothly during overview — width collapses (the
+ * flex row reflows so the area grows into the freed space) while
+ * the dock itself slides left and fades. `display: none` would have
+ * been abrupt in both directions; animating the flex width does the
+ * heavy lifting and the user sees a single continuous motion.
+ *
+ * `pointer-events: none` comes in immediately on overview enter so
+ * stray clicks mid-animation can't open a window behind the user's
+ * back. `overflow: hidden` is scoped to the collapsed state so the
+ * shrinking dock doesn't leak icons past its boundary — outside
+ * overview, the dock keeps `overflow: visible` from dock.css so
+ * per-tile "+ open another" chips can float past the edge.
+ */
+.desktop-mode-dock {
+	transition:
+		width 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		min-width 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		padding 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		transform 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		opacity 0.22s ease;
+}
+
+/*
+ * Collapse EVERY dock (bottom + side rails, Classic / Unified /
+ * Spatial layouts alike) when overview is active.
+ *
+ * The placement-specific width rules in dock.css —
+ * `.desktop-mode-dock[ data-desktop-mode-dock-placement="left" ]
+ *  { width: var( --desktop-mode-dock-width ); }` — share equal
+ * specificity with `.desktop-mode-shell--overview .desktop-mode-dock`
+ * (two classes / class+attr) and load LATER in the cascade, so
+ * without `!important` the side rail keeps its placement width
+ * and stays visible during overview. The bottom dock happens to
+ * lack a placement-attr-keyed width override so it collapsed
+ * fine; the side rail did not — caught by the regression
+ * screenshot.
+ *
+ * `!important` is the right tool here: this rule is a transient,
+ * mode-scoped override (overview screen only) of a layout-mode
+ * default, and we want it to win unconditionally.
+ */
+.desktop-mode-shell--overview .desktop-mode-dock,
+.desktop-mode-shell--overview #desktop-mode-side-dock {
+	width: 0 !important;
+	min-width: 0 !important;
+	padding-inline: 0 !important;
+	padding-block: 0 !important;
+	transform: translateX( -16px );
+	opacity: 0;
+	overflow: hidden;
+	pointer-events: none;
+	transition:
+		width 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		min-width 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		padding 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		transform 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ),
+		opacity 0.22s ease;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-dock {
+		transition-duration: 0.01ms;
+	}
+}
+
+/* ---------------------------------------------------------------
+ * Overview thumbnail labels.
+ *
+ * Sit outside each window's transform (as absolute-positioned
+ * siblings in the desktop area) so they stay readable at any
+ * thumbnail scale — an icon-sized thumbnail still has its
+ * full-size caption hovering above it.
+ *
+ * Layout: one line, icon + title (+ optional meta). Horizontal
+ * center-of-thumbnail alignment is handled via the label's
+ * own flex + width set in JS to match the scaled thumbnail.
+ * --------------------------------------------------------------- */
+.desktop-mode-overview-label {
+	position: absolute;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 0 10px;
+	color: #fff;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1;
+	letter-spacing: 0.01em;
+	text-shadow: 0 1px 3px rgba( 0, 0, 0, 0.55 );
+	white-space: nowrap;
+	pointer-events: none;
+	opacity: 0;
+	transform: translateY( 4px );
+	transition:
+		opacity 0.22s ease 0.06s,
+		transform 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ) 0.06s;
+	z-index: 2;
+}
+
+/*
+ * Active labels fade/slide in once the area enters overview mode.
+ * The short delay on `transition-*` lets the thumbnails start
+ * moving first, so labels appear to "catch up" rather than race
+ * ahead of their windows.
+ */
+.desktop-mode-area--overview .desktop-mode-overview-label {
+	opacity: 1;
+	transform: translateY( 0 );
+}
+
+/* On exit, flip the animation off. */
+.desktop-mode-overview-label--out {
+	opacity: 0 !important;
+	transform: translateY( -4px ) !important;
+	transition-delay: 0s !important;
+}
+
+.desktop-mode-overview-label__icon {
+	font-size: 16px;
+	width: 16px;
+	height: 16px;
+	line-height: 1;
+	flex-shrink: 0;
+	opacity: 0.9;
+}
+
+.desktop-mode-overview-label__title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.desktop-mode-overview-label__meta {
+	color: rgba( 255, 255, 255, 0.7 );
+	font-weight: 400;
+	flex-shrink: 0;
+}
+
+/*
+ * Dim labels when another window is hovered. DOM order places
+ * each label immediately after its window, so the adjacent-
+ * sibling selector picks out exactly the label belonging to the
+ * hovered window and keeps it bright; all other labels fall under
+ * the `:has()` rule and dim.
+ */
+.desktop-mode-area--overview:has( .desktop-mode-window--overview:hover )
+	.desktop-mode-overview-label {
+	opacity: 0.45;
+	transform: translateY( 0 );
+}
+
+.desktop-mode-window--overview:hover + .desktop-mode-overview-label {
+	opacity: 1 !important;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-overview-label {
+		transition-duration: 0.01ms;
+		transition-delay: 0s;
+	}
+}
+
+/*
+ * Focused-window label overlay is not strictly needed — the title
+ * bar stays visible in the scaled thumbnail. If we later want a
+ * cleaner label (to combat tiny text on 8+-window grids), slot it
+ * in here via a ::after pseudo-element.
+ */
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-area--overview,
+	.desktop-mode-window--overview {
+		transition-duration: 0.01ms;
+	}
+}
+
+/* ---------------------------------------------------------------
+ * Overview top bar — virtual desktops ("Spaces") strip.
+ *
+ * Lives at the top of the desktop area while overview is active,
+ * stacked above the dimmed backdrop and below the window
+ * thumbnails. Each tile represents one desktop; clicking switches
+ * to it (and exits overview), the trailing "+" tile creates a new
+ * one, and per-tile X buttons close.
+ * --------------------------------------------------------------- */
+
+.desktop-mode-overview-top-bar {
+	position: absolute;
+	top: 16px;
+	left: 50%;
+	transform: translateX( -50% );
+	z-index: 2;
+	opacity: 0;
+	pointer-events: none;
+	transition:
+		opacity 0.22s ease 0.06s,
+		transform 0.28s cubic-bezier( 0.2, 0, 0.2, 1 ) 0.06s;
+}
+
+.desktop-mode-area--overview .desktop-mode-overview-top-bar {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.desktop-mode-overview-top-bar--out {
+	opacity: 0 !important;
+	transform: translateX( -50% ) translateY( -6px ) !important;
+	transition-delay: 0s !important;
+}
+
+.desktop-mode-overview-top-bar__list {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	gap: 12px;
+	padding: 8px 12px;
+	border-radius: 14px;
+	background-color: rgba( 0, 0, 0, 0.32 );
+	backdrop-filter: blur( 18px ) saturate( 140% );
+	-webkit-backdrop-filter: blur( 18px ) saturate( 140% );
+	box-shadow:
+		0 8px 28px rgba( 0, 0, 0, 0.35 ),
+		inset 0 0 0 1px rgba( 255, 255, 255, 0.08 );
+}
+
+.desktop-mode-overview-top-bar__tile {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: stretch;
+	width: 140px;
+	padding: 0;
+	margin: 0;
+	background: rgba( 255, 255, 255, 0.04 );
+	border: 2px solid rgba( 255, 255, 255, 0.18 );
+	border-radius: 10px;
+	color: #fff;
+	cursor: pointer;
+	overflow: hidden;
+	transition:
+		border-color 0.18s ease,
+		background-color 0.18s ease,
+		transform 0.18s ease;
+	font: inherit;
+}
+
+.desktop-mode-overview-top-bar__tile:hover {
+	border-color: rgba( 255, 255, 255, 0.4 );
+	background: rgba( 255, 255, 255, 0.08 );
+}
+
+.desktop-mode-overview-top-bar__tile:focus-visible {
+	outline: 2px solid var( --wp-admin-theme-color, #2271b1 );
+	outline-offset: 2px;
+}
+
+.desktop-mode-overview-top-bar__tile--active {
+	border-color: var( --wp-admin-theme-color, #2271b1 );
+	box-shadow: 0 0 0 1px var( --wp-admin-theme-color, #2271b1 );
+}
+
+.desktop-mode-overview-top-bar__tile-preview {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 60px;
+	background: linear-gradient(
+		135deg,
+		rgba( 255, 255, 255, 0.04 ),
+		rgba( 255, 255, 255, 0.12 )
+	);
+	border-bottom: 1px solid rgba( 255, 255, 255, 0.08 );
+}
+
+.desktop-mode-overview-top-bar__tile-count {
+	font-size: 18px;
+	font-weight: 600;
+	color: rgba( 255, 255, 255, 0.7 );
+	letter-spacing: 0.02em;
+}
+
+.desktop-mode-overview-top-bar__tile-label {
+	display: block;
+	padding: 6px 10px 8px;
+	text-align: center;
+	font-size: 12px;
+	font-weight: 500;
+	color: rgba( 255, 255, 255, 0.85 );
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.desktop-mode-overview-top-bar__tile-close {
+	position: absolute;
+	top: 4px;
+	inset-inline-end: 4px;
+	width: 18px;
+	height: 18px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: rgba( 255, 255, 255, 0.7 );
+	background: rgba( 0, 0, 0, 0.45 );
+	border-radius: 50%;
+	cursor: pointer;
+	opacity: 0;
+	transition:
+		opacity 0.15s ease,
+		background-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.desktop-mode-overview-top-bar__tile:hover
+	.desktop-mode-overview-top-bar__tile-close {
+	opacity: 1;
+}
+
+.desktop-mode-overview-top-bar__tile-close:hover {
+	background: #d63638;
+	color: #fff;
+}
+
+/*
+ * Hide the close X when there's only one tile left — the tile
+ * counts both real desktops AND the trailing "+", so "only one
+ * desktop" means exactly two tiles in the list.
+ */
+.desktop-mode-overview-top-bar__list:has(
+		.desktop-mode-overview-top-bar__tile:not(
+				.desktop-mode-overview-top-bar__tile--add
+			):only-of-type
+	)
+	.desktop-mode-overview-top-bar__tile-close {
+	display: none;
+}
+
+.desktop-mode-overview-top-bar__tile--add {
+	width: 60px;
+	background: transparent;
+	border-style: dashed;
+}
+
+.desktop-mode-overview-top-bar__tile--add:hover {
+	background: rgba( 255, 255, 255, 0.08 );
+}
+
+/*
+ * Keyboard cursor parked on the "+" tile. Mirrors the visual weight
+ * of `--active` (solid accent border + halo) so the user sees at a
+ * glance "Enter will land here". The dashed border on the add tile
+ * flips to solid when the cursor lands, matching the desktop tiles'
+ * solid borders.
+ */
+.desktop-mode-overview-top-bar__tile--add.desktop-mode-overview-top-bar__tile--cursor {
+	border-style: solid;
+	border-color: var( --wp-admin-theme-color, #2271b1 );
+	box-shadow: 0 0 0 1px var( --wp-admin-theme-color, #2271b1 );
+	background: rgba( 255, 255, 255, 0.08 );
+}
+
+.desktop-mode-overview-top-bar__tile-plus {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 1;
+	font-size: 28px;
+	font-weight: 200;
+	color: rgba( 255, 255, 255, 0.7 );
+	line-height: 1;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-overview-top-bar {
+		transition-duration: 0.01ms;
+	}
+}

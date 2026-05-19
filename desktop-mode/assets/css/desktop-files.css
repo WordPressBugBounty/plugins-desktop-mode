@@ -1,0 +1,1125 @@
+/**
+ * Desktop Mode — Files-on-the-Desktop tile + layer styles.
+ *
+ * The layer is an absolutely-positioned container inside
+ * `#desktop-mode-area`; tiles inside use absolute positioning
+ * keyed off `(x, y)` coordinates persisted server-side.
+ *
+ * Tiles are intentionally close to the look of `desktop-mode-icon`
+ * (the plugin-shortcut tiles) so the desktop reads as one
+ * coherent surface — but they live in their own class namespace
+ * (`desktop-mode-file-tile`) so plugins can theme each rail
+ * independently.
+ *
+ * @since 0.9.0
+ */
+
+/*
+ * Unified rail (since 0.9.0): plugin shortcuts now ride on the
+ * same files layer as folders / posts / etc — they're a
+ * `'shortcut'` file type. The legacy `.desktop-mode-icons` DIV
+ * still renders for backwards compatibility (existing tests and
+ * non-files-active code paths), but when a files layer is
+ * mounted as a sibling we hide it so we don't end up with two
+ * rails competing for the same wallpaper.
+ */
+#desktop-mode-area:has( > .desktop-mode-files-layer ) > .desktop-mode-icons {
+	display: none;
+}
+
+/*
+ * Drop-target highlight — the `data-files-drop-active` attribute
+ * is set on the FilesLayer host (desktop area or folder window
+ * body) while a shortcut payload is being dragged over it.
+ *
+ * Marching-ants animation makes the affordance unmissable even
+ * against the busiest wallpaper, and the soft inner glow draws
+ * the eye when the user is "shopping" for a drop target. Both
+ * effects respect prefers-reduced-motion below.
+ *
+ * @since 0.18.0; visuals strengthened in 0.20.0.
+ */
+@keyframes desktop-mode-drop-marching-ants {
+	to {
+		background-position: 24px 0, -24px 0, 0 24px, 0 -24px;
+	}
+}
+
+[ data-files-drop-active ] {
+	position: relative;
+	outline: 3px dashed var( --wp-admin-theme-color, #2271b1 );
+	outline-offset: -8px;
+	background-image:
+		linear-gradient(
+			90deg,
+			rgba( 34, 113, 177, 0.45 ) 50%,
+			transparent 0
+		),
+		linear-gradient(
+			90deg,
+			rgba( 34, 113, 177, 0.45 ) 50%,
+			transparent 0
+		),
+		linear-gradient(
+			0deg,
+			rgba( 34, 113, 177, 0.45 ) 50%,
+			transparent 0
+		),
+		linear-gradient(
+			0deg,
+			rgba( 34, 113, 177, 0.45 ) 50%,
+			transparent 0
+		);
+	background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+	background-size: 12px 3px, 12px 3px, 3px 12px, 3px 12px;
+	background-position: 0 6px, 0 calc( 100% - 6px ), 6px 0, calc( 100% - 6px ) 0;
+	box-shadow: inset 0 0 32px 4px rgba( 34, 113, 177, 0.12 );
+	animation: desktop-mode-drop-marching-ants 0.6s linear infinite;
+	transition: box-shadow 0.18s ease-out;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	[ data-files-drop-active ] {
+		animation: none;
+	}
+}
+
+.desktop-mode-files-layer {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	/*
+	 * Layer doesn't intercept pointer events itself — tiles and
+	 * the wallpaper own that. Phase 4's wallpaper context menu
+	 * binds clicks on the parent `#desktop-mode-area`, which is
+	 * unblocked because of this rule.
+	 */
+	pointer-events: none;
+}
+
+/*
+ * Live drop-cell preview. A soft outline that hovers at the cell
+ * the dropped tile will land in, so the user can predict where the
+ * grid snap will place it before releasing. Positioned absolutely
+ * inside the files layer; `translate3d` updated from JS on every
+ * pointermove while a desktop-file drag hovers the canvas.
+ *
+ * The tile dimensions are baked into `grid.ts` (88 × 96 visual,
+ * 96 × 110 cell pitch). The outline matches the cell pitch — slightly
+ * larger than the tile — so the highlight reads as "this slot" rather
+ * than "this tile."
+ *
+ * @since 0.20.0
+ */
+.desktop-mode-files-drop-preview {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 88px;
+	height: 96px;
+	pointer-events: none;
+	box-sizing: border-box;
+	border-radius: 12px;
+	background: var(
+		--desktop-mode-drop-preview-bg,
+		rgba( 34, 113, 177, 0.08 )
+	);
+	border: 2px dashed
+		var(
+			--desktop-mode-drop-preview-border,
+			rgba( 34, 113, 177, 0.55 )
+		);
+	transition: transform 90ms ease-out;
+	will-change: transform;
+	/* Sit BELOW tiles so a tile being dragged over the cell isn't
+	 * visually clipped by the dashed outline; the outline still reads
+	 * because the tile is semi-transparent during drag (`--dragging`
+	 * sets `opacity: 0.4`). */
+	z-index: 0;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-files-drop-preview {
+		transition: none;
+	}
+}
+
+.desktop-mode-file-tile {
+	pointer-events: auto;
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 6px;
+	width: 88px;
+	padding: 8px 4px;
+	border: 0;
+	background: transparent;
+	/* Tile foreground driven by `--desktop-mode-tile-fg` so any
+	 * light-on-dark surface (folder window, My WordPress preview)
+	 * can retint tiles by overriding the variable in its scope —
+	 * no per-surface selectors needed here. */
+	color: var( --desktop-mode-tile-fg, var( --desktop-mode-fg, #fff ) );
+	cursor: pointer;
+	border-radius: 8px;
+	transition: background-color 0.15s ease, transform 0.05s linear;
+	-webkit-user-select: none;
+	user-select: none;
+	touch-action: none;
+	/* Soft fade-in on mount — each tile carries its own randomised
+	 * `--enter-delay` / `--enter-duration` (set inline by the
+	 * tile builder), so a freshly-painted grid reads as a cascade
+	 * rather than a synchronised pop-in. Both values land in the
+	 * decimal-of-a-second range — perceivable, never sluggish.
+	 *
+	 * `backwards` keeps the tile invisible during its delay so the
+	 * cascade is honest; the animation runs once, leaves the tile
+	 * at its static `opacity: 1`, and never re-fires from later
+	 * state changes (drag, hover, drop-target).
+	 */
+	animation: desktop-mode-file-tile-enter
+		var( --desktop-mode-file-tile-enter-duration, 0.4s )
+		ease-out
+		var( --desktop-mode-file-tile-enter-delay, 0s )
+		backwards;
+}
+
+@keyframes desktop-mode-file-tile-enter {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-file-tile {
+		animation: none;
+	}
+}
+
+.desktop-mode-file-tile:hover,
+.desktop-mode-file-tile:focus-visible {
+	background: var(
+		--desktop-mode-tile-hover-bg,
+		rgba( 255, 255, 255, 0.12 )
+	);
+	outline: none;
+}
+
+.desktop-mode-file-tile:focus-visible {
+	/* Inset focus ring — outset rings extended past the tile and
+	 * visually overlapped the colindant icon when the canvas cell
+	 * pitch is tight (96 px cell, 88 px tile → only 4 px clearance
+	 * per side). Inset keeps the ring fully inside the tile. */
+	box-shadow: inset 0 0 0 2px
+		var( --desktop-mode-tile-focus-ring, var( --wp-admin-theme-color, #2271b1 ) );
+}
+
+/* Status ribbon sizing inside tiles. The `<wpd-ribbon>` defaults
+ * are tuned for cards (~90 px clipping window); 88 px-wide tiles
+ * need a tighter footprint or the ribbon dominates the icon. We
+ * override the component's CSS custom-property theming surface so
+ * the ribbon stays a small accent in the corner. Authors who want
+ * different sizing can override per-tile or per-section. */
+.desktop-mode-file-tile > wpd-ribbon {
+	--wpd-ribbon-size: 48px;
+	--wpd-ribbon-banner-width: 72px;
+	--wpd-ribbon-banner-offset: 12px;
+	--wpd-ribbon-banner-pull: -18px;
+	--wpd-ribbon-padding: 1px 0;
+	--wpd-ribbon-font: 700 7px/1.4 var( --desktop-mode-font, system-ui );
+	--wpd-ribbon-tracking: 0.05em;
+	--wpd-ribbon-shadow: 0 1px 2px rgba( 0, 0, 0, 0.2 );
+}
+
+.desktop-mode-file-tile--dragging {
+	/* The DragManager renders a separate ghost element that follows
+	 * the pointer; the SOURCE tile stays in place but is dimmed so
+	 * the user has a stable reference for "this is what I'm
+	 * dragging."
+	 *
+	 * @since 0.18.0
+	 */
+	opacity: 0.4;
+	cursor: grabbing;
+}
+
+/* Pinned tiles ("My WordPress", Recycle Bin) anchor to a fixed slot
+ * and DO NOT wire drag — but they look + behave identically to any
+ * other tile until the user attempts a drag (which silently fails).
+ * No upfront visual cue: feedback now happens at the moment of the
+ * gesture, not before, per @since 0.9.0 design feedback.
+ *
+ * Default `cursor: pointer` from the base `.desktop-mode-file-tile`
+ * rule covers click-to-open. Touch interactions stay as
+ * `touch-action: auto` so the OS scroll gesture works on top of
+ * the tile.
+ */
+.desktop-mode-file-tile--pinned {
+	touch-action: auto;
+}
+
+/* Folder tile is the drop target during a cross-window shortcut
+ * drag — the user dragged a post / page / user tile out of My
+ * WordPress and is hovering over a folder. Bright outline, soft
+ * pulse, and a slight scale so the folder reads unmistakably as
+ * "yes, drop here." @since 0.8.0; pulse added 0.20.0. */
+@keyframes desktop-mode-drop-target-pulse {
+	0% {
+		box-shadow:
+			0 0 0 0 rgba( 34, 113, 177, 0.5 ),
+			inset 0 0 0 2px var( --wp-admin-theme-color, #2271b1 );
+	}
+	100% {
+		box-shadow:
+			0 0 0 8px rgba( 34, 113, 177, 0 ),
+			inset 0 0 0 2px var( --wp-admin-theme-color, #2271b1 );
+	}
+}
+
+.desktop-mode-file-tile--drop-target {
+	outline: 2px solid var( --wp-admin-theme-color, #2271b1 );
+	outline-offset: -4px;
+	background: rgba( 34, 113, 177, 0.2 );
+	transform: scale( 1.08 );
+	z-index: 5;
+	animation: desktop-mode-drop-target-pulse 1s ease-out infinite;
+	border-radius: 12px;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.desktop-mode-file-tile--drop-target {
+		animation: none;
+	}
+}
+
+/* Drop-hint chip — floats next to the cursor during a drag and
+ * shows context-aware text ("Drop here to create shortcut",
+ * "Can't drop here", etc.). The chip text is owned by the
+ * ghost module (`src/drag/ghost.ts`); these styles control the
+ * appearance per accept/reject/neutral mode.
+ *
+ * @since 0.20.0
+ */
+.desktop-mode-drag-hint {
+	position: fixed;
+	top: 0;
+	left: 0;
+	padding: 6px 10px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+	pointer-events: none;
+	user-select: none;
+	box-shadow: 0 4px 14px rgba( 0, 0, 0, 0.22 );
+	background: rgba( 30, 30, 30, 0.85 );
+	color: #fff;
+	z-index: 2147483647;
+	transition:
+		background-color 0.12s ease,
+		color 0.12s ease,
+		transform 0.06s ease-out;
+}
+
+.desktop-mode-drag-hint--neutral {
+	background: rgba( 30, 30, 30, 0.85 );
+	color: #fff;
+}
+
+.desktop-mode-drag-hint--accept {
+	background: #1e8449;
+	color: #fff;
+	box-shadow:
+		0 0 0 2px rgba( 30, 132, 73, 0.25 ),
+		0 6px 18px rgba( 30, 132, 73, 0.3 );
+}
+
+.desktop-mode-drag-hint--accept::before {
+	/* Tiny checkmark chevron prefix so "Drop here" reads as an
+	 * actionable affirmation rather than a passive label. The
+	 * checkmark is a real character (U+2713) so screen readers
+	 * skip past it via the `aria-hidden` on the host chip. */
+	content: '✓ ';
+}
+
+.desktop-mode-drag-hint--reject {
+	background: #b32d2e;
+	color: #fff;
+	box-shadow:
+		0 0 0 2px rgba( 179, 45, 46, 0.25 ),
+		0 6px 18px rgba( 179, 45, 46, 0.3 );
+}
+
+.desktop-mode-drag-hint--reject::before {
+	content: '⊘ ';
+}
+
+/*
+ * No body-level cursor swap during drag — the user prefers the
+ * default arrow cursor regardless of state, so the accept/reject
+ * feedback lives entirely in the hint chip + outline animation.
+ * Don't reintroduce a `cursor: grabbing/copy/no-drop` here.
+ */
+
+/* Shortcut overlay — small arrow badge in the BOTTOM-RIGHT corner
+ * of the icon visual on any tile that's a reference to an external
+ * entity (post, attachment, comment, user, term — anything that
+ * ISN'T a folder or a plugin shortcut). Mirrors the macOS / Windows
+ * convention of an arrow decoration on alias/shortcut icons.
+ *
+ * The geometry: tile is 88px wide with `padding: 8px 4px`. The icon
+ * visual is 48×48 centered horizontally, so the icon's bottom-right
+ * corner lands at roughly (68, 56) from the tile's top-left. The
+ * 18×18 arrow circle is anchored just inside that corner so it
+ * reads as part of the icon, not floating off in space.
+ *
+ * @since 0.8.0
+ */
+/* Only real placements get the badge — i.e. tiles built by
+ * `buildTile(placement)` on the desktop / folder windows, which
+ * are the only surface where "this is a shortcut" actually means
+ * something. Tiles in My WordPress grids (and any future content
+ * surface) are the entity, not a shortcut to it, so the arrow
+ * would just be noise. `[data-placement-id]` is the canonical
+ * placement marker. */
+.desktop-mode-file-tile[ data-placement-id ][ data-file-type="post" ]::after,
+.desktop-mode-file-tile[ data-placement-id ][ data-file-type="attachment" ]::after,
+.desktop-mode-file-tile[ data-placement-id ][ data-file-type="comment" ]::after,
+.desktop-mode-file-tile[ data-placement-id ][ data-file-type="user" ]::after,
+.desktop-mode-file-tile[ data-placement-id ][ data-file-type="term" ]::after {
+	content: "↗";
+	position: absolute;
+	right: 14px;
+	top: 44px;
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: var( --desktop-mode-tile-shortcut-bg, rgba( 0, 0, 0, 0.65 ) );
+	color: var( --desktop-mode-tile-shortcut-fg, #fff );
+	font-size: 11px;
+	line-height: 18px;
+	text-align: center;
+	box-shadow: var(
+		--desktop-mode-tile-shortcut-shadow,
+		0 1px 3px rgba( 0, 0, 0, 0.5 )
+	);
+	pointer-events: none;
+}
+
+/*
+ * Missing files (the underlying entity was deleted but the
+ * placement still exists) render the tile dimmed so the user
+ * can right-click → Remove without confusing it for an active
+ * file. Phase 6's per-placement permission re-check uses the
+ * same affordance for "you can't see this" placeholders.
+ */
+.desktop-mode-file-tile--missing {
+	opacity: 0.5;
+}
+
+/**
+ * Access-gated tile — the recipient sees the icon (the owner
+ * shared the folder containing it) but lacks `can_read` on the
+ * underlying entity. Dim the tile, kill the pointer affordance,
+ * and overlay a lock badge so the state reads at a glance.
+ */
+.desktop-mode-file-tile--access-gated {
+	opacity: 0.65;
+	cursor: not-allowed;
+}
+.desktop-mode-file-tile--access-gated .desktop-mode-file-tile__visual,
+.desktop-mode-file-tile--access-gated .desktop-mode-file-tile__preview {
+	filter: grayscale( 0.6 );
+}
+.desktop-mode-file-tile--access-gated:hover,
+.desktop-mode-file-tile--access-gated:focus-visible {
+	background: rgba( 0, 0, 0, 0.06 );
+}
+.desktop-mode-file-tile__lock {
+	position: absolute;
+	top: 4px;
+	inset-inline-end: 4px;
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	background: rgba( 0, 0, 0, 0.7 );
+	color: #fff;
+	font-size: 14px;
+	line-height: 20px;
+	text-align: center;
+	pointer-events: none;
+	box-shadow: 0 1px 3px rgba( 0, 0, 0, 0.5 );
+}
+
+/**
+ * Preview-pane empty state when a recipient selects a tile they
+ * can't open. Big lock ring + clear copy + secondary hint. Designed
+ * to read at a glance in the otherwise-busy preview column.
+ */
+.desktop-mode-files__access-gated {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	padding: 32px 24px;
+	min-height: 240px;
+	text-align: center;
+	color: var( --desktop-mode-fg, inherit );
+}
+.desktop-mode-files__access-gated-ring {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 96px;
+	height: 96px;
+	border-radius: 50%;
+	background: linear-gradient(
+		145deg,
+		rgba( 214, 54, 56, 0.22 ),
+		rgba( 214, 54, 56, 0.08 )
+	);
+	border: 2px solid rgba( 214, 54, 56, 0.45 );
+	box-shadow:
+		inset 0 1px 0 rgba( 255, 255, 255, 0.08 ),
+		0 8px 24px rgba( 214, 54, 56, 0.18 );
+}
+.desktop-mode-files__access-gated-glyph {
+	font-size: 44px;
+	width: 44px;
+	height: 44px;
+	color: #ff8080;
+	filter: drop-shadow( 0 1px 2px rgba( 0, 0, 0, 0.4 ) );
+}
+.desktop-mode-files__access-gated-title {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 600;
+	letter-spacing: 0.2px;
+}
+.desktop-mode-files__access-gated-sub {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.5;
+	max-width: 340px;
+	opacity: 0.85;
+}
+.desktop-mode-files__access-gated-hint {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+	max-width: 340px;
+	opacity: 0.6;
+}
+
+.desktop-mode-file-tile__visual {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 48px;
+	height: 48px;
+	font-size: 32px;
+	line-height: 1;
+}
+
+.desktop-mode-file-tile__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 48px;
+	height: 48px;
+	font-size: 32px;
+	line-height: 1;
+}
+
+.desktop-mode-file-tile__preview {
+	width: 48px;
+	height: 48px;
+	object-fit: cover;
+	border-radius: 4px;
+}
+
+/* `<img>` defaults to `draggable=true`, which lets the browser
+ * start a native HTML5 image-drag from a pointerdown — that
+ * pre-empts the DragManager's pointer-event-driven tile rearrange
+ * and the tile silently refuses to move. The renderer also sets
+ * `draggable="false"` on every `<img>` it produces; this CSS rule
+ * covers anything injected later (plugin filters, decorators)
+ * without having to remember the attribute. */
+.desktop-mode-file-tile img {
+	-webkit-user-drag: none;
+	user-select: none;
+}
+
+/*
+ * Wallpaper + tile context menus use `<wpd-context-menu>` and
+ * `<wpd-context-menu-option>` (Phase 4 / 0.9.0). Their host-level
+ * styles live inside the component shadow DOM — see
+ * `src/ui/components/wpd-context-menu/wpd-context-menu.styles.ts`.
+ * No project CSS rules needed here; the legacy `.desktop-mode-
+ * wallpaper-menu*` rules were removed when the components landed.
+ */
+
+/*
+ * Folder native window — the body of `desktop-mode-folder-<id>`
+ * contains a `FilesLayer` rendering that folder's contents.
+ * We ensure the body has positioning context so absolutely-
+ * positioned tiles inside the layer anchor correctly.
+ */
+.desktop-mode-folder-window {
+	position: relative;
+	min-height: 200px;
+	/* Same window background recipe as My WordPress — defaults to
+	 * the standard window bg (#fff) and themable per-window. */
+	background: var(
+		--desktop-mode-folder-window-bg,
+		var( --desktop-mode-window-bg, #fff )
+	);
+	color: var( --desktop-mode-fg-on-light, #1d2327 );
+	display: flex;
+	flex-direction: column;
+	/* Light-on-dark context: the folder window opens inside a
+	 * standard window chrome whose body is white-ish. Retint the
+	 * tile color tokens here so dashicons + labels read against
+	 * a light background. Plugins / themes can override these
+	 * same variables at any scope to retint further. */
+	--desktop-mode-tile-fg: var( --desktop-mode-fg-on-light, #1d2327 );
+	--desktop-mode-tile-fg-muted: rgba( 0, 0, 0, 0.55 );
+	--desktop-mode-tile-hover-bg: rgba( 0, 0, 0, 0.06 );
+	/* Light-context label rendering — share the same recipe with
+	 * every other light-bg tile surface (My WordPress, future
+	 * windows). One set of tokens, no per-surface duplication. */
+	--desktop-mode-tile-label-shadow: none;
+	--desktop-mode-tile-label-weight: 500;
+	--desktop-mode-tile-label-smoothing: antialiased;
+	--desktop-mode-tile-label-color: var( --desktop-mode-fg-on-light, #1d2327 );
+}
+
+/* Folder window's bottom status bar — paint with the same light-
+ * context treatment My WordPress uses (transparent bg, soft border,
+ * muted dark text). Without this, the wallpaper-targeted defaults
+ * (`background: rgba(0,0,0,0.18); color: white`) would show as a
+ * dark band against the white window bg. */
+.desktop-mode-folder-window .desktop-mode-folder-status-bar {
+	border-top: 1px solid var( --desktop-mode-border, #dcdcde );
+	background: transparent;
+	color: var( --desktop-mode-muted, #50575e );
+}
+
+.desktop-mode-folder-window
+	.desktop-mode-folder-status-bar
+	button.desktop-mode-folder-status-bar__segment:hover {
+	background: var( --desktop-mode-hover, rgba( 0, 0, 0, 0.06 ) );
+}
+
+/* Generic breadcrumb header — any surface that grows a navigation
+ * stack (folder window, My WordPress folder, future drill-down
+ * windows) renders one of these via `renderBreadcrumbs` from
+ * `src/desktop-files/breadcrumbs.ts`. Visual vocabulary: small
+ * icon-only Back button on the left, `›`-separated crumb buttons,
+ * current segment is bold + non-interactive.
+ *
+ * @since 0.8.0
+ */
+.desktop-mode-breadcrumbs {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var( --desktop-mode-border, #dcdcde );
+	background: transparent;
+	flex: 0 0 auto;
+}
+
+.desktop-mode-breadcrumbs__back {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	border-radius: 4px;
+	cursor: pointer;
+	color: inherit;
+	flex: 0 0 auto;
+}
+
+.desktop-mode-breadcrumbs__back:hover:not(:disabled),
+.desktop-mode-breadcrumbs__back:focus-visible:not(:disabled) {
+	background: var( --desktop-mode-hover, rgba( 0, 0, 0, 0.06 ) );
+	outline: none;
+}
+
+.desktop-mode-breadcrumbs__back:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.desktop-mode-breadcrumbs__back .dashicons {
+	font-size: 18px;
+	width: 18px;
+	height: 18px;
+	line-height: 1;
+}
+
+.desktop-mode-breadcrumbs__crumbs {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.desktop-mode-breadcrumbs__crumb {
+	border: 0;
+	background: transparent;
+	color: var( --desktop-mode-link, #2271b1 );
+	cursor: pointer;
+	padding: 2px 4px;
+	border-radius: 4px;
+	font: inherit;
+}
+
+.desktop-mode-breadcrumbs__crumb:hover {
+	background: var( --desktop-mode-hover, rgba( 0, 0, 0, 0.06 ) );
+}
+
+.desktop-mode-breadcrumbs__crumb--current {
+	color: var( --desktop-mode-fg-on-light, #1d2327 );
+	cursor: default;
+	font-weight: 600;
+}
+
+.desktop-mode-breadcrumbs__crumb--current:hover {
+	background: transparent;
+}
+
+.desktop-mode-breadcrumbs__sep {
+	color: var( --desktop-mode-muted, #787c82 );
+}
+
+.desktop-mode-folder-window__layer {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+}
+
+/* Two-pane shell — left: tile canvas, right: preview pane that
+ * reflects the currently-selected tile. Same model as the My
+ * WordPress two-pane view so the UX is unified.
+ *
+ * @since 0.8.0 */
+.desktop-mode-folder-window__split {
+	display: grid;
+	grid-template-columns: minmax( 240px, 60% ) minmax( 0, 1fr );
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.desktop-mode-folder-window__preview {
+	overflow-y: auto;
+	min-width: 0;
+	background: var( --desktop-mode-window-bg, #fff );
+	border-inline-start: 1px solid var( --desktop-mode-border, #dcdcde );
+	color: var( --desktop-mode-fg-on-light, #1d2327 );
+}
+
+/* Selected file tile — light-blue accent on the wallpaper, soft
+ * accent inside light-context windows. Variable-driven so plugins
+ * can retune. */
+.desktop-mode-file-tile--selected,
+.desktop-mode-file-tile--selected:hover {
+	background: var(
+		--desktop-mode-tile-selected-bg,
+		rgba( 34, 113, 177, 0.18 )
+	);
+	box-shadow: inset 0 0 0 1px
+		var( --desktop-mode-tile-focus-ring, var( --wp-admin-theme-color, #2271b1 ) );
+}
+
+/* Inside a folder window the selected highlight should read on
+ * white. */
+.desktop-mode-folder-window {
+	--desktop-mode-tile-selected-bg: rgba( 34, 113, 177, 0.12 );
+}
+
+.desktop-mode-folder-status-bar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	padding: 6px 12px;
+	border-top: 1px solid rgba( 255, 255, 255, 0.08 );
+	background: rgba( 0, 0, 0, 0.18 );
+	color: var( --desktop-mode-fg-muted, rgba( 255, 255, 255, 0.7 ) );
+	font-size: 12px;
+	flex-shrink: 0;
+}
+
+.desktop-mode-folder-status-bar__cluster {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.desktop-mode-folder-status-bar__segment {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+}
+
+button.desktop-mode-folder-status-bar__segment {
+	cursor: pointer;
+	border-radius: 4px;
+	padding: 2px 6px;
+}
+
+button.desktop-mode-folder-status-bar__segment:hover {
+	background: rgba( 255, 255, 255, 0.1 );
+}
+
+.desktop-mode-folder-status-bar__icon {
+	font-size: 14px;
+}
+
+/*
+ * File Associations OS Settings tab (Phase 5). One row per file
+ * type: label on the left, a `<wpd-select>` of compatible
+ * openers on the right. Color tokens use the OS-Settings-canonical
+ * `--wpd-text-muted` so the tab inherits theme colors instead of
+ * falling back to white-on-light invisibility.
+ */
+.desktop-mode-file-associations__intro {
+	display: block;
+	margin: 0 0 16px;
+	color: var( --wpd-text-muted, #50575e );
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.desktop-mode-file-associations__list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.desktop-mode-file-associations__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 8px 12px;
+	background: rgba( 0, 0, 0, 0.04 );
+	border-radius: 6px;
+}
+
+.desktop-mode-file-associations__label {
+	font-weight: 500;
+	flex: 1;
+}
+
+.desktop-mode-file-associations__select {
+	min-width: 220px;
+}
+
+.desktop-mode-file-associations__none,
+.desktop-mode-file-associations__empty {
+	color: var( --wpd-text-muted, #50575e );
+	font-size: 12px;
+}
+
+/*
+ * "New folder" inline dialog. Centered modal with a focused
+ * input — replaces the placeholder window.prompt. Plain HTML
+ * controls so it works as a building block before richer
+ * dialog primitives land.
+ */
+.desktop-mode-create-folder-dialog__overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba( 0, 0, 0, 0.45 );
+	backdrop-filter: blur( 2px );
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10000;
+}
+
+.desktop-mode-create-folder-dialog {
+	width: min( 420px, 92vw );
+	background: var( --desktop-mode-bg, #1d2327 );
+	color: var( --desktop-mode-fg, #fff );
+	border: 1px solid rgba( 255, 255, 255, 0.08 );
+	border-radius: 10px;
+	box-shadow: 0 20px 50px rgba( 0, 0, 0, 0.6 );
+	padding: 20px 22px 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.desktop-mode-create-folder-dialog__title {
+	margin: 0 0 4px;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.desktop-mode-create-folder-dialog__label {
+	font-size: 12px;
+	color: var( --desktop-mode-fg-muted, rgba( 255, 255, 255, 0.7 ) );
+}
+
+.desktop-mode-create-folder-dialog__input {
+	width: 100%;
+	padding: 8px 10px;
+	background: rgba( 255, 255, 255, 0.06 );
+	color: inherit;
+	border: 1px solid rgba( 255, 255, 255, 0.16 );
+	border-radius: 6px;
+	font-size: 14px;
+	outline: none;
+	box-sizing: border-box;
+}
+
+.desktop-mode-create-folder-dialog__input:focus {
+	border-color: var( --wp-admin-theme-color, #2271b1 );
+	box-shadow: 0 0 0 2px rgba( 34, 113, 177, 0.4 );
+}
+
+.desktop-mode-create-folder-dialog__error {
+	margin: 0;
+	color: #ff8a8a;
+	font-size: 12px;
+}
+
+.desktop-mode-create-folder-dialog__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 6px;
+}
+
+.desktop-mode-create-folder-dialog__btn {
+	border: 0;
+	border-radius: 6px;
+	padding: 8px 14px;
+	font-size: 13px;
+	cursor: pointer;
+	font-weight: 500;
+}
+
+.desktop-mode-create-folder-dialog__btn--secondary {
+	background: rgba( 255, 255, 255, 0.08 );
+	color: inherit;
+}
+
+.desktop-mode-create-folder-dialog__btn--secondary:hover {
+	background: rgba( 255, 255, 255, 0.14 );
+}
+
+.desktop-mode-create-folder-dialog__btn--primary {
+	background: var( --wp-admin-theme-color, #2271b1 );
+	color: #fff;
+}
+
+.desktop-mode-create-folder-dialog__btn--primary:hover {
+	filter: brightness( 1.08 );
+}
+
+.desktop-mode-create-folder-dialog__btn:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+.desktop-mode-create-folder-dialog--busy .desktop-mode-create-folder-dialog__input {
+	opacity: 0.7;
+}
+
+/*
+ * Single label rule for every tile, regardless of host surface.
+ * Visual properties read from `--desktop-mode-tile-label-*`
+ * tokens — defined in `variables.css` for the dark wallpaper and
+ * rebound by any light-context scope (folder window, My
+ * WordPress, …) so all surfaces share one source of truth.
+ */
+.desktop-mode-file-tile__label {
+	font-size: 12px;
+	line-height: 1.2;
+	max-width: 84px;
+	text-align: center;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	color: var( --desktop-mode-tile-label-color, var( --desktop-mode-tile-fg, #fff ) );
+	font-weight: var( --desktop-mode-tile-label-weight, 400 );
+	text-shadow: var( --desktop-mode-tile-label-shadow, 0 1px 2px rgba( 0, 0, 0, 0.5 ) );
+	-webkit-font-smoothing: var( --desktop-mode-tile-label-smoothing, auto );
+	-moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * DragManager ghost element (the visual that follows the cursor
+ * during a drag). Cloned from the source by `mountGhost()` and
+ * pinned to the body with `position: fixed` + transform-based
+ * movement. `pointer-events: none` ensures the ghost itself
+ * never obscures the drop targets underneath during hit-testing.
+ *
+ * The accept / reject classes are toggled on each hover transition
+ * so the cursor matches the drop semantics: `copy` over an
+ * accepting target, `no-drop` over rejecting (or no) target.
+ *
+ * @since 0.18.0
+ */
+.desktop-mode-drag-ghost {
+	box-shadow: 0 6px 24px rgba( 0, 0, 0, 0.45 );
+	border-radius: 6px;
+	opacity: 0.95;
+	transition: none;
+}
+
+.desktop-mode-drag-ghost--accept {
+	cursor: copy;
+}
+
+.desktop-mode-drag-ghost--reject {
+	cursor: no-drop;
+}
+
+/* ============================================================ *
+ *  Upload progress HUD (since 0.31.0)
+ *
+ *  Pinned floating panel that surfaces the OS-file-drop manager's
+ *  in-flight uploads. One row per file with a `<wpd-progress-bar>`,
+ *  a filename + status, and a Cancel/Dismiss action. The panel
+ *  hides itself when there are no rows; it's purely reactive to
+ *  the four upload-lifecycle hooks.
+ * ============================================================ */
+
+.desktop-mode-upload-hud {
+	position: fixed;
+	inset-block-end: 16px;
+	inset-inline-end: 16px;
+	width: 320px;
+	max-width: calc( 100vw - 32px );
+	background: var( --desktop-mode-panel-bg, #fff );
+	color: var( --desktop-mode-fg-on-light, #1d2327 );
+	border: 1px solid var( --desktop-mode-border, #dcdcde );
+	border-radius: 10px;
+	box-shadow: 0 8px 28px rgba( 0, 0, 0, 0.18 );
+	z-index: 99998;
+	font: inherit;
+	pointer-events: auto;
+	overflow: hidden;
+}
+
+.desktop-mode-upload-hud[ hidden ] {
+	display: none;
+}
+
+.desktop-mode-upload-hud__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var( --desktop-mode-panel-header-bg, rgba( 0, 0, 0, 0.04 ) );
+	border-block-end: 1px solid var( --desktop-mode-border, #dcdcde );
+	font-weight: 600;
+	font-size: 12px;
+}
+
+.desktop-mode-upload-hud__title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.desktop-mode-upload-hud__close {
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font-size: 16px;
+	line-height: 1;
+	width: 22px;
+	height: 22px;
+	border-radius: 4px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+.desktop-mode-upload-hud__close:hover,
+.desktop-mode-upload-hud__close:focus-visible {
+	background: rgba( 0, 0, 0, 0.08 );
+	outline: none;
+}
+
+.desktop-mode-upload-hud__list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 10px 12px;
+	max-height: 50vh;
+	overflow-y: auto;
+}
+
+.desktop-mode-upload-hud__row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	grid-template-areas:
+		'meta actions'
+		'bar bar';
+	gap: 6px 8px;
+	align-items: center;
+	font-size: 12px;
+}
+
+.desktop-mode-upload-hud__meta {
+	grid-area: meta;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.desktop-mode-upload-hud__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 500;
+}
+
+.desktop-mode-upload-hud__status {
+	font-size: 11px;
+	opacity: 0.75;
+	font-variant-numeric: tabular-nums;
+}
+
+.desktop-mode-upload-hud__row wpd-progress-bar {
+	grid-area: bar;
+}
+
+.desktop-mode-upload-hud__actions {
+	grid-area: actions;
+	display: inline-flex;
+	gap: 4px;
+}

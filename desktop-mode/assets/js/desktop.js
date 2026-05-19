@@ -1,0 +1,27695 @@
+var desktopMode = function(exports) {
+  "use strict";
+  var _documentCurrentScript = typeof document !== "undefined" ? document.currentScript : null;
+  function installMyWordpressEarlyStub() {
+    const w = window;
+    w.wp = w.wp ?? {};
+    const wp = w.wp;
+    if (!wp.desktop) {
+      wp.desktop = {};
+    }
+    const desktop = wp.desktop;
+    if (desktop.myWordpress) {
+      return;
+    }
+    const queue = [];
+    const stub = {
+      registerEntityKind: (kind, renderer) => {
+        const slot = { unregister: null };
+        const entry = { kind, renderer, slot };
+        queue.push(entry);
+        return () => {
+          if (slot.unregister) {
+            slot.unregister();
+            slot.unregister = null;
+            return;
+          }
+          const i = queue.indexOf(entry);
+          if (i !== -1) {
+            queue.splice(i, 1);
+          }
+        };
+      },
+      __pendingKinds: queue
+    };
+    desktop.myWordpress = stub;
+  }
+  installMyWordpressEarlyStub();
+  function getWpHooks$1() {
+    const hooks = window.wp?.hooks;
+    if (!hooks) {
+      throw new Error(
+        "[desktop-mode] `window.wp.hooks` is not available. The plugin declares `wp-hooks` as a script dependency; if you are seeing this error, verify the enqueue order."
+      );
+    }
+    return hooks;
+  }
+  function addFilter(hookName2, namespace, callback, priority) {
+    getWpHooks$1().addFilter(
+      hookName2,
+      namespace,
+      callback,
+      priority
+    );
+  }
+  function addAction(hookName2, namespace, callback, priority) {
+    getWpHooks$1().addAction(
+      hookName2,
+      namespace,
+      callback,
+      priority
+    );
+  }
+  function removeAction(hookName2, namespace) {
+    return getWpHooks$1().removeAction(hookName2, namespace);
+  }
+  function applyFilters(hookName2, value, ...args) {
+    return getWpHooks$1().applyFilters(hookName2, value, ...args);
+  }
+  function doAction(hookName2, ...args) {
+    getWpHooks$1().doAction(hookName2, ...args);
+  }
+  function didAction(hookName2) {
+    return getWpHooks$1().didAction(hookName2);
+  }
+  function rawHooks() {
+    return getWpHooks$1();
+  }
+  const HOOKS = {
+    /** Action, fires once after shell boot; plugins register here. */
+    INIT: "desktop-mode.init",
+    /** Filter, receives the wallpaper registry array. */
+    WALLPAPERS: "desktop-mode.wallpapers",
+    /** Action before a canvas wallpaper mounts. */
+    WALLPAPER_MOUNTING: "desktop-mode.wallpaper.mounting",
+    /** Action after a canvas wallpaper mounts successfully. */
+    WALLPAPER_MOUNTED: "desktop-mode.wallpaper.mounted",
+    /** Action before a canvas wallpaper tears down. */
+    WALLPAPER_UNMOUNTING: "desktop-mode.wallpaper.unmounting",
+    /** Action when a canvas wallpaper's mount throws / rejects. */
+    WALLPAPER_MOUNT_FAILED: "desktop-mode.wallpaper.mount-failed",
+    /** Action mirroring document.visibilitychange for active canvas wallpapers. */
+    WALLPAPER_VISIBILITY: "desktop-mode.wallpaper.visibility",
+    // ------------------------------------------------------------------
+    // Observability — iframe errors, iframe network, shell-side errors,
+    // monitor entry aggregation. Designed for dashboard / debug widget
+    // plugins that want genuine admin observability (Gutenberg save
+    // failures, admin-ajax 500s, plugin exceptions) rather than just the
+    // shell's own console-error surface.
+    // ------------------------------------------------------------------
+    /**
+     * Action, fires when a chromeless iframe's `error` or
+     * `unhandledrejection` handler catches an exception. Payload: `{
+     * windowId: string, kind: 'error' | 'unhandledrejection', message:
+     * string, filename: string | null, lineno: number | null, colno:
+     * number | null, stack: string | null }`. Origin-filtered at the
+     * parent shell; cross-origin iframe errors never reach here.
+     */
+    /**
+     * Action, fires once per iframe when the chromeless bridge
+     * script has finished wiring its message listeners. Payload:
+     * `{ windowId: string }`. Subscribers get a reliable "safe to
+     * talk to this iframe" signal — the browser's native `load`
+     * event fires before our bridge attaches, so messages sent on
+     * `load` can be dropped on the floor. Use this instead when
+     * timing matters (first-focus dispatch, auto-fill handshakes).
+     *
+     * @since 0.11.0
+     */
+    IFRAME_READY: "desktop-mode.iframe.ready",
+    IFRAME_ERROR: "desktop-mode.iframe.error",
+    /**
+     * Action, fires when a `fetch` or `XMLHttpRequest` inside a
+     * chromeless iframe completes (success OR failure). Payload: `{
+     * windowId: string, method: string, url: string, status: number,
+     * duration: number, failed: boolean }`. Subscribers get a faithful
+     * view of admin-ajax + REST calls that previously never left the
+     * iframe boundary. `status === 0` indicates a network failure with
+     * no response received.
+     */
+    IFRAME_NETWORK_COMPLETED: "desktop-mode.iframe.network-completed",
+    /**
+     * Action, fires when one of the shell's own try/catch barriers
+     * catches an exception. Payload: `{ scope:
+     * 'widget-mount' | 'widget-teardown' | 'window-open' | 'wallpaper-mount' |
+     * 'wallpaper-teardown' | 'session-save' | 'menu-refresh' | string,
+     * id?: string, error: unknown }`. Paired with the existing
+     * `console.error` calls — a monitor widget can surface these as
+     * first-class entries.
+     */
+    SHELL_ERROR: "desktop-mode.shell.error",
+    /**
+     * Action, fires once per `wp.desktop.broadcast()` call with the
+     * fully-resolved `{ topic, payload }` detail. Lets plugins log,
+     * mirror, or augment broadcast traffic without subscribing for
+     * every individual topic.
+     */
+    BROADCAST: "desktop-mode.broadcast",
+    /**
+     * Filter, applies to a `MonitorEntry` before a monitor widget
+     * renders it. Plugins can mutate the entry (rewrite the message,
+     * add `extra` fields) or return `null` to suppress it. Used by
+     * monitor widgets to converge every plugin on the same shape —
+     * see `MonitorEntry` in `src/types.ts`.
+     */
+    MONITOR_ENTRY: "desktop-mode.monitor.entry",
+    /**
+     * Filter, applies to the list of "solid" surfaces wallpapers
+     * should consider for collision / accumulation effects (snow
+     * piling, leaves settling, rain splash). Seeded by the shell
+     * with: every visible (non-minimized) window's top edge; the
+     * desktop-area floor; the dock's outward-facing edge; and every
+     * mounted widget card's top edge.
+     *
+     * Plugins that own their own DOM (e.g. floating pickers,
+     * custom overlays) can push additional surfaces so snow
+     * accumulates on them too.
+     *
+     * Each entry is a `WallpaperSurface` — see
+     * `src/wallpapers/surfaces.ts` for the shape. Rects are in
+     * viewport coordinates (clientX / clientY), matching what a
+     * canvas mounted inside `#desktop-mode-wallpaper` reads.
+     */
+    WALLPAPER_SURFACES: "desktop-mode.wallpaper.surfaces",
+    // ------------------------------------------------------------------
+    // Window lifecycle actions. All payloads share a `windowId: string`
+    // field; additional fields are documented per-hook in the JS
+    // reference. These mirror the existing `desktop-mode-window-*`
+    // CustomEvents but ship under the hook bus so plugins can use one
+    // idiomatic API for everything the shell emits.
+    // ------------------------------------------------------------------
+    /**
+     * Filter, last call before a window's resolved geometry (x, y,
+     * width, height, initialState) is baked into the `WindowConfig`
+     * passed to the `Window` constructor. Lets a plugin override
+     * default placement for windows it owns, snap restored bounds to
+     * a different region, or force a particular initial state.
+     *
+     * Signature:
+     *
+     *     ( geometry: ResolvedWindowGeometry, ctx: WindowGeometryContext )
+     *         => ResolvedWindowGeometry
+     *
+     * Where `ResolvedWindowGeometry = { x, y, width, height, state? }`
+     * and `ctx = { windowId, baseId, hasSavedGeometry, callerPinned,
+     * desktopRect }`.
+     *
+     * - `hasSavedGeometry` is `true` when the user previously
+     *   dragged or resized this window and the resolved geometry
+     *   includes those restored values. Plugins that want to
+     *   "leave the user's saved layout alone" should bail when
+     *   this is true.
+     * - `callerPinned` is `true` when the caller of `manager.open()`
+     *   passed at least one of `{ x, y, width, height, initialState }`
+     *   explicitly. For NATIVE windows this is usually true (the
+     *   framework's native-window opener passes the registry's
+     *   declared dimensions); for admin-page iframe windows opened
+     *   from the dock this is usually false. The filter is free to
+     *   override registry defaults — `callerPinned: true` does NOT
+     *   mean "leave it alone."
+     *
+     * The shell re-clamps `width`/`height` to the registered
+     * `minWidth`/`minHeight` after the filter returns — a buggy
+     * filter cannot ship a sub-minimum window. `x` and `y` are
+     * NOT re-clamped to the desktop rect after the filter (plugins
+     * sometimes want to place windows partially off-screen for
+     * deliberate stylistic reasons); the filter is responsible for
+     * its own viewport math when it cares.
+     *
+     * Companion of `desktop_mode_register_window` server-side
+     * defaults — runs every time a window opens, not just at
+     * registration.
+     *
+     * @since 0.25.0
+     */
+    WINDOW_GEOMETRY: "desktop-mode.window.geometry",
+    /** Action, fires when a window is added to the stack. */
+    WINDOW_OPENED: "desktop-mode.window.opened",
+    /**
+     * Action, fires when a window's body enters the loading state — at
+     * construction (every window starts loading) and whenever a plugin
+     * calls {@link NativeRenderContext.window.markLoading} or
+     * `Window.markContentLoading()` mid-life. Payload: `{ windowId }`.
+     *
+     * The shell shows a `<wpd-spinner>` overlay while the window is in
+     * the loading state and fades content in on the loaded transition.
+     * Subscribe to this hook (or to {@link WINDOW_CONTENT_LOADED}) when
+     * you need to react to either edge — analytics, instrumentation,
+     * decorating the spinner with a per-window message.
+     *
+     * Edge-triggered: idempotent calls don't re-fire. The matching
+     * `desktop-mode-window-content-loading` CustomEvent dispatches on
+     * `document` with the same payload.
+     *
+     * @since 0.6.0
+     */
+    WINDOW_CONTENT_LOADING: "desktop-mode.window.content-loading",
+    /**
+     * Action, fires when a window's body content becomes ready — for
+     * iframe windows the moment the chromeless bridge announces
+     * `desktop-mode-ready`, for native windows after the user's
+     * `render( body )` callback (or its returned promise) resolves, and
+     * whenever a plugin calls {@link NativeRenderContext.window.markReady}
+     * or `Window.markContentLoaded()` mid-life. Payload: `{ windowId }`.
+     *
+     * The unified "window content is ready" signal across both render
+     * strategies — use this instead of branching on iframe vs. native.
+     * Iframe-only consumers can still subscribe to {@link IFRAME_READY},
+     * which fires alongside this hook for iframe windows. The shell
+     * removes the loading overlay and fades the content in on this
+     * transition.
+     *
+     * Edge-triggered: only fires on a loading → ready transition.
+     * The matching `desktop-mode-window-content-loaded` CustomEvent
+     * dispatches on `document` with the same payload.
+     *
+     * @since 0.6.0
+     */
+    WINDOW_CONTENT_LOADED: "desktop-mode.window.content-loaded",
+    /**
+     * Filter, applied to the loading-overlay HTMLElement just after
+     * the shell paints its default `<wpd-spinner>` and after any
+     * per-window inline customization (`config.loading.render`)
+     * runs. Receives the overlay element; context: `{ windowId,
+     * config }`. Plugins may mutate the element (e.g.
+     * `host.replaceChildren( myBrandedLoader )` to swap out the
+     * default entirely, or `host.querySelector('wpd-spinner')!.
+     * setAttribute('preset', 'comet')` to retune the spinner) or
+     * return a different element to replace the overlay wholesale.
+     *
+     * Use cases: a brand-skin plugin that overrides every window's
+     * spinner with its own logo; a status-bar plugin that adds
+     * "Loading… 47% — fetching posts" text; an A/B-test framework
+     * that swaps the loader during an experiment.
+     *
+     * Resolution order for the loading overlay:
+     *   1. Default content (`<wpd-spinner>`) is painted.
+     *   2. Per-window `config.loading.render( host, ctx )` runs.
+     *   3. This filter runs.
+     *   4. The result is appended to the window body.
+     *
+     * @since 0.6.0
+     */
+    WINDOW_LOADING_OVERLAY: "desktop-mode.window.loading-overlay",
+    /**
+     * Action, fires when `manager.open(...)` is called for a baseId
+     * whose window already exists on the active desktop. This is the
+     * unambiguous "user requested to open this window again" signal
+     * — distinct from focus changes (which double-fire on alt-tab and
+     * skip when already focused) and from `WINDOW_OPENED` (which only
+     * fires on first creation). Payload:
+     * `{ windowId: string, baseId: string, wasMinimized: boolean }`.
+     *
+     * Plugins that hold per-window state (e.g. the code-editor's
+     * active file) should listen here to re-orient the existing
+     * window's content to whatever the caller wants to show — the
+     * open-window call is synchronous, so any state the caller sets
+     * BEFORE invoking `openWindow` is already in place when this
+     * fires.
+     */
+    WINDOW_REOPENED: "desktop-mode.window.reopened",
+    /**
+     * Action, fires BEFORE the window's element is detached from the
+     * DOM but AFTER the manager has already removed it from the stack.
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     *
+     * Use this for cleanup that needs a reference to the live
+     * element (removing anchored snow, wallpaper particles pinned to
+     * window tops, measurement caches keyed by element). `WINDOW_CLOSED`
+     * fires immediately after and only carries the id, which means
+     * subscribers would otherwise have to re-query the DOM — by then
+     * the element is gone, so they can't match at all.
+     */
+    WINDOW_CLOSING: "desktop-mode.window.closing",
+    /** Action, fires when a window is removed from the stack. */
+    WINDOW_CLOSED: "desktop-mode.window.closed",
+    /** Action, fires when focus changes to a different window. */
+    WINDOW_FOCUSED: "desktop-mode.window.focused",
+    /**
+     * Action, fires for the window that LOST focus when another
+     * window takes over. Symmetric counterpart to
+     * `WINDOW_FOCUSED`. Payload: `{ windowId: string, focusedTo:
+     * string | null }` — `focusedTo` identifies the new top of
+     * the stack so blur subscribers can ignore alt-tabs to a
+     * sibling they own.
+     *
+     * No-op when there's no previously-focused window (initial
+     * boot, all-windows-closed). Manager fires this BEFORE
+     * `WINDOW_FOCUSED` so subscribers see "blur old, focus new"
+     * in deterministic order.
+     *
+     * @since 0.5.5
+     */
+    WINDOW_BLURRED: "desktop-mode.window.blurred",
+    /** Action, fires when a window is minimized. */
+    WINDOW_MINIMIZED: "desktop-mode.window.minimized",
+    /** Action, fires when a window is restored from minimized. */
+    WINDOW_RESTORED: "desktop-mode.window.restored",
+    /** Action, fires when a window is maximized (fills desktop area). */
+    WINDOW_MAXIMIZED: "desktop-mode.window.maximized",
+    /** Action, fires when a window exits maximized state. */
+    WINDOW_UNMAXIMIZED: "desktop-mode.window.unmaximized",
+    /** Action, fires when a window enters fullscreen / focus mode. */
+    WINDOW_FULLSCREEN_ENTERED: "desktop-mode.window.fullscreen-entered",
+    /** Action, fires when a window exits fullscreen / focus mode. */
+    WINDOW_FULLSCREEN_EXITED: "desktop-mode.window.fullscreen-exited",
+    /**
+     * Filter, decides whether a fullscreen ("focus mode") window
+     * should auto-exit when focus moves to a different window.
+     *
+     * Default is `true` so a newly-focused window is never silently
+     * occluded by a fullscreen one (its `z-index` sits above all
+     * other windows). Plugins whose fullscreen surface is meant to
+     * persist across focus changes — slideshows, video players,
+     * immersive games — can return `false` to keep their window
+     * fullscreen.
+     *
+     * Signature:
+     *
+     *     ( shouldExit: boolean, ctx: {
+     *         windowId: string,    // the fullscreen window
+     *         focusedTo: string,   // the window gaining focus
+     *     } ) => boolean
+     *
+     * @since 0.8.6
+     */
+    WINDOW_AUTO_EXIT_FULLSCREEN: "desktop-mode.window.auto-exit-fullscreen",
+    /**
+     * Action, fires at most once per animation frame during an
+     * active drag or resize with the live geometry. Payload: `{
+     * windowId: string, x: number, y: number, width: number,
+     * height: number, state: WindowState, phase: 'drag' | 'resize' }`.
+     *
+     * Intended for per-frame collision-aware wallpapers (snow piling
+     * on window tops, rain splash on edges) that would otherwise
+     * poll `getBoundingClientRect` every rAF. Coalesced via
+     * `requestAnimationFrame` so a pointermove storm collapses to
+     * one fire per paint — matches the cadence a wallpaper's own
+     * ticker runs at.
+     *
+     * NOT fired at drag/resize end — `WINDOW_DRAG_END` /
+     * `WINDOW_RESIZE_END` handle the settled geometry. Subscribers
+     * that only want the final position should listen to those
+     * instead.
+     */
+    WINDOW_BOUNDS_CHANGED: "desktop-mode.window.bounds-changed",
+    /** Action, fires at drag-end with the final `{ x, y }` position. */
+    WINDOW_MOVED: "desktop-mode.window.moved",
+    /** Action, fires at resize-end with the final `{ width, height }`. */
+    WINDOW_RESIZED: "desktop-mode.window.resized",
+    /** Action, fires when title-bar drag begins. */
+    WINDOW_DRAG_START: "desktop-mode.window.drag-start",
+    /** Action, fires when title-bar drag ends. Payload mirrors WINDOW_MOVED. */
+    WINDOW_DRAG_END: "desktop-mode.window.drag-end",
+    /** Action, fires when the resize handle is first pressed. */
+    WINDOW_RESIZE_START: "desktop-mode.window.resize-start",
+    /** Action, fires when resize completes. Payload mirrors WINDOW_RESIZED. */
+    WINDOW_RESIZE_END: "desktop-mode.window.resize-end",
+    /** Action, fires when the user "detaches" a window to a classic tab. */
+    WINDOW_DETACHED: "desktop-mode.window.detached",
+    /**
+     * Action, fires when the user clicks the title-bar reload button
+     * on an iframe-backed window. Payload: `{ windowId: string, url:
+     * string }` where `url` is the URL being reloaded (the active
+     * primary or external sub-tab). Subscribers can use this to
+     * invalidate their own cache, force a save before navigation,
+     * track usage as a UX signal, or sync state across companion
+     * surfaces. Native windows do not fire this — they own their
+     * DOM directly and the reload button doesn't apply.
+     */
+    WINDOW_RELOADED: "desktop-mode.window.reloaded",
+    /** Action, fires when iframe title updates change the window title. */
+    WINDOW_TITLE_CHANGED: "desktop-mode.window.title-changed",
+    /**
+     * Action, fires when a window's `setHighlight()` mode changes.
+     * Payload: `{ windowId: string, mode: 'preview' | 'persistent' | null,
+     * color?: string }`. Lets onboarding / guidance / drag-bridge
+     * plugins react when another module flagged one of their
+     * windows as the focus of a multi-step interaction without
+     * having to observe DOM mutations.
+     *
+     * @since 0.24.0
+     */
+    WINDOW_HIGHLIGHT_CHANGED: "desktop-mode.window.highlight-changed",
+    /**
+     * Action, fires when a window's body element's dimensions
+     * change — mount, user resize, viewport reflow. Payload: `{
+     * windowId: string, width: number, height: number }`. Body
+     * dimensions exclude the title bar + tab strip, matching what a
+     * canvas or layout engine inside the body would measure.
+     */
+    WINDOW_BODY_RESIZED: "desktop-mode.window.body-resized",
+    // ------------------------------------------------------------------
+    // Native-window lifecycle. These fire ONLY for windows constructed
+    // with `native: true` — iframe windows have no render phase to
+    // intercept. Use them to wrap / instrument / cancel the paint of
+    // plugin-contributed native windows (the Calculator, Jorvy, custom
+    // native launchers).
+    // ------------------------------------------------------------------
+    /**
+     * Filter, applied to the body element a native window will render
+     * into, just BEFORE the user's `render( body )` callback runs.
+     * Payload: the `HTMLElement`; context: `{ windowId, config }`.
+     *
+     * Return the same element (or a wrapper) to intercept. Subscribers
+     * commonly use this to inject a consistent shell (padding,
+     * background, decorative chrome) around every native window
+     * without every plugin re-implementing the pattern.
+     */
+    NATIVE_WINDOW_BEFORE_RENDER: "desktop-mode.native-window.before-render",
+    /**
+     * Action, fires AFTER a native window's `render( body )` callback
+     * returns. Payload: `{ windowId, body, config }`. Observability
+     * hook — analytics / auto-focus / post-render measurement.
+     */
+    NATIVE_WINDOW_AFTER_RENDER: "desktop-mode.native-window.after-render",
+    /**
+     * Filter, applied when a native window is about to start its
+     * close animation. Return `false` to CANCEL the close — the
+     * window stays open. Payload: `true`; context: `{ windowId,
+     * config }`. Any non-`false` return (including `undefined`) lets
+     * the close proceed.
+     *
+     * Intended for "unsaved changes" guards: a calculator with a
+     * pending operation can prompt the user and abort the close
+     * mid-flight. Does NOT apply to iframe windows — their close is
+     * driven by browser navigation patterns the shell doesn't own.
+     */
+    NATIVE_WINDOW_BEFORE_CLOSE: "desktop-mode.native-window.before-close",
+    // ------------------------------------------------------------------
+    // Window-chrome customization framework. Plugins drive per-window
+    // appearance (theme, controls, slots, full chrome render) through
+    // the `wp.desktop.registerWindow*` registries; these hooks expose
+    // every resolution step so plugins can mutate or observe the
+    // chrome pipeline without owning a registration.
+    //
+    // Layers 1-3 (theme, controls, slots) are Stable. Layer 4 (chrome
+    // render) is Experimental — `WINDOW_CHROME_RENDER` may change.
+    // ------------------------------------------------------------------
+    /**
+     * Filter, applied to the resolved CSS-variable map for a window.
+     * Receives `Record< string, string >`; context: `{ windowId,
+     * config }`. Plugins return a mutated map to override or augment
+     * the per-window theme tokens — e.g. tint every Gutenberg
+     * window's title bar to brand colour.
+     *
+     * Stable since 0.6.0.
+     */
+    WINDOW_CHROME_THEME: "desktop-mode.window.chrome.theme",
+    /**
+     * Filter, applied to the resolved control list for a window.
+     * Receives `WindowControlDef[]`; context: `{ windowId, config,
+     * placement: 'left' | 'right' | 'controls' }`. Plugins return a
+     * mutated array to reorder, hide, or inject controls per-window.
+     *
+     * Stable since 0.6.0.
+     */
+    WINDOW_CHROME_CONTROLS: "desktop-mode.window.chrome.controls",
+    /**
+     * Filter, applied per slot when the chrome paints. Receives the
+     * slot host element; context: `{ windowId, slot, config }`.
+     * Plugins can mutate `host` (append decorative children, set
+     * inline styles) without owning a `WindowSlotDef` registration.
+     * The shell never reads the return value — this is an action-
+     * shaped filter so existing `addFilter` plumbing applies.
+     *
+     * Stable since 0.6.0.
+     */
+    WINDOW_CHROME_SLOT: "desktop-mode.window.chrome.slot",
+    /**
+     * Filter, applied to the chrome id selected for a window.
+     * Receives the resolved id (defaults to `'core/standard'`);
+     * context: `{ windowId, config }`. Returning a different id
+     * swaps the chrome registration. **Experimental** — chrome
+     * render contract may change.
+     *
+     * @since 0.6.0
+     */
+    WINDOW_CHROME_RENDER: "desktop-mode.window.chrome.render",
+    /**
+     * Action, fires after a window's chrome has been mounted /
+     * remounted. Payload: `{ windowId, chromeId }`. Subscribers can
+     * post-decorate the chrome (attach observers, anchor pickers).
+     *
+     * @since 0.6.0
+     */
+    WINDOW_CHROME_APPLIED: "desktop-mode.window.chrome.applied",
+    /**
+     * Action, fires after a window's theme tokens are applied to its
+     * outer element. Payload: `{ windowId, themeId, tokens }`. Lets
+     * plugins react to theme changes without diffing CSS variables.
+     *
+     * @since 0.6.0
+     */
+    WINDOW_CHROME_THEME_CHANGED: "desktop-mode.window.chrome.theme-changed",
+    /**
+     * Action, fires when a user clicks a desktop icon (a shortcut
+     * tile registered server-side via `desktop_mode_register_icon()`
+     * and rendered on the wallpaper). Payload: `{ id: string,
+     * target: 'window' | 'url' }`. Fires BEFORE the default open
+     * action — plugins cannot cancel the open from this hook, but
+     * can use it to track click-throughs or augment behaviour (e.g.
+     * play a sound, surface a confirmation toast).
+     *
+     * @since 0.11.0
+     */
+    DESKTOP_ICON_CLICKED: "desktop-mode.desktop-icon.clicked",
+    /**
+     * Action, fires after the wallpaper icon grid is rendered or
+     * re-rendered. Payload:
+     *
+     *     {
+     *         ids: string[];                          // paint order
+     *         container: HTMLElement;                  // <div class="desktop-mode-icons">
+     *         tiles: ReadonlyMap<string, HTMLElement>; // id → tile <button>
+     *     }
+     *
+     * Plugins that decorate icons with surfaces the framework doesn't
+     * natively expose (drag handles, status dots, cursor adornments)
+     * subscribe here so their decorations survive a live menu refresh
+     * that legitimately rebuilds the grid. The `container` and
+     * `tiles` map mirror the {@link DOCK_AFTER_RENDER}
+     * `tileElements` contract — reach into them directly instead of
+     * re-`querySelector`ing the rendered DOM.
+     *
+     * Notification badges have a first-class API since 0.24.0 —
+     * use `wp.desktop.icons.setBadge( id, count )` (and subscribe
+     * to {@link ICON_BADGE_CHANGED}) instead of decorating from
+     * here. The framework persists badge state across rebuilds, so
+     * a plugin that uses the API doesn't need to re-decorate on
+     * every render.
+     *
+     * Suppressed entirely when the rendered DOM is unchanged from
+     * the previous call (the fingerprint short-circuit upstream
+     * skips both the rebuild and this signal). When the icon list
+     * is empty the hook does not fire at all — the previous
+     * container is removed and no new one is appended.
+     *
+     * @since 0.21.0
+     * @since 0.25.0 — `container` + `tiles` added to the payload
+     *                  (`ids` retained for back-compat).
+     */
+    DESKTOP_ICONS_RENDERED: "desktop-mode.desktop-icons.rendered",
+    /**
+     * Action, fires whenever the badge count on a desktop icon
+     * changes. Payload: `{ iconId: string, count: number,
+     * previousCount: number }`. Symmetric to {@link DOCK_ITEM_APPENDED}
+     * and the dock/taskbar `wpd-dock-item-badge-changed` CustomEvent
+     * — the icon rail's lifecycle hook for badge transitions.
+     *
+     * Mirrors `desktop-mode/badge-changed` on the activity bus with
+     * `rail: 'icon'`. Subscribe to whichever surface fits — the
+     * activity channel composes across rails for global widgets,
+     * this hook fires only for icon-rail badges with the previous
+     * count carried alongside for delta-aware consumers.
+     *
+     * @since 0.24.0
+     */
+    ICON_BADGE_CHANGED: "desktop-mode.icon.badge-changed",
+    // ------------------------------------------------------------------
+    // Cross-plugin composition.
+    // ------------------------------------------------------------------
+    /**
+     * Action, fires ONCE after every shell-shipped `<wpd-*>` custom
+     * element has registered with `customElements`. Payload: `{
+     * tags: string[] }` — the list of registered tag names. Plugins
+     * that need to defer work until the component registry is
+     * complete (e.g. hydrate user content that uses these tags)
+     * subscribe here instead of polling `customElements.get()`.
+     */
+    COMPONENTS_REGISTERED: "desktop-mode.components.registered",
+    /**
+     * Action, fires after `wp.desktop.registerSystemTile()` inserts
+     * a tile into the unified dock. Payload: `{ id: string }`. Useful
+     * for plugins that want to decorate tiles they didn't register
+     * themselves — analytics, theming, per-tile badges.
+     */
+    DOCK_ITEM_APPENDED: "desktop-mode.dock.item-appended",
+    /**
+     * Action, fires after a system tile is removed from a rail
+     * via `Dock.removeSystemItem()` (typically the server-driven
+     * native-window-sync path on plugin deactivation). Payload:
+     * `{ id: string, placement: 'dock' | 'taskbar' }`. Symmetric
+     * to {@link DOCK_ITEM_APPENDED}; lets analytics / decorators /
+     * cleanup hooks see the full lifecycle without polling the DOM.
+     *
+     * @since 0.24.0
+     */
+    DOCK_ITEM_REMOVED: "desktop-mode.dock.item-removed",
+    // ------------------------------------------------------------------
+    // Dock decoration hooks — render-pipeline filters and actions the
+    // default `Dock` renderer fires while painting tiles. Plugins
+    // compose decoration (animations, classNames, wrappers, tooltips)
+    // without forking the renderer. Custom rail renderers SHOULD fire
+    // the same hooks for ecosystem compatibility — see
+    // `docs/examples/dock-decoration-hooks.md` for the contract.
+    //
+    // Every detail object carries `{ rail, orientation, dockId,
+    // container }` so a single subscriber can disambiguate when two
+    // rails coexist (Classic layout's left side bar + bottom dock).
+    // `dockId` matches the host element's `id` (e.g. `'desktop-mode-dock'`
+    // or `'desktop-mode-side-dock'`) and is the stable
+    // disambiguator — `rail` and `orientation` are convenience
+    // projections of where the renderer is painting.
+    // ------------------------------------------------------------------
+    /**
+     * Action, fires at the start of every dock paint pass — both the
+     * initial mount and every `replaceItems()` that follows on the
+     * live menu-refresh path. Payload `DockRenderContext`. Use this
+     * to invalidate cached per-render decoration state before the
+     * tiles repopulate.
+     *
+     * @since 0.18.0
+     */
+    DOCK_BEFORE_RENDER: "desktop-mode.dock.before-render",
+    /**
+     * Action, fires once every menu and system tile has landed in
+     * the DOM for a paint pass. Payload `DockRenderContext` plus a
+     * frozen `tileElements: ReadonlyMap<string, HTMLElement>` so a
+     * plugin can decorate every tile in one sweep. Symmetric to
+     * {@link DOCK_BEFORE_RENDER}.
+     *
+     * @since 0.18.0
+     */
+    DOCK_AFTER_RENDER: "desktop-mode.dock.after-render",
+    /**
+     * Filter, runs once per tile while the renderer is composing the
+     * className list. Plugins may add, remove, or reorder classes.
+     * Signature: `( classes: string[], detail: DockTileContext ) =>
+     * string[]`. Order is preserved.
+     *
+     * @since 0.18.0
+     */
+    DOCK_TILE_CLASS: "desktop-mode.dock.tile-class",
+    /**
+     * Filter, runs once per tile after the renderer finishes building
+     * the element but before it lands in the DOM. Return the same
+     * element with mutations, or replace with a wrapper — the shell
+     * inserts whatever you return. Signature:
+     * `( el: HTMLElement, detail: DockTileContext ) => HTMLElement`.
+     *
+     * Returning a different node still has to expose a stable
+     * `[data-menu-slug="<id>"]` (or `[data-system-id="<id>"]`)
+     * descendant for active-state / badge updates to find the tile;
+     * wrap, don't replace.
+     *
+     * @since 0.18.0
+     */
+    DOCK_TILE_ELEMENT: "desktop-mode.dock.tile-element",
+    /**
+     * Action, fires once per tile after it has been inserted into
+     * the DOM. Payload `DockTileContext` plus the resolved `el`. Use
+     * for post-insertion decoration where computed layout matters
+     * (measurements, IntersectionObserver bindings, etc.).
+     *
+     * @since 0.18.0
+     */
+    DOCK_TILE_RENDERED: "desktop-mode.dock.tile-rendered",
+    /**
+     * Filter, resolves the tooltip text for a tile. Runs once at
+     * bind time so the dock doesn't re-filter on every pointerenter.
+     * Signature: `( label: string, detail: DockTileContext ) =>
+     * string`. Return an empty string to suppress the tooltip.
+     *
+     * @since 0.18.0
+     */
+    DOCK_TILE_TOOLTIP: "desktop-mode.dock.tile-tooltip",
+    /**
+     * Filter, resolves the body content of a single hover-peek card.
+     * Runs once per card build (i.e., on every show of the peek for
+     * a multi-instance dock tile that has ≥1 open window). Lets a
+     * plugin render a custom thumbnail, status block, or any other
+     * markup inside the card in place of (or alongside) the default
+     * mini-window styling.
+     *
+     * Signature:
+     *   ( body: HTMLElement, detail: DockPeekCardContext ) => HTMLElement
+     *
+     * Where `body` is the `<span class="desktop-mode-dock-peek__card-body">`
+     * element that the peek would otherwise populate with ghosted
+     * content lines. The filter may:
+     *   - Mutate `body` in place (e.g., append a custom child) and
+     *     return it.
+     *   - Empty `body` and append plugin-owned children.
+     *   - Return an entirely different element to replace `body`.
+     *
+     * `detail.window` is the live `Window` instance the card represents
+     * — plugins can read `window.config`, call `window.getCurrentUrl()`,
+     * subscribe to lifecycle events, etc. `detail.item` is the dock
+     * item descriptor (id / title / icon / url).
+     *
+     * The filter is invoked under the `applyFilters` namespace
+     * `desktop-mode.dock.peek-card-content`.
+     *
+     * @since 0.6.2
+     */
+    DOCK_PEEK_CARD_CONTENT: "desktop-mode.dock.peek-card-content",
+    /**
+     * Filter, runs once per peek card right before it's appended to
+     * the popover. Receives the fully-built default card (with its
+     * mini-window chrome already populated) and can return either
+     * the same node, a mutated version, or an entirely different
+     * element to replace the card outright. Use this when the
+     * `peek-card-content` body filter isn't enough — e.g., when a
+     * plugin wants to swap the whole card chrome (custom titlebar,
+     * different shape) or wrap the card in a third-party component.
+     *
+     * Signature:
+     *   ( card: HTMLElement, detail: DockPeekCardContext ) => HTMLElement
+     *
+     * If a plugin returns a brand-new node, it is responsible for
+     * preserving anything the peek relies on:
+     *   - The `desktop-mode-dock-peek__card` class (used by the
+     *     fan-out animation timing + hover styles).
+     *   - A `click` handler if the card should still focus the
+     *     window. The default click handler lives on the original
+     *     node — replacing the node loses it.
+     *
+     * @since 0.6.2
+     */
+    DOCK_PEEK_CARD_ELEMENT: "desktop-mode.dock.peek-card-element",
+    // ------------------------------------------------------------------
+    // Overview / Arrange lifecycle actions.
+    //
+    // The "Arrange" admin-bar menu drives two layout algorithms —
+    // Cascade (instantly reposition every window in a staggered
+    // stack) and Overview (zoom-out grid view with click-to-focus).
+    // These hooks surface the state transitions so plugins can
+    // instrument analytics, apply custom transitions, override
+    // thumbnail decorations, etc. All actions; a filter for
+    // mutating the overview layout may be added later if plugins
+    // want to reorder or group thumbnails.
+    // ------------------------------------------------------------------
+    /** Action, fires before the overview enter animation starts. */
+    OVERVIEW_ENTERING: "desktop-mode.overview.entering",
+    /** Action, fires once the overview enter animation has completed. */
+    OVERVIEW_ENTERED: "desktop-mode.overview.entered",
+    /**
+     * Action, fires at the start of the overview-exit animation.
+     * Payload: `{ windowId?: string, reason: 'select' | 'cancel' }` —
+     * `windowId` set when the user clicked a thumbnail (reason
+     * 'select'); omitted when the user pressed Escape or clicked
+     * the backdrop (reason 'cancel').
+     */
+    OVERVIEW_EXITING: "desktop-mode.overview.exiting",
+    /** Action, fires once the overview-exit animation has settled. */
+    OVERVIEW_EXITED: "desktop-mode.overview.exited",
+    /** Action, fires when the cursor enters a thumbnail. Payload `{ windowId }`. */
+    OVERVIEW_WINDOW_HOVER: "desktop-mode.overview.window-hover",
+    /** Action, fires when the cursor leaves a thumbnail. Payload `{ windowId }`. */
+    OVERVIEW_WINDOW_UNHOVER: "desktop-mode.overview.window-unhover",
+    /** Action, fires the instant a thumbnail click is registered (before exit + maximize kick in). Payload `{ windowId }`. */
+    OVERVIEW_WINDOW_CLICK: "desktop-mode.overview.window-click",
+    /** Action, fires before cascade computes + applies new positions. Payload `{ windowCount }`. */
+    ARRANGE_CASCADE_STARTING: "desktop-mode.arrange.cascade.starting",
+    /** Action, fires after cascade has positioned every window. Payload `{ windowCount }`. */
+    ARRANGE_CASCADE_APPLIED: "desktop-mode.arrange.cascade.applied",
+    /** Action, fires before tile computes + applies new positions. Payload `{ windowCount, cols, rows }`. */
+    ARRANGE_TILE_STARTING: "desktop-mode.arrange.tile.starting",
+    /** Action, fires after tile has positioned every window. Payload `{ windowCount, cols, rows }`. */
+    ARRANGE_TILE_APPLIED: "desktop-mode.arrange.tile.applied",
+    /**
+     * Filter on the tile-grid dimensions chosen by the built-in
+     * algorithm. Receives `{ cols, rows }` plus a context arg
+     * `{ windowCount, areaWidth, areaHeight }`. Plugins can return
+     * a different `{ cols, rows }` to enforce a custom layout
+     * (fixed-column newsroom, golden-ratio cells, etc.). Returned
+     * values are validated — non-positive integers, or a product
+     * smaller than `windowCount`, fall back to the original.
+     */
+    ARRANGE_TILE_DIMENSIONS: "desktop-mode.arrange.tile.dimensions",
+    /** Action, fires when snap-to-grid is toggled. Payload `{ enabled }`. */
+    ARRANGE_SNAP_CHANGED: "desktop-mode.arrange.snap.changed",
+    /**
+     * Filter on the snap-grid cell size. Receives
+     * `{ cellWidth, cellHeight }` plus a context arg
+     * `{ areaWidth, areaHeight }`. Plugins can return different
+     * dimensions to enforce a Tetris-style fixed grid, a musical
+     * staff aspect, etc. Non-positive returns fall back to the
+     * original.
+     */
+    ARRANGE_SNAP_CELL_SIZE: "desktop-mode.arrange.snap.cell-size",
+    /**
+     * Action, fires when the user clicks a plugin-registered entry in
+     * the Arrange admin-bar submenu (items added via the
+     * `desktop_mode_arrange_menu_items` PHP filter). Payload `{ id }`
+     * where `id` is the item's `id` field as registered. Plugins
+     * subscribe here to run their custom arrangement logic.
+     */
+    ARRANGE_CUSTOM_ACTION: "desktop-mode.arrange.custom-action",
+    // ------------------------------------------------------------------
+    // Snap-zones — Windows-style edge snapping with a split-overview
+    // picker to fill the opposite half after commit.
+    // ------------------------------------------------------------------
+    /**
+     * Action, fires when the drag cursor enters a snap zone and the
+     * shell shows the target-position preview. Payload
+     * `{ windowId, zone: 'left' | 'right' }`.
+     */
+    SNAP_ZONE_PENDING: "desktop-mode.snap.zone-pending",
+    /**
+     * Action, fires when the drag cursor leaves the snap zone without
+     * releasing — the preview disappears. Payload `{ windowId }`.
+     */
+    SNAP_ZONE_CANCELED: "desktop-mode.snap.zone-canceled",
+    /**
+     * Action, fires once the window has animated into its snapped
+     * bounds. Payload `{ windowId, zone: 'left' | 'right' }`.
+     */
+    SNAP_ZONE_COMMITTED: "desktop-mode.snap.zone-committed",
+    /**
+     * Action, fires when a user picks a thumbnail from the split
+     * overview to fill the opposite half. Payload
+     * `{ windowId, zone: 'left' | 'right' }`.
+     */
+    SNAP_SPLIT_FILLED: "desktop-mode.snap.split-filled",
+    // ------------------------------------------------------------------
+    // Widgets — the right-side column. Widgets paint above the
+    // wallpaper but beneath windows. Lifecycle mirrors canvas
+    // wallpapers: register via filter, mount/unmount actions bracket
+    // each paint, mount-failed fires on sync throws / async rejects.
+    // ------------------------------------------------------------------
+    /** Filter, receives the widget registry array. */
+    WIDGETS: "desktop-mode.widgets",
+    /** Action before a widget mounts. Payload `{ id, container, ctx }`. */
+    WIDGET_MOUNTING: "desktop-mode.widget.mounting",
+    /** Action after a widget mounts successfully. Payload `{ id, container, ctx }`. */
+    WIDGET_MOUNTED: "desktop-mode.widget.mounted",
+    /** Action before a widget tears down. Payload `{ id }`. */
+    WIDGET_UNMOUNTING: "desktop-mode.widget.unmounting",
+    /** Action when a widget's mount throws / rejects. Payload `{ id, error }`. */
+    WIDGET_MOUNT_FAILED: "desktop-mode.widget.mount-failed",
+    /** Action when the user adds a widget via the picker. Payload `{ id }`. */
+    WIDGET_ADDED: "desktop-mode.widget.added",
+    /** Action when the user removes a widget via the card's × button. Payload `{ id }`. */
+    WIDGET_REMOVED: "desktop-mode.widget.removed",
+    // ------------------------------------------------------------------
+    // Virtual-desktop ("Spaces") lifecycle actions.
+    //
+    // Spaces let users group windows into separate workspaces and flip
+    // between them from the overview top bar. These hooks expose every
+    // state change so plugins can persist per-space state, sync custom
+    // indicators, or react to the user's workspace context.
+    // ------------------------------------------------------------------
+    /** Action, fires when a new desktop is created. Payload `{ desktopId }`. */
+    DESKTOP_CREATED: "desktop-mode.desktop.created",
+    /** Action, fires when a desktop is closed. Payload `{ desktopId, migratedTo }`. */
+    DESKTOP_CLOSED: "desktop-mode.desktop.closed",
+    /** Action, fires when the active desktop changes. Payload `{ from, to }`. */
+    DESKTOP_SWITCHED: "desktop-mode.desktop.switched",
+    /**
+     * Filter. Returns the id of the "primary" desktop — the one the
+     * shell treats as canonical for batch operations. Receives the
+     * default (first desktop's id) and the full `Desktop[]` list.
+     * @since 0.14.0
+     */
+    PRIMARY_DESKTOP_ID: "desktop-mode.primary-desktop-id",
+    // ------------------------------------------------------------------
+    // Batch window operations.
+    // ------------------------------------------------------------------
+    /**
+     * Action, fires before {@link WindowManager.closeAll} starts
+     * iterating. Payload `{ candidates: Window[] }` — every window the
+     * shell is about to close (after `exceptIds` was applied).
+     * @since 0.14.0
+     */
+    WINDOWS_BEFORE_CLOSE_ALL: "desktop-mode.windows.before-close-all",
+    /**
+     * Filter, runs inside {@link WindowManager.closeAll}. Receives the
+     * candidate `Window[]` list and returns the (possibly trimmed) list
+     * that will actually be closed. Plugins use this to PROTECT specific
+     * windows from a bulk close — e.g. keep the active draft open.
+     * Returning an empty array cancels the close entirely.
+     * @since 0.14.0
+     */
+    WINDOWS_CLOSE_ALL: "desktop-mode.windows.close-all",
+    /**
+     * Action, fires after {@link WindowManager.closeAll} has finished.
+     * Payload `{ closed: number, skipped: Window[] }`.
+     * @since 0.14.0
+     */
+    WINDOWS_AFTER_CLOSE_ALL: "desktop-mode.windows.after-close-all",
+    // ------------------------------------------------------------------
+    // Slash-command lifecycle.
+    // ------------------------------------------------------------------
+    /**
+     * Filter. Runs immediately before a command's `run()` is invoked.
+     * Receives `{ proceed: true, slug, args, command }` and may return
+     * the same shape with `proceed: false` to cancel the run.
+     * @since 0.14.0
+     */
+    COMMAND_BEFORE_RUN: "desktop-mode.command.before-run",
+    /**
+     * Action, fires after a command's `run()` resolves successfully.
+     * Payload `{ slug, args, command, result }`.
+     * @since 0.14.0
+     */
+    COMMAND_AFTER_RUN: "desktop-mode.command.after-run",
+    /**
+     * Action, fires when a command's `run()` throws. Payload
+     * `{ slug, args, command, error }`.
+     * @since 0.14.0
+     */
+    COMMAND_ERROR: "desktop-mode.command.error",
+    // ------------------------------------------------------------------
+    // Shell-level lifecycle actions.
+    // ------------------------------------------------------------------
+    /**
+     * Action, fires (debounced) after the browser viewport stops
+     * resizing. Payload `{ width, height }` describes the shell's
+     * bounding rect — plugins that render canvas-driven UIs hook here
+     * to adjust their render surface.
+     */
+    SHELL_RESIZED: "desktop-mode.shell.resized",
+    /**
+     * Action mirroring `document.visibilitychange` for the shell as a
+     * whole. Payload `{ state: 'visible' | 'hidden' }`. Different from
+     * the wallpaper-specific visibility action in that it fires
+     * regardless of which wallpaper (if any) is active.
+     */
+    SHELL_VISIBILITY: "desktop-mode.shell.visibility",
+    /**
+     * Action — fires when a `wp.desktop.connect()` connection
+     * completes its iframe handshake. Payload:
+     * `{ connectionId, targetWindowId, topics }`.
+     *
+     * @since 0.17.0
+     */
+    CONNECTION_OPENED: "desktop-mode.connection.opened",
+    /**
+     * Action — fires when a connection tears down. Payload:
+     * `{ connectionId, reason: 'disconnect' | 'window-closed' | 'navigated' }`.
+     *
+     * @since 0.17.0
+     */
+    CONNECTION_CLOSED: "desktop-mode.connection.closed",
+    /**
+     * Action — fires for every message routed through a connection.
+     * Payload: `{ connectionId, topic, direction: 'in' | 'out' }`.
+     * Used for debug consoles + traffic auditing; high-volume topics
+     * fire this many times per second, so subscribers should be
+     * cheap.
+     *
+     * @since 0.17.0
+     */
+    CONNECTION_MESSAGE: "desktop-mode.connection.message",
+    /**
+     * Filter — fires when an iframe calls
+     * `wp.desktop.iframe.requestConnection()`. Default value is
+     * `true` (accept). Return `false` to reject, or an object
+     * `{ topics: string[] }` to accept while narrowing the topic
+     * list. `$context` carries `{ windowId, requestId, topics }`.
+     *
+     * @since 0.18.0
+     */
+    IFRAME_CONNECTION_REQUEST: "desktop-mode.iframe.connection-request",
+    // ------------------------------------------------------------------
+    // OS-file drop manager (since 0.30.0). Catches files dragged from
+    // the user's host OS (Finder / Explorer / Nautilus) onto any
+    // desktop-mode surface and routes them through a confirmation
+    // dialog before uploading to the Media Library. Authoritative
+    // constants live in `src/os-file-drop/hooks.ts`; mirrored here so
+    // every hook the shell fires is reachable from a single `HOOKS`
+    // import. See `docs/examples/os-file-drop.md`.
+    // ------------------------------------------------------------------
+    /** Filter — `(files: File[], ctx) => File[]`, before mime/size check. */
+    FILE_DROP_FILES_DETECTED: "desktop-mode.drop.files-detected",
+    /** Action — `{ rejections, context }` for files that failed policy. */
+    FILE_DROP_FILES_REJECTED: "desktop-mode.drop.files-rejected",
+    /** Filter — `(entry, ctx) => entry`, per-file dialog defaults. */
+    FILE_DROP_DIALOG_FIELDS: "desktop-mode.drop.dialog-fields",
+    /** Filter — `(payload, ctx) => payload | null`, last call before POST. */
+    FILE_DROP_BEFORE_UPLOAD: "desktop-mode.drop.before-upload",
+    /** Action — `{ file, fields, context, abort }` once XHR is open and about to send. @since 0.31.0 */
+    FILE_DROP_UPLOAD_STARTED: "desktop-mode.drop.upload-started",
+    /** Action — `{ file, fields, context, loaded, total, indeterminate }` per progress tick. @since 0.31.0 */
+    FILE_DROP_UPLOAD_PROGRESS: "desktop-mode.drop.upload-progress",
+    /** Action — `{ file, result, fields, context }` after successful upload. `file` since 0.31.0. */
+    FILE_DROP_AFTER_UPLOAD: "desktop-mode.drop.after-upload",
+    /** Action — `{ file, error, context }` on upload failure. */
+    FILE_DROP_UPLOAD_FAILED: "desktop-mode.drop.upload-failed"
+  };
+  let _whenReadySeq = 0;
+  function whenReady(cb) {
+    if (didAction(HOOKS.INIT) > 0) {
+      Promise.resolve().then(cb);
+      return;
+    }
+    const ns = `desktop-mode/when-ready-${++_whenReadySeq}`;
+    addAction(HOOKS.INIT, ns, cb);
+  }
+  function isReady() {
+    return didAction(HOOKS.INIT) > 0;
+  }
+  let inflight$1 = null;
+  function isLoaded$1() {
+    return !!window.desktopModeWindowSystem;
+  }
+  function injectScript$1(scriptUrl) {
+    return new Promise((resolve2, reject) => {
+      const existing = document.querySelector(
+        'script[data-desktop-mode-window-system="1"]'
+      );
+      const finish = () => {
+        if (isLoaded$1()) {
+          resolve2();
+          return;
+        }
+        reject(
+          new Error(
+            "[desktop-mode] window-system bundle loaded but did not register `window.desktopModeWindowSystem`."
+          )
+        );
+      };
+      if (existing) {
+        if (isLoaded$1()) {
+          finish();
+        } else {
+          existing.addEventListener("load", finish);
+          existing.addEventListener(
+            "error",
+            () => reject(new Error("failed to load window-system bundle"))
+          );
+        }
+        return;
+      }
+      const s = document.createElement("script");
+      s.src = scriptUrl;
+      s.async = true;
+      s.dataset.desktopModeWindowSystem = "1";
+      s.addEventListener("load", finish);
+      s.addEventListener(
+        "error",
+        () => reject(new Error("failed to load window-system bundle"))
+      );
+      document.head.appendChild(s);
+    });
+  }
+  function windowSystemBundleUrl() {
+    const cfg = window.desktopModeConfig;
+    return cfg?.windowSystemBundleUrl ?? "";
+  }
+  function preloadWindowSystem(scriptUrl) {
+    if (!scriptUrl || isLoaded$1() || inflight$1) {
+      return;
+    }
+    inflight$1 = injectScript$1(scriptUrl).catch((err) => {
+      inflight$1 = null;
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] window-system preload failed; will retry on first open():",
+          err
+        );
+      }
+    });
+  }
+  async function ensureWindowSystemLoaded(scriptUrl) {
+    if (isLoaded$1()) {
+      return window.desktopModeWindowSystem;
+    }
+    if (!scriptUrl) {
+      const fn = window.desktopModeWindowSystem;
+      if (fn) {
+        return fn;
+      }
+      throw new Error(
+        "[desktop-mode] ensureWindowSystemLoaded(): no bundle URL configured and `window.desktopModeWindowSystem` is not pre-registered."
+      );
+    }
+    if (!inflight$1) {
+      inflight$1 = injectScript$1(scriptUrl);
+    }
+    await inflight$1;
+    return window.desktopModeWindowSystem;
+  }
+  const CANARY_TAG = "wpd-confirm-dialog";
+  let inflight = null;
+  function isLoaded() {
+    return typeof window.customElements !== "undefined" && !!window.customElements.get(CANARY_TAG);
+  }
+  function injectScript(scriptUrl) {
+    return new Promise((resolve2, reject) => {
+      const existing = document.querySelector(
+        'script[data-desktop-mode-shell-overlays="1"]'
+      );
+      const finish = () => {
+        if (isLoaded()) {
+          resolve2();
+          return;
+        }
+        reject(
+          new Error(
+            "[desktop-mode] shell-overlays bundle loaded but did not register the overlay components."
+          )
+        );
+      };
+      if (existing) {
+        if (isLoaded()) {
+          finish();
+        } else {
+          existing.addEventListener("load", finish);
+          existing.addEventListener(
+            "error",
+            () => reject(new Error("failed to load shell-overlays bundle"))
+          );
+        }
+        return;
+      }
+      const s = document.createElement("script");
+      s.src = scriptUrl;
+      s.async = true;
+      s.dataset.desktopModeShellOverlays = "1";
+      s.addEventListener("load", finish);
+      s.addEventListener(
+        "error",
+        () => reject(new Error("failed to load shell-overlays bundle"))
+      );
+      document.head.appendChild(s);
+    });
+  }
+  function preloadShellOverlays(scriptUrl) {
+    if (!scriptUrl || isLoaded() || inflight) {
+      return;
+    }
+    inflight = injectScript(scriptUrl).catch((err) => {
+      inflight = null;
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] shell-overlays preload failed; will retry on first overlay use:",
+          err
+        );
+      }
+    });
+  }
+  function ensureShellOverlaysLoaded(scriptUrl) {
+    if (isLoaded()) {
+      return Promise.resolve();
+    }
+    if (!scriptUrl) {
+      return Promise.resolve();
+    }
+    if (!inflight) {
+      inflight = injectScript(scriptUrl);
+    }
+    return inflight;
+  }
+  function shellOverlaysBundleUrl() {
+    const cfg = window.desktopModeConfig;
+    return cfg?.shellOverlaysBundleUrl ?? "";
+  }
+  function openWithShellOverlays(isStillCurrent, fn) {
+    const url = shellOverlaysBundleUrl();
+    if (isLoaded() || !url) {
+      fn();
+      return;
+    }
+    void ensureShellOverlaysLoaded(url).then(() => {
+      if (!isStillCurrent()) {
+        return;
+      }
+      fn();
+    }).catch((err) => {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] shell-overlays failed to load; menu/dialog suppressed:",
+          err
+        );
+      }
+    });
+  }
+  const TEXT_DOMAIN = "desktop-mode";
+  function i18n() {
+    return window.wp?.i18n;
+  }
+  function __(text, domain = TEXT_DOMAIN) {
+    return i18n()?.__(text, domain) ?? text;
+  }
+  function _n(single, plural, number, domain = TEXT_DOMAIN) {
+    return i18n()?._n(single, plural, number, domain) ?? (number === 1 ? single : plural);
+  }
+  function sprintf(format, ...args) {
+    const impl = i18n()?.sprintf;
+    if (impl) {
+      return impl(format, ...args);
+    }
+    let i = 0;
+    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+  }
+  function isValidGrid(candidate, windowCount) {
+    if (!candidate || typeof candidate !== "object") {
+      return false;
+    }
+    const c = candidate.cols;
+    const r = candidate.rows;
+    if (typeof c !== "number" || typeof r !== "number") {
+      return false;
+    }
+    if (!Number.isFinite(c) || !Number.isFinite(r)) {
+      return false;
+    }
+    if (c < 1 || r < 1) {
+      return false;
+    }
+    return Math.floor(c) * Math.floor(r) >= windowCount;
+  }
+  function isValidCellSize(candidate) {
+    if (!candidate || typeof candidate !== "object") {
+      return false;
+    }
+    const w = candidate.cellWidth;
+    const h = candidate.cellHeight;
+    if (typeof w !== "number" || typeof h !== "number") {
+      return false;
+    }
+    if (!Number.isFinite(w) || !Number.isFinite(h)) {
+      return false;
+    }
+    return w > 0 && h > 0;
+  }
+  function pickGridDimensions(n, width, height) {
+    if (n <= 1) {
+      return { cols: 1, rows: 1 };
+    }
+    const areaAspect = width / Math.max(1, height);
+    const max = 6;
+    let best = { cols: n, rows: 1, score: Infinity };
+    for (let cols = 1; cols <= Math.min(max, n); cols++) {
+      const rows = Math.min(max, Math.ceil(n / cols));
+      if (cols * rows < n) {
+        continue;
+      }
+      const cellAspect = width / cols / Math.max(1, height / rows);
+      const aspectDelta = Math.abs(cellAspect - areaAspect);
+      const emptyCells = cols * rows - n;
+      const score = aspectDelta + emptyCells * 0.05;
+      if (score < best.score) {
+        best = { cols, rows, score };
+      }
+    }
+    return { cols: best.cols, rows: best.rows };
+  }
+  function computeOverviewLayout(windows, rect, topInset = 0) {
+    const n = windows.length;
+    if (n === 0) {
+      return [];
+    }
+    const cols = Math.ceil(Math.sqrt(n));
+    const rows = Math.ceil(n / cols);
+    const padding = 40;
+    const gap = 24;
+    const labelReserve = 34;
+    const cellWidth = (rect.width - padding * 2 - gap * (cols - 1)) / cols;
+    const cellHeight = (rect.height - padding * 2 - topInset - gap * (rows - 1)) / rows;
+    const thumbCellHeight = Math.max(40, cellHeight - labelReserve);
+    return windows.map((win, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const cellX = rect.left + padding + col * (cellWidth + gap);
+      const cellY = rect.top + topInset + padding + row * (cellHeight + gap) + labelReserve;
+      const sourceW = win.element.offsetWidth;
+      const sourceH = win.element.offsetHeight;
+      const scale = Math.min(
+        cellWidth / sourceW,
+        thumbCellHeight / sourceH
+      );
+      const scaledW = sourceW * scale;
+      const scaledH = sourceH * scale;
+      return {
+        win,
+        x: cellX + (cellWidth - scaledW) / 2,
+        y: cellY + (thumbCellHeight - scaledH) / 2,
+        scale
+      };
+    });
+  }
+  const OVERVIEW_TOP_BAR_RESERVE = 120;
+  function enterOverview(mgr) {
+    if (mgr._overviewActive) {
+      return;
+    }
+    const onActive = mgr._stack.filter(
+      (w) => w.config.desktopId === mgr._activeDesktopId
+    );
+    if (onActive.length > 0 && onActive.every((w) => w.state === "minimized")) {
+      for (const w of onActive) {
+        try {
+          w.restore();
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] enterOverview: window.restore() threw for",
+              w.id,
+              err
+            );
+          }
+        }
+      }
+    }
+    const eligible = mgr._stack.filter(
+      (w) => w.state !== "minimized" && w.config.desktopId === mgr._activeDesktopId
+    );
+    mgr._overviewActive = true;
+    doAction(HOOKS.OVERVIEW_ENTERING, {});
+    mgr._overviewSnapshot.clear();
+    for (const w of eligible) {
+      mgr._overviewSnapshot.set(w.id, {
+        transform: w.element.style.transform || "",
+        transition: w.element.style.transition || ""
+      });
+    }
+    for (const w of eligible) {
+      if (w.state === "fullscreen") {
+        w.toggleFullscreen();
+      }
+    }
+    const currentRect = mgr._desktop.getBoundingClientRect();
+    const docks = Array.from(
+      document.querySelectorAll(".desktop-mode-dock")
+    );
+    let reclaimedWidth = 0;
+    for (const d of docks) {
+      const r = d.getBoundingClientRect();
+      const verticallyOverlaps = r.bottom > currentRect.top && r.top < currentRect.bottom;
+      const isHorizontalRail = r.height > r.width;
+      if (verticallyOverlaps && isHorizontalRail) {
+        reclaimedWidth += r.width;
+      }
+    }
+    const targetRect = new DOMRect(
+      0,
+      0,
+      currentRect.width + reclaimedWidth,
+      currentRect.height
+    );
+    mgr._desktop.classList.add("desktop-mode-area--overview");
+    const shell = document.getElementById("desktop-mode-shell");
+    shell?.classList.add("desktop-mode-shell--overview");
+    mgr._overviewTopBar = buildOverviewTopBar(mgr);
+    mgr._desktop.appendChild(mgr._overviewTopBar);
+    const layout = computeOverviewLayout(
+      eligible,
+      targetRect,
+      OVERVIEW_TOP_BAR_RESERVE
+    );
+    mgr._overviewLabels.clear();
+    for (const item of layout) {
+      const el = item.win.element;
+      el.classList.add("desktop-mode-window--overview");
+      const dx = item.x - el.offsetLeft;
+      const dy = item.y - el.offsetTop;
+      el.style.transform = `translate(${dx}px, ${dy}px) scale(${item.scale})`;
+      const label = createOverviewLabel(item);
+      el.insertAdjacentElement("afterend", label);
+      mgr._overviewLabels.set(item.win.id, label);
+    }
+    const pressTargetForEvent = (e) => {
+      const target = e.target;
+      const winEl = target?.closest(
+        ".desktop-mode-window--overview"
+      );
+      if (winEl) {
+        return {
+          id: winEl.id.replace(/^wp-window-/, ""),
+          element: winEl
+        };
+      }
+      if (target === mgr._desktop) {
+        return { id: "backdrop", element: mgr._desktop };
+      }
+      return null;
+    };
+    mgr._overviewPointerDownHandler = (e) => {
+      if (e.button !== 0) {
+        mgr._overviewPressTarget = null;
+        return;
+      }
+      mgr._overviewPressTarget = pressTargetForEvent(e);
+      if (mgr._overviewPressTarget) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    mgr._overviewPointerUpHandler = (e) => {
+      if (e.button !== 0) {
+        return;
+      }
+      const pressed = mgr._overviewPressTarget;
+      mgr._overviewPressTarget = null;
+      if (!pressed) {
+        return;
+      }
+      const rect = pressed.element.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (!inside) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (pressed.id === "backdrop") {
+        exitOverview(mgr);
+        return;
+      }
+      const selected = mgr.getById(pressed.id);
+      doAction(HOOKS.OVERVIEW_WINDOW_CLICK, { windowId: pressed.id });
+      exitOverview(mgr, selected, true);
+    };
+    mgr._overviewKeyHandler = (e) => {
+      if (e.key === "Escape") {
+        exitOverview(mgr);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (mgr._overviewAddTileFocused) {
+          commitAddTile(mgr);
+          return;
+        }
+        exitOverview(mgr);
+      }
+    };
+    mgr._desktop.addEventListener(
+      "pointerdown",
+      mgr._overviewPointerDownHandler,
+      true
+    );
+    mgr._desktop.addEventListener(
+      "pointerup",
+      mgr._overviewPointerUpHandler,
+      true
+    );
+    mgr._overviewClickBlocker = (e) => {
+      const target = e.target;
+      if (target?.closest(".desktop-mode-overview-top-bar")) {
+        return;
+      }
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    mgr._desktop.addEventListener(
+      "click",
+      mgr._overviewClickBlocker,
+      true
+    );
+    document.addEventListener("keydown", mgr._overviewKeyHandler);
+    mgr._lastOverviewHoverId = null;
+    mgr._overviewMouseHandler = (e) => {
+      const target = e.target;
+      const winEl = target?.closest(
+        ".desktop-mode-window--overview"
+      );
+      const newId = winEl ? winEl.id.replace(/^wp-window-/, "") : null;
+      if (newId === mgr._lastOverviewHoverId) {
+        return;
+      }
+      if (mgr._lastOverviewHoverId) {
+        doAction(HOOKS.OVERVIEW_WINDOW_UNHOVER, {
+          windowId: mgr._lastOverviewHoverId
+        });
+      }
+      if (newId) {
+        doAction(HOOKS.OVERVIEW_WINDOW_HOVER, { windowId: newId });
+      }
+      mgr._lastOverviewHoverId = newId;
+    };
+    mgr._desktop.addEventListener("mouseover", mgr._overviewMouseHandler);
+    window.setTimeout(() => {
+      if (mgr._overviewActive) {
+        doAction(HOOKS.OVERVIEW_ENTERED, {});
+      }
+    }, 300);
+  }
+  function buildOverviewTopBar(mgr) {
+    const bar = document.createElement("div");
+    bar.className = "desktop-mode-overview-top-bar";
+    const list2 = document.createElement("div");
+    list2.className = "desktop-mode-overview-top-bar__list";
+    bar.appendChild(list2);
+    for (const d of mgr._desktops) {
+      list2.appendChild(buildDesktopTile(mgr, d));
+    }
+    const addTile = document.createElement("button");
+    addTile.type = "button";
+    addTile.className = "desktop-mode-overview-top-bar__tile desktop-mode-overview-top-bar__tile--add";
+    if (mgr._overviewAddTileFocused) {
+      addTile.classList.add(
+        "desktop-mode-overview-top-bar__tile--cursor"
+      );
+    }
+    addTile.setAttribute("aria-label", __("Add new desktop"));
+    addTile.innerHTML = '<span class="desktop-mode-overview-top-bar__tile-plus" aria-hidden="true">+</span>';
+    addTile.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      commitAddTile(mgr);
+    });
+    list2.appendChild(addTile);
+    return bar;
+  }
+  function commitAddTile(mgr) {
+    const created = createDesktop(mgr);
+    mgr._overviewAddTileFocused = false;
+    exitOverviewToDesktop(mgr, created.id);
+  }
+  function buildDesktopTile(mgr, d) {
+    const tile2 = document.createElement("button");
+    tile2.type = "button";
+    tile2.className = "desktop-mode-overview-top-bar__tile";
+    tile2.dataset.desktopId = d.id;
+    if (d.id === mgr._activeDesktopId && !mgr._overviewAddTileFocused) {
+      tile2.classList.add("desktop-mode-overview-top-bar__tile--active");
+    }
+    tile2.setAttribute("aria-label", sprintf(__("Switch to %s"), d.label));
+    const preview = document.createElement("span");
+    preview.className = "desktop-mode-overview-top-bar__tile-preview";
+    const count = mgr._stack.filter(
+      (w) => w.config.desktopId === d.id
+    ).length;
+    if (count > 0) {
+      const badge = document.createElement("span");
+      badge.className = "desktop-mode-overview-top-bar__tile-count";
+      badge.textContent = String(count);
+      preview.appendChild(badge);
+    }
+    tile2.appendChild(preview);
+    const label = document.createElement("span");
+    label.className = "desktop-mode-overview-top-bar__tile-label";
+    label.textContent = d.label;
+    tile2.appendChild(label);
+    const closeBtn = document.createElement("span");
+    closeBtn.className = "desktop-mode-overview-top-bar__tile-close";
+    closeBtn.setAttribute("role", "button");
+    closeBtn.setAttribute("tabindex", "0");
+    closeBtn.setAttribute("aria-label", sprintf(__("Close %s"), d.label));
+    closeBtn.innerHTML = '<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    closeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeDesktop(mgr, d.id);
+      refreshOverviewTopBar(mgr);
+    });
+    tile2.appendChild(closeBtn);
+    tile2.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      exitOverviewToDesktop(mgr, d.id);
+    });
+    return tile2;
+  }
+  function refreshOverviewTopBar(mgr) {
+    if (!mgr._overviewTopBar) {
+      return;
+    }
+    const fresh = buildOverviewTopBar(mgr);
+    mgr._overviewTopBar.replaceWith(fresh);
+    mgr._overviewTopBar = fresh;
+  }
+  function exitOverviewToDesktop(mgr, desktopId) {
+    switchDesktop(mgr, desktopId);
+    exitOverview(mgr);
+  }
+  function createOverviewLabel(item) {
+    const label = document.createElement("div");
+    label.className = "desktop-mode-overview-label";
+    label.dataset.windowId = item.win.id;
+    const thumbW = item.win.element.offsetWidth * item.scale;
+    label.style.left = `${item.x}px`;
+    label.style.top = `${item.y - 34}px`;
+    label.style.width = `${thumbW}px`;
+    const iconClass = item.win.config.icon || "dashicons-admin-generic";
+    const icon = document.createElement("span");
+    icon.className = `desktop-mode-overview-label__icon dashicons ${iconClass}`;
+    icon.setAttribute("aria-hidden", "true");
+    label.appendChild(icon);
+    const title = document.createElement("span");
+    title.className = "desktop-mode-overview-label__title";
+    title.textContent = item.win.config.title;
+    label.appendChild(title);
+    const tabCount = item.win.getExternalTabCount();
+    if (tabCount > 0) {
+      const meta = document.createElement("span");
+      meta.className = "desktop-mode-overview-label__meta";
+      meta.textContent = sprintf(
+        // translators: %d is the number of external sub-tabs open on this window.
+        _n("· %d open tab", "· %d open tabs", tabCount),
+        tabCount
+      );
+      label.appendChild(meta);
+    }
+    return label;
+  }
+  function exitOverview(mgr, selected, maximize = false) {
+    if (!mgr._overviewActive) {
+      return;
+    }
+    mgr._overviewActive = false;
+    mgr._overviewAddTileFocused = false;
+    doAction(HOOKS.OVERVIEW_EXITING, {
+      windowId: selected && maximize ? selected.id : void 0,
+      reason: selected && maximize ? "select" : "cancel"
+    });
+    mgr._desktop.classList.remove("desktop-mode-area--overview");
+    const shell = document.getElementById("desktop-mode-shell");
+    shell?.classList.remove("desktop-mode-shell--overview");
+    for (const [id, snap] of mgr._overviewSnapshot) {
+      const w = mgr.getById(id);
+      if (!w) {
+        continue;
+      }
+      w.element.style.transform = snap.transform;
+    }
+    if (selected && maximize) {
+      mgr.focus(selected);
+      selected.maximize();
+    }
+    for (const label of mgr._overviewLabels.values()) {
+      label.classList.add("desktop-mode-overview-label--out");
+    }
+    if (mgr._overviewTopBar) {
+      mgr._overviewTopBar.classList.add(
+        "desktop-mode-overview-top-bar--out"
+      );
+    }
+    const ANIMATION_MS = 280;
+    window.setTimeout(() => {
+      for (const w of mgr._stack) {
+        w.element.classList.remove("desktop-mode-window--overview");
+      }
+      for (const label of mgr._overviewLabels.values()) {
+        label.remove();
+      }
+      mgr._overviewLabels.clear();
+      mgr._overviewSnapshot.clear();
+      if (mgr._overviewTopBar) {
+        mgr._overviewTopBar.remove();
+        mgr._overviewTopBar = null;
+      }
+      if (mgr._overviewClickBlocker) {
+        mgr._desktop.removeEventListener(
+          "click",
+          mgr._overviewClickBlocker,
+          true
+        );
+        mgr._overviewClickBlocker = null;
+      }
+      doAction(HOOKS.OVERVIEW_EXITED, {
+        windowId: selected && maximize ? selected.id : void 0,
+        reason: selected && maximize ? "select" : "cancel"
+      });
+    }, ANIMATION_MS);
+    if (mgr._overviewPointerDownHandler) {
+      mgr._desktop.removeEventListener(
+        "pointerdown",
+        mgr._overviewPointerDownHandler,
+        true
+      );
+      mgr._overviewPointerDownHandler = null;
+    }
+    if (mgr._overviewPointerUpHandler) {
+      mgr._desktop.removeEventListener(
+        "pointerup",
+        mgr._overviewPointerUpHandler,
+        true
+      );
+      mgr._overviewPointerUpHandler = null;
+    }
+    mgr._overviewPressTarget = null;
+    if (mgr._overviewKeyHandler) {
+      document.removeEventListener("keydown", mgr._overviewKeyHandler);
+      mgr._overviewKeyHandler = null;
+    }
+    if (mgr._overviewMouseHandler) {
+      mgr._desktop.removeEventListener(
+        "mouseover",
+        mgr._overviewMouseHandler
+      );
+      mgr._overviewMouseHandler = null;
+    }
+    if (mgr._lastOverviewHoverId) {
+      doAction(HOOKS.OVERVIEW_WINDOW_UNHOVER, {
+        windowId: mgr._lastOverviewHoverId
+      });
+      mgr._lastOverviewHoverId = null;
+    }
+  }
+  function getDesktops(mgr) {
+    return [...mgr._desktops];
+  }
+  function getActiveDesktop(mgr) {
+    const found = mgr._desktops.find((d) => d.id === mgr._activeDesktopId);
+    return found ?? mgr._desktops[0];
+  }
+  function getActiveDesktopId(mgr) {
+    return getActiveDesktop(mgr).id;
+  }
+  function applyDesktopVisibility(mgr, win) {
+    const visible = win.config.desktopId === mgr._activeDesktopId;
+    win.element.style.display = visible ? "" : "none";
+  }
+  function refreshDesktopVisibility(mgr) {
+    for (const w of mgr._stack) {
+      applyDesktopVisibility(mgr, w);
+    }
+  }
+  function createDesktop(mgr) {
+    mgr._desktopSeq++;
+    const desktop = {
+      id: `desktop-${mgr._desktopSeq}`,
+      // translators: %d is the desktop number (e.g., "Desktop 2")
+      label: sprintf(__("Desktop %d"), mgr._desktopSeq)
+    };
+    mgr._desktops.push(desktop);
+    doAction(HOOKS.DESKTOP_CREATED, { desktopId: desktop.id });
+    return desktop;
+  }
+  function switchDesktop(mgr, id, opts) {
+    if (id === mgr._activeDesktopId) {
+      return;
+    }
+    if (!mgr._desktops.some((d) => d.id === id)) {
+      return;
+    }
+    const previousId = mgr._activeDesktopId;
+    mgr._activeDesktopId = id;
+    if (mgr._overviewActive) {
+      relayoutOverviewForActiveDesktop(mgr);
+      refreshOverviewTopBar(mgr);
+    } else {
+      refreshDesktopVisibility(mgr);
+      if (opts?.direction) {
+        animateDesktopSwitch(mgr, opts.direction);
+      }
+      const topOnNew = [...mgr._stack].reverse().find(
+        (w) => w.config.desktopId === id && w.state !== "minimized"
+      );
+      if (topOnNew) {
+        mgr.focus(topOnNew);
+      }
+    }
+    doAction(HOOKS.DESKTOP_SWITCHED, {
+      from: previousId,
+      to: id
+    });
+  }
+  function animateDesktopSwitch(mgr, direction) {
+    const el = mgr._desktop;
+    const cls = direction === "next" ? "desktop-mode-area--sliding-from-right" : "desktop-mode-area--sliding-from-left";
+    el.classList.remove(
+      "desktop-mode-area--sliding-from-right",
+      "desktop-mode-area--sliding-from-left"
+    );
+    void el.offsetWidth;
+    el.classList.add(cls);
+    const onEnd = (e) => {
+      if (!e.animationName.startsWith("desktop-mode-area-slide-from-")) {
+        return;
+      }
+      el.classList.remove(cls);
+      el.removeEventListener("animationend", onEnd);
+    };
+    el.addEventListener("animationend", onEnd);
+  }
+  function closeDesktop(mgr, id) {
+    if (mgr._desktops.length <= 1) {
+      return;
+    }
+    const idx = mgr._desktops.findIndex((d) => d.id === id);
+    if (idx === -1) {
+      return;
+    }
+    const survivorIdx = idx > 0 ? idx - 1 : 1;
+    const survivor = mgr._desktops[survivorIdx];
+    for (const w of mgr._stack) {
+      if (w.config.desktopId === id) {
+        w.config.desktopId = survivor.id;
+      }
+    }
+    mgr._desktops.splice(idx, 1);
+    const wasActive = mgr._activeDesktopId === id;
+    if (wasActive) {
+      mgr._activeDesktopId = survivor.id;
+    }
+    if (mgr._overviewActive) {
+      relayoutOverviewForActiveDesktop(mgr);
+    } else {
+      refreshDesktopVisibility(mgr);
+    }
+    doAction(HOOKS.DESKTOP_CLOSED, {
+      desktopId: id,
+      migratedTo: survivor.id
+    });
+  }
+  function relayoutOverviewForActiveDesktop(mgr) {
+    for (const [winId, snap] of mgr._overviewSnapshot) {
+      const w = mgr.getById(winId);
+      if (w) {
+        w.element.style.transform = snap.transform;
+        w.element.style.transition = snap.transition;
+        w.element.classList.remove("desktop-mode-window--overview");
+      }
+    }
+    for (const label of mgr._overviewLabels.values()) {
+      label.remove();
+    }
+    mgr._overviewLabels.clear();
+    mgr._overviewSnapshot.clear();
+    refreshDesktopVisibility(mgr);
+    const eligible = mgr._stack.filter(
+      (w) => w.state !== "minimized" && w.config.desktopId === mgr._activeDesktopId
+    );
+    if (eligible.length === 0) {
+      return;
+    }
+    for (const w of eligible) {
+      mgr._overviewSnapshot.set(w.id, {
+        transform: w.element.style.transform || "",
+        transition: w.element.style.transition || ""
+      });
+    }
+    const live = mgr._desktop.getBoundingClientRect();
+    const targetRect = new DOMRect(0, 0, live.width, live.height);
+    const layout = computeOverviewLayout(
+      eligible,
+      targetRect,
+      OVERVIEW_TOP_BAR_RESERVE
+    );
+    for (const item of layout) {
+      const el = item.win.element;
+      el.classList.add("desktop-mode-window--overview");
+      const dx = item.x - el.offsetLeft;
+      const dy = item.y - el.offsetTop;
+      el.style.transform = `translate(${dx}px, ${dy}px) scale(${item.scale})`;
+      const label = createOverviewLabel(item);
+      el.insertAdjacentElement("afterend", label);
+      mgr._overviewLabels.set(item.win.id, label);
+    }
+  }
+  function seedDesktops(mgr, desktops, activeDesktopId) {
+    if (desktops.length === 0) {
+      return;
+    }
+    mgr._desktops = desktops.map((d) => ({ ...d }));
+    mgr._activeDesktopId = desktops.some((d) => d.id === activeDesktopId) ? activeDesktopId : desktops[0].id;
+    let highest = 0;
+    for (const d of desktops) {
+      const match = d.id.match(/^desktop-(\d+)$/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (Number.isFinite(n) && n > highest) {
+          highest = n;
+        }
+      }
+    }
+    mgr._desktopSeq = Math.max(mgr._desktopSeq, highest);
+  }
+  function cascade(mgr) {
+    const eligible = mgr._stack.filter(
+      (w) => w.config.desktopId === mgr._activeDesktopId
+    );
+    if (eligible.length === 0) {
+      return;
+    }
+    doAction(HOOKS.ARRANGE_CASCADE_STARTING, {
+      windowCount: eligible.length
+    });
+    for (const w of eligible) {
+      if (w.state === "minimized") {
+        w.restore();
+      }
+      if (w.state === "fullscreen") {
+        w.toggleFullscreen();
+      }
+      if (w.state === "maximized") {
+        w.toggleMaximize();
+      }
+    }
+    const rect = mgr._desktop.getBoundingClientRect();
+    const padding = 30;
+    const offset = 30;
+    const targetWidth = Math.min(Math.round(rect.width * 0.7), 1100);
+    const targetHeight = Math.min(Math.round(rect.height * 0.75), 750);
+    const maxStepsX = Math.max(
+      1,
+      Math.floor((rect.width - targetWidth - padding) / offset)
+    );
+    const maxStepsY = Math.max(
+      1,
+      Math.floor((rect.height - targetHeight - padding) / offset)
+    );
+    const maxSteps = Math.min(maxStepsX, maxStepsY);
+    eligible.forEach((w, i) => {
+      const step = i % Math.max(1, maxSteps);
+      w.element.style.left = `${padding + step * offset}px`;
+      w.element.style.top = `${padding + step * offset}px`;
+      w.element.style.width = `${targetWidth}px`;
+      w.element.style.height = `${targetHeight}px`;
+    });
+    const focused = mgr.getFocused();
+    if (focused) {
+      mgr.focus(focused);
+    }
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-window-changed", {
+        detail: { reason: "cascade" }
+      })
+    );
+    doAction(HOOKS.ARRANGE_CASCADE_APPLIED, {
+      windowCount: eligible.length
+    });
+  }
+  function tile(mgr) {
+    const eligible = mgr._stack.filter(
+      (w) => w.config.desktopId === mgr._activeDesktopId
+    );
+    if (eligible.length === 0) {
+      return;
+    }
+    for (const w of eligible) {
+      if (w.state === "minimized") {
+        w.restore();
+      }
+      if (w.state === "fullscreen") {
+        w.toggleFullscreen();
+      }
+      if (w.state === "maximized") {
+        w.toggleMaximize();
+      }
+    }
+    const rect = mgr._desktop.getBoundingClientRect();
+    const auto = pickGridDimensions(
+      eligible.length,
+      rect.width,
+      rect.height
+    );
+    const filtered = applyFilters(
+      HOOKS.ARRANGE_TILE_DIMENSIONS,
+      auto,
+      {
+        windowCount: eligible.length,
+        areaWidth: rect.width,
+        areaHeight: rect.height
+      }
+    );
+    const { cols, rows } = isValidGrid(filtered, eligible.length) ? { cols: Math.floor(filtered.cols), rows: Math.floor(filtered.rows) } : auto;
+    doAction(HOOKS.ARRANGE_TILE_STARTING, {
+      windowCount: eligible.length,
+      cols,
+      rows
+    });
+    const padding = 16;
+    const gap = 12;
+    const cellWidth = Math.floor(
+      (rect.width - padding * 2 - gap * (cols - 1)) / cols
+    );
+    const cellHeight = Math.floor(
+      (rect.height - padding * 2 - gap * (rows - 1)) / rows
+    );
+    eligible.forEach((w, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      w.element.style.left = `${padding + col * (cellWidth + gap)}px`;
+      w.element.style.top = `${padding + row * (cellHeight + gap)}px`;
+      w.element.style.width = `${cellWidth}px`;
+      w.element.style.height = `${cellHeight}px`;
+    });
+    const focused = mgr.getFocused();
+    if (focused) {
+      mgr.focus(focused);
+    }
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-window-changed", {
+        detail: { reason: "tile" }
+      })
+    );
+    doAction(HOOKS.ARRANGE_TILE_APPLIED, {
+      windowCount: eligible.length,
+      cols,
+      rows
+    });
+  }
+  const SNAP_STORAGE_KEY = "desktop-mode-snap-to-grid";
+  function loadSnapEnabled() {
+    try {
+      return window.localStorage.getItem(SNAP_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+  function setSnapEnabled(mgr, enabled) {
+    if (mgr._snapEnabled === enabled) {
+      return;
+    }
+    mgr._snapEnabled = enabled;
+    try {
+      window.localStorage.setItem(SNAP_STORAGE_KEY, enabled ? "1" : "0");
+    } catch {
+    }
+    doAction(HOOKS.ARRANGE_SNAP_CHANGED, { enabled });
+  }
+  function getSnapConfig(mgr) {
+    if (!mgr._snapEnabled) {
+      return { enabled: false, cellWidth: 0, cellHeight: 0 };
+    }
+    const rect = mgr._desktop.getBoundingClientRect();
+    const targetCols = rect.width >= rect.height ? 12 : 8;
+    const auto = {
+      cellWidth: Math.max(40, Math.round(rect.width / targetCols)),
+      cellHeight: Math.max(
+        40,
+        Math.round(rect.height / Math.round(targetCols * 0.66))
+      )
+    };
+    const filtered = applyFilters(
+      HOOKS.ARRANGE_SNAP_CELL_SIZE,
+      auto,
+      { areaWidth: rect.width, areaHeight: rect.height }
+    );
+    const { cellWidth, cellHeight } = isValidCellSize(filtered) ? filtered : auto;
+    return { enabled: true, cellWidth, cellHeight };
+  }
+  function enterSplitOverview(mgr, anchor, zone) {
+    if (mgr._splitOverviewActive) {
+      return;
+    }
+    mgr._splitOverviewActive = true;
+    mgr._splitOverviewAnchor = anchor;
+    mgr._splitOverviewZone = zone;
+    const eligible = mgr._stack.filter(
+      (w) => w !== anchor && w.state !== "minimized" && w.config.desktopId === mgr._activeDesktopId
+    );
+    if (eligible.length === 0) {
+      cleanupSplitOverviewState(mgr);
+      return;
+    }
+    mgr._splitOverviewSnapshot.clear();
+    for (const w of eligible) {
+      mgr._splitOverviewSnapshot.set(w.id, {
+        transform: w.element.style.transform || "",
+        transition: w.element.style.transition || ""
+      });
+    }
+    mgr._desktop.classList.add("desktop-mode-area--split-overview");
+    const rect = oppositeHalfRect(mgr, zone);
+    const layout = computeOverviewLayout(eligible, rect, 0);
+    mgr._splitOverviewLabels.clear();
+    for (const item of layout) {
+      const el = item.win.element;
+      el.classList.add("desktop-mode-window--overview");
+      const dx = item.x - el.offsetLeft;
+      const dy = item.y - el.offsetTop;
+      el.style.transform = `translate(${dx}px, ${dy}px) scale(${item.scale})`;
+      const label = createOverviewLabel(item);
+      el.insertAdjacentElement("afterend", label);
+      mgr._splitOverviewLabels.set(item.win.id, label);
+    }
+    const pressTargetForEvent = (e) => {
+      const target = e.target;
+      const winEl = target?.closest(
+        ".desktop-mode-window--overview"
+      );
+      if (winEl) {
+        return {
+          id: winEl.id.replace(/^wp-window-/, ""),
+          element: winEl
+        };
+      }
+      if (target) {
+        return { id: "dismiss", element: mgr._desktop };
+      }
+      return null;
+    };
+    mgr._splitOverviewPointerDown = (e) => {
+      if (e.button !== 0) {
+        mgr._splitOverviewPressTarget = null;
+        return;
+      }
+      mgr._splitOverviewPressTarget = pressTargetForEvent(e);
+      if (mgr._splitOverviewPressTarget) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    mgr._splitOverviewPointerUp = (e) => {
+      if (e.button !== 0) {
+        return;
+      }
+      const pressed = mgr._splitOverviewPressTarget;
+      mgr._splitOverviewPressTarget = null;
+      if (!pressed) {
+        return;
+      }
+      const r = pressed.element.getBoundingClientRect();
+      const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (!inside) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (pressed.id === "dismiss") {
+        exitSplitOverview(mgr);
+        return;
+      }
+      const selected = mgr.getById(pressed.id);
+      if (!selected) {
+        exitSplitOverview(mgr);
+        return;
+      }
+      fillOppositeHalfAndExit(mgr, selected);
+    };
+    mgr._splitOverviewKey = (e) => {
+      if (e.key === "Escape") {
+        exitSplitOverview(mgr);
+      }
+    };
+    mgr._splitOverviewClickBlocker = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    mgr._desktop.addEventListener(
+      "pointerdown",
+      mgr._splitOverviewPointerDown,
+      true
+    );
+    mgr._desktop.addEventListener(
+      "pointerup",
+      mgr._splitOverviewPointerUp,
+      true
+    );
+    mgr._desktop.addEventListener(
+      "click",
+      mgr._splitOverviewClickBlocker,
+      true
+    );
+    document.addEventListener("keydown", mgr._splitOverviewKey);
+  }
+  function fillOppositeHalfAndExit(mgr, selected) {
+    const anchorZone = mgr._splitOverviewZone;
+    if (!anchorZone) {
+      exitSplitOverview(mgr);
+      return;
+    }
+    const partnerZone = anchorZone === "left" ? "right" : "left";
+    selected.element.style.transform = "";
+    selected.element.classList.remove("desktop-mode-window--overview");
+    selected.applySnap(partnerZone);
+    mgr._splitOverviewSnapshot.delete(selected.id);
+    mgr.focus(selected);
+    doAction(HOOKS.SNAP_SPLIT_FILLED, {
+      windowId: selected.id,
+      zone: partnerZone
+    });
+    exitSplitOverview(mgr);
+  }
+  function exitSplitOverview(mgr) {
+    if (!mgr._splitOverviewActive) {
+      return;
+    }
+    mgr._splitOverviewActive = false;
+    for (const [id, snap] of mgr._splitOverviewSnapshot) {
+      const w = mgr.getById(id);
+      if (!w) {
+        continue;
+      }
+      w.element.style.transform = snap.transform;
+    }
+    for (const label of mgr._splitOverviewLabels.values()) {
+      label.classList.add("desktop-mode-overview-label--out");
+    }
+    mgr._desktop.classList.remove("desktop-mode-area--split-overview");
+    const ANIMATION_MS = 260;
+    window.setTimeout(() => {
+      for (const w of mgr._stack) {
+        if (mgr._splitOverviewSnapshot.has(w.id)) {
+          w.element.classList.remove("desktop-mode-window--overview");
+        }
+      }
+      for (const label of mgr._splitOverviewLabels.values()) {
+        label.remove();
+      }
+      cleanupSplitOverviewState(mgr);
+    }, ANIMATION_MS);
+    if (mgr._splitOverviewPointerDown) {
+      mgr._desktop.removeEventListener(
+        "pointerdown",
+        mgr._splitOverviewPointerDown,
+        true
+      );
+      mgr._splitOverviewPointerDown = null;
+    }
+    if (mgr._splitOverviewPointerUp) {
+      mgr._desktop.removeEventListener(
+        "pointerup",
+        mgr._splitOverviewPointerUp,
+        true
+      );
+      mgr._splitOverviewPointerUp = null;
+    }
+    if (mgr._splitOverviewClickBlocker) {
+      mgr._desktop.removeEventListener(
+        "click",
+        mgr._splitOverviewClickBlocker,
+        true
+      );
+      mgr._splitOverviewClickBlocker = null;
+    }
+    if (mgr._splitOverviewKey) {
+      document.removeEventListener("keydown", mgr._splitOverviewKey);
+      mgr._splitOverviewKey = null;
+    }
+    mgr._splitOverviewPressTarget = null;
+  }
+  function cleanupSplitOverviewState(mgr) {
+    mgr._splitOverviewSnapshot.clear();
+    mgr._splitOverviewLabels.clear();
+    mgr._splitOverviewAnchor = null;
+    mgr._splitOverviewZone = null;
+    mgr._splitOverviewActive = false;
+  }
+  const SNAP_EDGE_THRESHOLD = 30;
+  const SNAP_COMMIT_MS = 260;
+  function detectSnapZone(clientX, desktopRect) {
+    if (clientX <= desktopRect.left + SNAP_EDGE_THRESHOLD) {
+      return "left";
+    }
+    if (clientX >= desktopRect.right - SNAP_EDGE_THRESHOLD) {
+      return "right";
+    }
+    return null;
+  }
+  function snapZoneBounds(mgr, zone) {
+    const rect = mgr._desktop.getBoundingClientRect();
+    const halfW = Math.floor(rect.width / 2);
+    const height = Math.floor(rect.height);
+    return {
+      x: zone === "left" ? 0 : rect.width - halfW,
+      y: 0,
+      width: halfW,
+      height
+    };
+  }
+  function oppositeHalfRect(mgr, zone) {
+    const rect = mgr._desktop.getBoundingClientRect();
+    const halfW = Math.floor(rect.width / 2);
+    const height = Math.floor(rect.height);
+    if (zone === "left") {
+      return new DOMRect(halfW, 0, halfW, height);
+    }
+    return new DOMRect(0, 0, halfW, height);
+  }
+  function showSnapPreview(mgr, zone) {
+    if (mgr._snapPendingZone === zone && mgr._snapPreviewEl) {
+      return;
+    }
+    mgr._snapPendingZone = zone;
+    if (!mgr._snapPreviewEl) {
+      const el = document.createElement("div");
+      el.className = "desktop-mode-snap-preview";
+      el.setAttribute("aria-hidden", "true");
+      mgr._desktop.appendChild(el);
+      mgr._snapPreviewEl = el;
+      Promise.resolve().then(() => {
+        el.classList.add("desktop-mode-snap-preview--visible");
+      });
+    }
+    const b = snapZoneBounds(mgr, zone);
+    mgr._snapPreviewEl.style.left = `${b.x}px`;
+    mgr._snapPreviewEl.style.top = `${b.y}px`;
+    mgr._snapPreviewEl.style.width = `${b.width}px`;
+    mgr._snapPreviewEl.style.height = `${b.height}px`;
+    mgr._snapPreviewEl.dataset.zone = zone;
+  }
+  function hideSnapPreview(mgr) {
+    if (!mgr._snapPreviewEl) {
+      mgr._snapPendingZone = null;
+      return;
+    }
+    const el = mgr._snapPreviewEl;
+    mgr._snapPreviewEl = null;
+    mgr._snapPendingZone = null;
+    el.classList.remove("desktop-mode-snap-preview--visible");
+    window.setTimeout(() => {
+      el.remove();
+    }, SNAP_COMMIT_MS);
+  }
+  function updateSnapZoneForDrag(mgr, win, clientX) {
+    if (mgr._splitOverviewActive) {
+      return;
+    }
+    const rect = mgr._desktop.getBoundingClientRect();
+    const zone = detectSnapZone(clientX, rect);
+    const previous = mgr._snapPendingZone;
+    if (zone) {
+      showSnapPreview(mgr, zone);
+      if (previous !== zone) {
+        doAction(HOOKS.SNAP_ZONE_PENDING, {
+          windowId: win.id,
+          zone
+        });
+      }
+    } else if (previous) {
+      hideSnapPreview(mgr);
+      doAction(HOOKS.SNAP_ZONE_CANCELED, { windowId: win.id });
+    }
+  }
+  function commitSnapIfPending(mgr, win) {
+    const zone = mgr._snapPendingZone;
+    if (!zone) {
+      return false;
+    }
+    hideSnapPreview(mgr);
+    if (win.state === "normal") {
+      win._savedGeometry = {
+        x: win.element.offsetLeft,
+        y: win.element.offsetTop,
+        width: win.element.offsetWidth,
+        height: win.element.offsetHeight
+      };
+    }
+    win.applySnap(zone);
+    doAction(HOOKS.SNAP_ZONE_COMMITTED, {
+      windowId: win.id,
+      zone
+    });
+    window.requestAnimationFrame(() => {
+      enterSplitOverview(mgr, win, zone);
+    });
+    return true;
+  }
+  function abortSnapIfPending(mgr) {
+    if (mgr._snapPendingZone) {
+      hideSnapPreview(mgr);
+    }
+  }
+  const NATIVE_GEOMETRY_STORAGE_KEY = "desktop-mode-native-window-geometry";
+  const MAX_ENTRIES = 64;
+  const MAX_DIMENSION = 8192;
+  function readMap$1() {
+    try {
+      const raw = window.localStorage.getItem(NATIVE_GEOMETRY_STORAGE_KEY);
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return {};
+      }
+      return parsed;
+    } catch {
+      return {};
+    }
+  }
+  function writeMap$1(map) {
+    try {
+      window.localStorage.setItem(
+        NATIVE_GEOMETRY_STORAGE_KEY,
+        JSON.stringify(map)
+      );
+    } catch {
+    }
+  }
+  function loadNativeWindowGeometry(baseId) {
+    if (!baseId) {
+      return null;
+    }
+    const map = readMap$1();
+    const entry = map[baseId];
+    if (!entry) {
+      return null;
+    }
+    const width = Number(entry.width);
+    const height = Number(entry.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > MAX_DIMENSION || height > MAX_DIMENSION) {
+      return null;
+    }
+    const state2 = entry.state === "maximized" ? "maximized" : void 0;
+    const x = Number(entry.x);
+    const y = Number(entry.y);
+    const hasPosition = Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x <= MAX_DIMENSION && y <= MAX_DIMENSION;
+    return {
+      width: Math.round(width),
+      height: Math.round(height),
+      ...hasPosition ? { x: Math.round(x), y: Math.round(y) } : {},
+      ...state2 ? { state: state2 } : {}
+    };
+  }
+  function saveNativeWindowGeometry(baseId, geometry) {
+    if (!baseId) {
+      return;
+    }
+    const width = Math.round(Number(geometry.width));
+    const height = Math.round(Number(geometry.height));
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > MAX_DIMENSION || height > MAX_DIMENSION) {
+      return;
+    }
+    const map = readMap$1();
+    const prev = map[baseId];
+    const state2 = prev && prev.state === "maximized" ? "maximized" : void 0;
+    const carriedX = typeof prev?.x === "number" ? prev.x : void 0;
+    const carriedY = typeof prev?.y === "number" ? prev.y : void 0;
+    if (prev && prev.width === width && prev.height === height && prev.state === state2 && prev.x === carriedX && prev.y === carriedY) {
+      return;
+    }
+    upsertEntry(map, baseId, {
+      width,
+      height,
+      ...typeof carriedX === "number" && typeof carriedY === "number" ? { x: carriedX, y: carriedY } : {},
+      ...state2 ? { state: state2 } : {}
+    });
+    writeMapTrimmed(map);
+  }
+  function saveNativeWindowPosition(baseId, position) {
+    if (!baseId) {
+      return;
+    }
+    const x = Math.round(Number(position.x));
+    const y = Math.round(Number(position.y));
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > MAX_DIMENSION || y > MAX_DIMENSION) {
+      return;
+    }
+    const map = readMap$1();
+    const prev = map[baseId];
+    if (!prev) {
+      return;
+    }
+    if (prev.x === x && prev.y === y) {
+      return;
+    }
+    upsertEntry(map, baseId, {
+      ...prev,
+      x,
+      y
+    });
+    writeMapTrimmed(map);
+  }
+  function setNativeWindowSavedState(baseId, state2, defaults) {
+    if (!baseId) {
+      return;
+    }
+    const map = readMap$1();
+    const prev = map[baseId];
+    if (!prev) {
+      if (state2 === null || !defaults) {
+        return;
+      }
+      const width = Math.round(Number(defaults.width));
+      const height = Math.round(Number(defaults.height));
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        return;
+      }
+      upsertEntry(map, baseId, { width, height, state: state2 });
+      writeMapTrimmed(map);
+      return;
+    }
+    if (state2 === null) {
+      if (!prev.state) {
+        return;
+      }
+      const { state: _state2, ...rest } = prev;
+      upsertEntry(map, baseId, rest);
+      writeMapTrimmed(map);
+      return;
+    }
+    if (prev.state === state2) {
+      return;
+    }
+    upsertEntry(map, baseId, {
+      ...prev,
+      state: state2
+    });
+    writeMapTrimmed(map);
+  }
+  function upsertEntry(map, baseId, entry) {
+    delete map[baseId];
+    map[baseId] = entry;
+  }
+  function writeMapTrimmed(map) {
+    const keys = Object.keys(map);
+    if (keys.length > MAX_ENTRIES) {
+      const trimmed = {};
+      for (const key of keys.slice(-MAX_ENTRIES)) {
+        trimmed[key] = map[key];
+      }
+      writeMap$1(trimmed);
+      return;
+    }
+    writeMap$1(map);
+  }
+  const BASE_Z_INDEX = 100;
+  const CASCADE_OFFSET = 30;
+  class WindowManager {
+    constructor(desktop) {
+      this._stack = [];
+      this.cascadeIndex = 0;
+      this._desktops = [
+        // translators: default desktop name — "Desktop 1"
+        { id: "desktop-1", label: "Desktop 1" }
+      ];
+      this._activeDesktopId = "desktop-1";
+      this._desktopSeq = 1;
+      this.onToggleStartupRequested = null;
+      this.desktopResizeObserver = null;
+      this._reflowRestoreTimer = null;
+      this._snapEnabled = loadSnapEnabled();
+      this._overviewActive = false;
+      this._overviewSnapshot = /* @__PURE__ */ new Map();
+      this._overviewLabels = /* @__PURE__ */ new Map();
+      this._overviewPointerDownHandler = null;
+      this._overviewPointerUpHandler = null;
+      this._overviewKeyHandler = null;
+      this._overviewPressTarget = null;
+      this._overviewClickBlocker = null;
+      this._overviewTopBar = null;
+      this._overviewMouseHandler = null;
+      this._lastOverviewHoverId = null;
+      this._overviewAddTileFocused = false;
+      this._snapPendingZone = null;
+      this._snapPreviewEl = null;
+      this._splitOverviewActive = false;
+      this._splitOverviewAnchor = null;
+      this._splitOverviewZone = null;
+      this._splitOverviewSnapshot = /* @__PURE__ */ new Map();
+      this._splitOverviewLabels = /* @__PURE__ */ new Map();
+      this._splitOverviewPointerDown = null;
+      this._splitOverviewPointerUp = null;
+      this._splitOverviewPressTarget = null;
+      this._splitOverviewClickBlocker = null;
+      this._splitOverviewKey = null;
+      this._desktop = desktop;
+      if (typeof ResizeObserver !== "undefined") {
+        this.desktopResizeObserver = new ResizeObserver(
+          () => this.reflowStatefulWindows()
+        );
+        this.desktopResizeObserver.observe(desktop);
+      }
+      this.installIframeFocusBridge();
+    }
+    /**
+     * Clicks inside an iframe don't cross the browsing-context
+     * boundary — pointerdown / focusin in the iframe's document never
+     * reach the parent. BUT the parent `window` does lose focus,
+     * because focus moves to the iframe's content window.
+     *
+     * We use that signal: listen for `window.blur` on the parent,
+     * check `document.activeElement` — if it's an iframe, walk up to
+     * its owning `.desktop-mode-window`, find the matching Window in
+     * our stack, and focus it. Covers clicks on the primary iframe
+     * AND any external-tab sub-iframes mounted as descendants of the
+     * window element.
+     */
+    installIframeFocusBridge() {
+      window.addEventListener("blur", () => {
+        window.setTimeout(() => {
+          const active2 = this._desktop.ownerDocument?.activeElement ?? null;
+          if (!active2 || active2.tagName !== "IFRAME") {
+            return;
+          }
+          const winEl = active2.closest(
+            ".desktop-mode-window"
+          );
+          if (!winEl) {
+            return;
+          }
+          const id = winEl.id.replace(/^wp-window-/, "");
+          const win = this.getById(id);
+          if (!win) {
+            return;
+          }
+          if (this._overviewActive) {
+            return;
+          }
+          if (this.getFocused() === win) {
+            return;
+          }
+          this.focus(win);
+        }, 0);
+      });
+    }
+    /**
+     * Re-apply state-driven bounds to any window whose geometry is
+     * derived from the desktop area's dimensions: maximized (full
+     * area) and snapped-left / snapped-right (half area). Called from
+     * the desktop-area ResizeObserver so shrinking the browser window
+     * drags the stateful windows along with it.
+     *
+     * Inlines the geometry writes instead of calling `applySnap` —
+     * that method emits `_emitChange('state')` which would spam the
+     * session saver on every resize tick. Viewport resize is an
+     * INCOMING shape change (the shell reshaped us), not an outgoing
+     * user action worth persisting.
+     *
+     * Also toggles `desktop-mode-window--reflowing` so the base
+     * left/top/width/height transition doesn't interpolate between
+     * every ResizeObserver tick — without that, the windows would
+     * always lag ~250 ms behind a browser edge-drag.
+     *
+     * Skipped while overview is active — windows are mid-transform
+     * and touching their inline geometry would desync the live
+     * transform math; overview exit re-applies state correctly via
+     * its own path.
+     */
+    reflowStatefulWindows() {
+      if (this._overviewActive) {
+        return;
+      }
+      for (const w of this._stack) {
+        const parent = w.element.parentElement;
+        if (!parent) {
+          continue;
+        }
+        if (w.state === "maximized") {
+          w.element.classList.add("desktop-mode-window--reflowing");
+          w.element.style.width = `${parent.clientWidth}px`;
+          w.element.style.height = `${parent.clientHeight}px`;
+        } else if (w.state === "snapped-left" || w.state === "snapped-right") {
+          w.element.classList.add("desktop-mode-window--reflowing");
+          const halfW = Math.floor(parent.clientWidth / 2);
+          const height = parent.clientHeight;
+          const left = w.state === "snapped-left" ? 0 : halfW;
+          w.element.style.left = `${left}px`;
+          w.element.style.top = "0px";
+          w.element.style.width = `${halfW}px`;
+          w.element.style.height = `${height}px`;
+        }
+      }
+      if (this._reflowRestoreTimer !== null) {
+        window.clearTimeout(this._reflowRestoreTimer);
+      }
+      this._reflowRestoreTimer = window.setTimeout(() => {
+        this._reflowRestoreTimer = null;
+        for (const w of this._stack) {
+          w.element.classList.remove("desktop-mode-window--reflowing");
+        }
+      }, 140);
+    }
+    /**
+     * Open a new window — or focus an existing one — for the given
+     * page.
+     *
+     * Matches any existing window sharing the same `baseId`
+     * (defaulting to the config's `id`). For singleton pages
+     * (Settings, Dashboard, …) `baseId === id`, so this behaves
+     * exactly like strict id matching. For multi pages, clicking the
+     * dock icon while a window is already open focuses the
+     * most-recent instance rather than creating a twin.
+     *
+     * To force a brand-new instance alongside an existing one, use
+     * {@link openNew}.
+     */
+    async open(config) {
+      if (!config || typeof config !== "object") {
+        throw new TypeError(
+          "windowManager.open() requires a config object with at least { id, url, title }; received " + (config === null ? "null" : typeof config)
+        );
+      }
+      if (typeof config.id !== "string" || config.id === "") {
+        throw new TypeError(
+          "windowManager.open(): config.id must be a non-empty string."
+        );
+      }
+      if (typeof config.url !== "string" || config.url === "") {
+        throw new TypeError(
+          'windowManager.open(): config.url must be a non-empty string. Pass an admin URL (e.g. "/wp-admin/edit.php") or a hash fragment (e.g. "#my-window") for native windows.'
+        );
+      }
+      if (typeof config.title !== "string") {
+        throw new TypeError(
+          "windowManager.open(): config.title must be a string."
+        );
+      }
+      const baseId = config.baseId || config.id;
+      const existing = this.getByBaseIdOnActiveDesktop(baseId);
+      if (existing) {
+        const wasMinimized = existing.state === "minimized";
+        this.focus(existing);
+        if (wasMinimized) {
+          existing.restore();
+        }
+        const reopenedDetail = {
+          windowId: existing.id,
+          baseId,
+          wasMinimized
+        };
+        document.dispatchEvent(
+          new CustomEvent("desktop-mode-window-reopened", { detail: reopenedDetail })
+        );
+        doAction(HOOKS.WINDOW_REOPENED, reopenedDetail);
+        return existing;
+      }
+      const id = this.getByBaseId(baseId) ? this.nextInstanceId(baseId) : config.id;
+      return this.createWindow({ ...config, id, baseId });
+    }
+    /**
+     * Open a brand-new window even if one is already open for this
+     * page. Only makes sense for pages flagged `multi`.
+     *
+     * Duplicates always open in the floating ('normal') state and at
+     * a fresh cascade slot — the per-baseId saved size / state /
+     * position preferences apply to the primary instance only.
+     * Spawning a maximized twin alongside the maximized primary
+     * would hide the primary; landing a twin on top of the primary's
+     * remembered position would hide it too. Callers can override
+     * either default by passing `initialState` / `x` / `y` explicitly.
+     */
+    async openNew(config) {
+      const baseId = config.baseId || config.id;
+      const nextId2 = this.nextInstanceId(baseId);
+      const cascadeX = 40 + this.cascadeIndex % 8 * CASCADE_OFFSET;
+      const cascadeY = 40 + this.cascadeIndex % 8 * CASCADE_OFFSET;
+      return this.createWindow({
+        initialState: "normal",
+        x: cascadeX,
+        y: cascadeY,
+        ...config,
+        id: nextId2,
+        baseId
+      });
+    }
+    /**
+     * Build and mount a window element. Common tail shared by
+     * `open()` and `openNew()`.
+     */
+    async createWindow(config) {
+      const desktopRect = this._desktop.getBoundingClientRect();
+      const defaultWidth = Math.min(Math.round(desktopRect.width * 0.8), 1200);
+      const defaultHeight = Math.min(Math.round(desktopRect.height * 0.8), 800);
+      const cascadeX = 40 + this.cascadeIndex % 8 * CASCADE_OFFSET;
+      const cascadeY = 40 + this.cascadeIndex % 8 * CASCADE_OFFSET;
+      const resolvedBaseId = config.baseId || config.id;
+      const minWidth = config.minWidth ?? 320;
+      const minHeight = config.minHeight ?? 200;
+      const hasExplicitWidth = typeof config.width === "number";
+      const hasExplicitHeight = typeof config.height === "number";
+      const hasExplicitX = typeof config.x === "number";
+      const hasExplicitY = typeof config.y === "number";
+      const hasExplicitState = typeof config.initialState === "string";
+      const saved = !hasExplicitWidth || !hasExplicitHeight || !hasExplicitState || !hasExplicitX || !hasExplicitY ? loadNativeWindowGeometry(resolvedBaseId) : null;
+      const resolvedWidth = config.width ?? (saved ? Math.max(saved.width, minWidth) : defaultWidth);
+      const resolvedHeight = config.height ?? (saved ? Math.max(saved.height, minHeight) : defaultHeight);
+      const resolvedState = config.initialState ?? (saved?.state === "maximized" ? "maximized" : void 0);
+      let clampedSavedX;
+      let clampedSavedY;
+      if (saved && typeof saved.x === "number" && typeof saved.y === "number") {
+        const margin = 12;
+        const maxX = Math.max(
+          0,
+          desktopRect.width - resolvedWidth - margin
+        );
+        const maxY = Math.max(
+          0,
+          desktopRect.height - resolvedHeight - margin
+        );
+        clampedSavedX = Math.max(margin, Math.min(saved.x, maxX));
+        clampedSavedY = Math.max(margin, Math.min(saved.y, maxY));
+      }
+      const resolvedX = config.x ?? clampedSavedX ?? cascadeX;
+      const resolvedY = config.y ?? clampedSavedY ?? cascadeY;
+      const callerPinned = hasExplicitWidth || hasExplicitHeight || hasExplicitX || hasExplicitY || hasExplicitState;
+      const hasSavedGeometry = !!saved;
+      const preFilterGeometry = {
+        x: resolvedX,
+        y: resolvedY,
+        width: resolvedWidth,
+        height: resolvedHeight,
+        state: resolvedState
+      };
+      let filtered;
+      try {
+        filtered = applyFilters(
+          HOOKS.WINDOW_GEOMETRY,
+          preFilterGeometry,
+          {
+            windowId: config.id,
+            baseId: resolvedBaseId,
+            hasSavedGeometry,
+            callerPinned,
+            desktopRect: {
+              width: desktopRect.width,
+              height: desktopRect.height
+            }
+          }
+        );
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "window-geometry-filter",
+          windowId: config.id,
+          error: err
+        });
+        if (typeof console !== "undefined") {
+          console.error(
+            `[desktop-mode] WINDOW_GEOMETRY filter threw for "${config.id}":`,
+            err
+          );
+        }
+        filtered = preFilterGeometry;
+      }
+      const coalesce = (v, fallback) => typeof v === "number" && Number.isFinite(v) ? v : fallback;
+      const safeFiltered = filtered && typeof filtered === "object" ? filtered : preFilterGeometry;
+      const finalWidth = Math.max(
+        coalesce(safeFiltered.width, resolvedWidth),
+        minWidth
+      );
+      const finalHeight = Math.max(
+        coalesce(safeFiltered.height, resolvedHeight),
+        minHeight
+      );
+      const finalX = coalesce(safeFiltered.x, resolvedX);
+      const finalY = coalesce(safeFiltered.y, resolvedY);
+      const finalState = safeFiltered.state ?? resolvedState;
+      const fullConfig = {
+        icon: config.icon || "dashicons-admin-generic",
+        ...config,
+        // Spread `config` first so callers can pass through any
+        // extras (render, ownerHandle, parentUrl, …), then pin the
+        // dimensions + state we resolved above. The pin has to
+        // follow the spread because an explicit `width: undefined`
+        // from the caller would otherwise blow away the default.
+        x: finalX,
+        y: finalY,
+        width: finalWidth,
+        height: finalHeight,
+        minWidth,
+        minHeight,
+        ...finalState ? { initialState: finalState } : {},
+        baseId: resolvedBaseId,
+        // New windows always join the active desktop. A caller can
+        // pre-seed `desktopId` (e.g. session restore) by passing it
+        // in `config`, which the spread above preserves.
+        desktopId: config.desktopId || this._activeDesktopId
+      };
+      this.cascadeIndex++;
+      const [system] = await Promise.all([
+        ensureWindowSystemLoaded(windowSystemBundleUrl()),
+        ensureShellOverlaysLoaded(shellOverlaysBundleUrl())
+      ]);
+      const win = system.createWindow(fullConfig);
+      win.onFocusRequest = (w) => this.focus(w);
+      win.onClose = (w) => this.remove(w);
+      win.onMinimize = () => {
+        const visible = this._stack.filter((w) => w.state !== "minimized");
+        if (visible.length > 0) {
+          this.focus(visible[visible.length - 1]);
+        }
+      };
+      win.onOpenAnother = (w) => {
+        const baseId = w.config.baseId || w.id;
+        if (w.config.native) {
+          const api = window.wp?.desktop;
+          if (api?.openNewWindow?.(baseId, { source: "open-another" })) {
+            return;
+          }
+        }
+        void this.openNew({
+          id: baseId,
+          baseId,
+          url: w.config.url || "",
+          title: w.config.title,
+          icon: w.config.icon,
+          submenu: w.config.submenu,
+          multi: true
+        });
+      };
+      win.onOpenInNewWindow = (w) => {
+        const baseId = w.config.baseId || w.id;
+        if (w.config.native) {
+          const api = window.wp?.desktop;
+          if (api?.openNewWindow?.(baseId, { source: "open-in-new-window" })) {
+            return;
+          }
+        }
+        const currentUrl = w.getCurrentUrl();
+        void this.openNew({
+          id: baseId,
+          baseId,
+          url: currentUrl || w.config.url || "",
+          title: w.config.title,
+          icon: w.config.icon,
+          submenu: w.config.submenu,
+          multi: true
+        });
+      };
+      win.onToggleStartup = (w) => {
+        this.onToggleStartupRequested?.(w);
+      };
+      win.snapConfigProvider = () => this.getSnapConfig();
+      win.onDragMove = (w, clientX) => {
+        updateSnapZoneForDrag(this, w, clientX);
+      };
+      win.onDragEnd = (w) => {
+        if (this._snapPendingZone) {
+          return commitSnapIfPending(this, w);
+        }
+        abortSnapIfPending(this);
+        return false;
+      };
+      this._stack.push(win);
+      this._desktop.appendChild(win.element);
+      applyDesktopVisibility(this, win);
+      win.hydrateNative();
+      this.focus(win);
+      const openedDetail = {
+        windowId: win.id,
+        page: config.url,
+        title: config.title,
+        url: config.url
+      };
+      document.dispatchEvent(
+        new CustomEvent("desktop-mode-window-opened", { detail: openedDetail })
+      );
+      doAction(HOOKS.WINDOW_OPENED, openedDetail);
+      return win;
+    }
+    /**
+     * Find the next unused suffixed id for a given baseId. Prefers
+     * the bare baseId itself if free (user closed the original), then
+     * walks `-2`, `-3`, … until it lands on one not currently in the
+     * stack.
+     */
+    nextInstanceId(baseId) {
+      const taken = new Set(this._stack.map((w) => w.id));
+      if (!taken.has(baseId)) {
+        return baseId;
+      }
+      let n = 2;
+      while (taken.has(`${baseId}-${n}`)) {
+        n++;
+      }
+      return `${baseId}-${n}`;
+    }
+    /** Focus a window: bring it to top of z-stack. */
+    focus(win) {
+      const previouslyFocused = this._stack.length > 0 ? this._stack[this._stack.length - 1] : null;
+      const priorFullscreen = this._stack.find(
+        (w) => w !== win && w.isFocused() && w.isFullscreen()
+      );
+      if (priorFullscreen) {
+        const shouldExit = applyFilters(
+          HOOKS.WINDOW_AUTO_EXIT_FULLSCREEN,
+          true,
+          { windowId: priorFullscreen.id, focusedTo: win.id }
+        );
+        if (shouldExit) {
+          priorFullscreen.toggleFullscreen();
+        }
+      }
+      const idx = this._stack.indexOf(win);
+      if (idx > -1) {
+        this._stack.splice(idx, 1);
+      }
+      this._stack.push(win);
+      this._stack.forEach((w, i) => {
+        w.setZIndex(BASE_Z_INDEX + i);
+        w.setFocused(i === this._stack.length - 1);
+      });
+      if (previouslyFocused && previouslyFocused !== win && previouslyFocused.id !== win.id) {
+        const blurredDetail = {
+          windowId: previouslyFocused.id,
+          focusedTo: win.id
+        };
+        document.dispatchEvent(
+          new CustomEvent("desktop-mode-window-blurred", { detail: blurredDetail })
+        );
+        doAction(HOOKS.WINDOW_BLURRED, blurredDetail);
+      }
+      const focusedDetail = { windowId: win.id };
+      document.dispatchEvent(
+        new CustomEvent("desktop-mode-window-focused", { detail: focusedDetail })
+      );
+      doAction(HOOKS.WINDOW_FOCUSED, focusedDetail);
+    }
+    /** Remove a window from the stack and DOM. */
+    remove(win) {
+      const idx = this._stack.indexOf(win);
+      if (idx > -1) {
+        this._stack.splice(idx, 1);
+      }
+      if (this._stack.length > 0) {
+        this.focus(this._stack[this._stack.length - 1]);
+      }
+      const closingDetail = { windowId: win.id, element: win.element };
+      document.dispatchEvent(
+        new CustomEvent("desktop-mode-window-closing", { detail: closingDetail })
+      );
+      doAction(HOOKS.WINDOW_CLOSING, closingDetail);
+      const closedDetail = { windowId: win.id };
+      document.dispatchEvent(
+        new CustomEvent("desktop-mode-window-closed", { detail: closedDetail })
+      );
+      doAction(HOOKS.WINDOW_CLOSED, closedDetail);
+    }
+    /** Get a window by its ID. */
+    getById(id) {
+      return this._stack.find((w) => w.id === id);
+    }
+    /**
+     * Get the most-recently-focused window for a given baseId.
+     *
+     * Multi-instance windows share a baseId; the stack is ordered
+     * bottom to top by focus, so iterating from the end finds the
+     * best candidate to bring forward when the user re-clicks the
+     * dock icon.
+     */
+    getByBaseId(baseId) {
+      for (let i = this._stack.length - 1; i >= 0; i--) {
+        const w = this._stack[i];
+        if ((w.config.baseId || w.id) === baseId) {
+          return w;
+        }
+      }
+      return void 0;
+    }
+    /**
+     * Like {@link getByBaseId} but only considers windows on the
+     * currently-active virtual desktop. The dock's "open or focus"
+     * path uses this — a Plugins instance that lives on Desktop 2 is
+     * invisible from Desktop 1's dock click, so clicking Plugins on
+     * Desktop 1 should open a fresh instance there instead of trying
+     * to focus the far-off sibling (which would silently do nothing
+     * because the other desktop's windows are display: none here).
+     */
+    getByBaseIdOnActiveDesktop(baseId) {
+      for (let i = this._stack.length - 1; i >= 0; i--) {
+        const w = this._stack[i];
+        if ((w.config.baseId || w.id) !== baseId) {
+          continue;
+        }
+        const winDesktop = w.config.desktopId || this._activeDesktopId;
+        if (winDesktop === this._activeDesktopId) {
+          return w;
+        }
+      }
+      return void 0;
+    }
+    /**
+     * Get every open window sharing the given baseId, ordered by
+     * instance slot (bare baseId first, then `-2`, `-3`, …) rather
+     * than z-order — so the dock's instance rail keeps a stable
+     * left-to-right order even as the user focuses between windows.
+     */
+    getAllByBaseId(baseId) {
+      const instanceSlot = (id) => {
+        if (id === baseId) {
+          return 1;
+        }
+        const prefix = `${baseId}-`;
+        if (id.startsWith(prefix)) {
+          const n = parseInt(id.slice(prefix.length), 10);
+          return Number.isFinite(n) ? n : 999;
+        }
+        return 999;
+      };
+      return this._stack.filter((w) => (w.config.baseId || w.id) === baseId).sort((a, b) => instanceSlot(a.id) - instanceSlot(b.id));
+    }
+    /** Get all open windows. */
+    getAll() {
+      return [...this._stack];
+    }
+    /**
+     * Find the window whose iframe's contentWindow matches the given
+     * message source. Used by cross-frame bridges to attribute inbound
+     * `postMessage` events to the originating window without reaching
+     * into `_stack`.
+     */
+    findByIframeSource(source) {
+      if (!source) {
+        return void 0;
+      }
+      return this._stack.find(
+        (w) => w.iframe !== null && w.iframe.contentWindow === source
+      );
+    }
+    /** Get the currently focused (topmost) window. */
+    getFocused() {
+      return this._stack.length > 0 ? this._stack[this._stack.length - 1] : void 0;
+    }
+    /**
+     * "Is the window with this id currently in front of the user?"
+     *
+     * Returns true when the window exists in the manager AND it
+     * isn't minimized AND it's the currently focused (topmost)
+     * window. False otherwise — including for unknown ids, closed
+     * windows, minimized windows, or windows that exist but aren't
+     * on top.
+     *
+     * The canonical query for plugins implementing the "show
+     * something *only when the user can't already see my
+     * window*" pattern (badge counts, attention pulses, sounds,
+     * toasts). Plugins that previously hand-rolled
+     * `getById(id) && state !== 'minimized' && focused` can
+     * collapse to this.
+     *
+     * @since 0.5.5
+     *
+     * @param id Window id to query.
+     * @return True when the user is actively looking at this window.
+     */
+    isActive(id) {
+      const win = this.getById(id);
+      if (!win) {
+        return false;
+      }
+      if (win.state === "minimized") {
+        return false;
+      }
+      const focused = this.getFocused();
+      return !!focused && focused.id === id;
+    }
+    // ---- Virtual desktop delegations ----
+    getDesktops() {
+      return getDesktops(this);
+    }
+    getActiveDesktop() {
+      return getActiveDesktop(this);
+    }
+    getActiveDesktopId() {
+      return getActiveDesktopId(this);
+    }
+    createDesktop() {
+      return createDesktop(this);
+    }
+    switchDesktop(id, opts) {
+      switchDesktop(this, id, opts);
+    }
+    closeDesktop(id) {
+      closeDesktop(this, id);
+    }
+    /**
+     * Returns the "primary" desktop id — the one new sessions land on
+     * and that batch operations like {@link closeAll} treat as the
+     * survivor when an `onlyOnPrimary` mode is requested.
+     *
+     * Default: the first desktop in `getDesktops()`. Filterable via
+     * `desktop-mode.primary-desktop-id` so downstream code that wants a
+     * different convention (e.g. a pinned "Inbox" desktop) can override
+     * without having to fork the manager.
+     *
+     * @since 0.14.0
+     */
+    getPrimaryDesktopId() {
+      const all2 = this.getDesktops();
+      const fallback = all2.length > 0 ? all2[0].id : "desktop-1";
+      const filtered = applyFilters(
+        HOOKS.PRIMARY_DESKTOP_ID,
+        fallback,
+        all2
+      );
+      if (typeof filtered !== "string" || filtered === "") {
+        return fallback;
+      }
+      const exists = all2.some((d) => d.id === filtered);
+      return exists ? filtered : fallback;
+    }
+    /**
+     * Close every open window in batch.
+     *
+     * Hook chain:
+     *
+     *   1. `desktop-mode.windows.before-close-all` — action. Subscribers
+     *      can prepare for the wipe (cancel pending saves, dismiss
+     *      menus, etc.). Detail: `{ candidates: Window[] }`.
+     *
+     *   2. `desktop-mode.windows.close-all` — filter. Receives the
+     *      candidate Window list and returns the (possibly smaller) list
+     *      that will actually be closed. Plugins use this to PROTECT
+     *      specific windows — e.g. keep a draft post window open during
+     *      a "Close all" operation. Returning an empty array cancels
+     *      the close entirely.
+     *
+     *   3. Each surviving window's `close()` is called.
+     *
+     *   4. `desktop-mode.windows.after-close-all` — action. Detail:
+     *      `{ closed: number, skipped: Window[] }`.
+     *
+     * @since 0.14.0
+     *
+     * @param options           Close options.
+     * @param options.exceptIds Window ids to skip even before the filter runs.
+     * @return Number of windows actually closed.
+     */
+    closeAll(options) {
+      const exceptSet = new Set(options?.exceptIds ?? []);
+      const initialCandidates = this._stack.filter(
+        (w) => !exceptSet.has(w.id)
+      );
+      doAction(HOOKS.WINDOWS_BEFORE_CLOSE_ALL, { candidates: initialCandidates });
+      const filtered = applyFilters(
+        HOOKS.WINDOWS_CLOSE_ALL,
+        initialCandidates
+      );
+      const finalList = Array.isArray(filtered) ? filtered : initialCandidates;
+      const skipped = initialCandidates.filter((w) => !finalList.includes(w));
+      let closed = 0;
+      for (const win of finalList.slice()) {
+        try {
+          win.close();
+          closed++;
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] closeAll: window.close() threw for",
+              win.id,
+              err
+            );
+          }
+        }
+      }
+      doAction(HOOKS.WINDOWS_AFTER_CLOSE_ALL, { closed, skipped });
+      return closed;
+    }
+    /**
+     * Minimize every currently-non-minimized window. Returns the
+     * exact set that was minimized — i.e., excludes windows already
+     * in the `'minimized'` state — so callers can pair the call with
+     * a later {@link restoreFrom} that touches only the windows
+     * they minimized.
+     *
+     * The "Show Desktop" gesture (clicking the wallpaper) routes
+     * through this method (and {@link restoreFrom} on the second
+     * click); plugin authors building expand/collapse UIs that
+     * mimic the gesture should use these primitives instead of
+     * rolling the loop themselves.
+     *
+     * @public
+     * @since 0.18.0
+     */
+    minimizeAll() {
+      const minimized = [];
+      for (const win of this._stack.slice()) {
+        if (win.state === "minimized") {
+          continue;
+        }
+        try {
+          win.minimize();
+          minimized.push(win);
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] minimizeAll: window.minimize() threw for",
+              win.id,
+              err
+            );
+          }
+        }
+      }
+      return minimized;
+    }
+    /**
+     * Restore the given window list — the symmetric counterpart to
+     * {@link minimizeAll}. Skips windows that have since been
+     * closed and windows the user manually un-minimized between
+     * the minimize and the restore.
+     *
+     * Pass the array {@link minimizeAll} returned to restore
+     * exactly what you minimized; pass any subset to restore
+     * selectively.
+     *
+     * @public
+     * @since 0.18.0
+     */
+    restoreFrom(windows) {
+      if (!Array.isArray(windows)) {
+        return;
+      }
+      const live = new Set(this._stack);
+      for (const win of windows) {
+        if (!live.has(win)) {
+          continue;
+        }
+        if (win.state !== "minimized") {
+          continue;
+        }
+        try {
+          win.restore();
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] restoreFrom: window.restore() threw for",
+              win.id,
+              err
+            );
+          }
+        }
+      }
+    }
+    /**
+     * Toggle the "Show Desktop" state — if every live window is
+     * already minimized, restore them all; otherwise minimize the
+     * non-minimized cohort. Returns `true` when the new state is
+     * "showing the desktop" (everything minimized after the call),
+     * `false` when windows have just been restored.
+     *
+     * Mirrors the wallpaper-click gesture exactly, in one call.
+     *
+     * @public
+     * @since 0.18.0
+     */
+    toggleShowDesktop() {
+      const all2 = this._stack.slice();
+      if (all2.length === 0) {
+        return false;
+      }
+      const allMinimized = all2.every((w) => w.state === "minimized");
+      if (allMinimized) {
+        for (const win of all2) {
+          try {
+            win.restore();
+          } catch {
+          }
+        }
+        return false;
+      }
+      this.minimizeAll();
+      return true;
+    }
+    // ---- Arrange + snap delegations ----
+    cascade() {
+      cascade(this);
+    }
+    tile() {
+      tile(this);
+    }
+    isSnapEnabled() {
+      return this._snapEnabled;
+    }
+    setSnapEnabled(enabled) {
+      setSnapEnabled(this, enabled);
+    }
+    getSnapConfig() {
+      return getSnapConfig(this);
+    }
+    // ---- Overview delegations ----
+    enterOverview() {
+      enterOverview(this);
+    }
+    exitOverview(selected, maximize = false) {
+      exitOverview(this, selected, maximize);
+    }
+    /**
+     * Snapshot every open window's current geometry + state.
+     *
+     * Returns a plain array of `{ windowId, rect, state, element }`
+     * entries — one per window in the stack, regardless of which
+     * virtual desktop owns it. Rect coordinates are in desktop-area
+     * space (the same coordinate space the windows themselves use
+     * inline-style left/top); `state` is the live `WindowState`, and
+     * `element` is the window's outer DOM node.
+     *
+     * Intended for wallpaper / overlay plugins that used to scrape
+     * `document.querySelectorAll('.desktop-mode-window')` + read the
+     * `--minimized` / `--maximized` modifier classes by name. The
+     * accessor decouples plugin code from the shell's CSS class
+     * naming, so a future refactor of modifier prefixes is not an
+     * ecosystem break.
+     *
+     * The array contains every window in the stack — callers filter
+     * on `state` if they want only "actually visible" (typically
+     * `state !== 'minimized'`). Minimized windows are included so
+     * plugins that care about the "will be restored to X geometry"
+     * case still have the data; filtering them out would be a
+     * subtraction the caller can do but the provider can't reverse.
+     *
+     * Order matches the internal z-stack: earliest-opened first,
+     * focused window last.
+     */
+    getVisibleRects() {
+      return this._stack.map((w) => {
+        const snap = w.getSnapshot();
+        return {
+          windowId: w.id,
+          rect: {
+            x: snap.x,
+            y: snap.y,
+            width: snap.width,
+            height: snap.height
+          },
+          state: snap.state,
+          element: w.element
+        };
+      });
+    }
+    /**
+     * Serialize the current window stack for session persistence.
+     *
+     * Order in the returned `windows` array mirrors z-order (earliest
+     * opened / lowest-z first, focused last) so restoring preserves
+     * the stacking the user left behind.
+     */
+    snapshot() {
+      const focused = this.getFocused();
+      const persistable = this._stack.filter((w) => !w.config.native);
+      const windows = persistable.map((w) => {
+        const snap = w.getSnapshot();
+        const externalTabs = w.getExternalTabsSnapshot();
+        return {
+          id: w.id,
+          baseId: w.config.baseId || w.id,
+          desktopId: w.config.desktopId || this._activeDesktopId,
+          url: w.getCurrentUrl(),
+          title: w.config.title,
+          icon: w.config.icon,
+          state: snap.state,
+          x: snap.x,
+          y: snap.y,
+          width: snap.width,
+          height: snap.height,
+          ...externalTabs.length > 0 ? { externalTabs } : {}
+        };
+      });
+      const focusedId = focused && !focused.config.native ? focused.id : "";
+      return {
+        windows,
+        desktops: this.getDesktops(),
+        activeDesktop: this._activeDesktopId,
+        focused: focusedId,
+        updated: Math.floor(Date.now() / 1e3)
+      };
+    }
+    seedDesktops(desktops, activeDesktopId) {
+      seedDesktops(this, desktops, activeDesktopId);
+    }
+  }
+  function cycleableWindows(mgr) {
+    const activeDesktopId = mgr.getActiveDesktopId();
+    const domOrder = Array.from(mgr._desktop.children);
+    return mgr.getAll().filter((w) => {
+      const winDesktop = w.config.desktopId || activeDesktopId;
+      return winDesktop === activeDesktopId;
+    }).sort(
+      (a, b) => domOrder.indexOf(a.element) - domOrder.indexOf(b.element)
+    );
+  }
+  function cycleFocus(mgr, direction) {
+    if (mgr._overviewActive) {
+      return;
+    }
+    const list2 = cycleableWindows(mgr);
+    if (list2.length < 2) {
+      return;
+    }
+    const focused = mgr.getFocused();
+    const currentIdx = focused ? list2.indexOf(focused) : -1;
+    const step = direction === "next" ? 1 : -1;
+    const nextIdx = (currentIdx + step + list2.length) % list2.length;
+    const target = list2[nextIdx];
+    if (target.state === "minimized") {
+      target.restore();
+    } else {
+      mgr.focus(target);
+    }
+  }
+  let installed$3 = false;
+  function isTextEntryFocus(doc) {
+    let el = doc.activeElement;
+    while (el && el.shadowRoot && el.shadowRoot.activeElement) {
+      el = el.shadowRoot.activeElement;
+    }
+    if (!el) {
+      return false;
+    }
+    if (el instanceof HTMLIFrameElement) {
+      return true;
+    }
+    if (el instanceof HTMLTextAreaElement) {
+      return true;
+    }
+    if (el instanceof HTMLInputElement) {
+      const textTypes = /* @__PURE__ */ new Set([
+        "text",
+        "search",
+        "url",
+        "email",
+        "password",
+        "tel",
+        "number",
+        "date",
+        "datetime-local",
+        "month",
+        "week",
+        "time"
+      ]);
+      return textTypes.has(el.type);
+    }
+    if (el instanceof HTMLElement && el.isContentEditable === true) {
+      return true;
+    }
+    const ce = el.getAttribute("contenteditable");
+    return ce !== null && ce !== "false";
+  }
+  function installWindowSwitcherShortcut(mgr) {
+    if (installed$3) {
+      return;
+    }
+    installed$3 = true;
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) {
+          return;
+        }
+        if (e.code !== "Backquote") {
+          return;
+        }
+        if (isTextEntryFocus(document)) {
+          return;
+        }
+        e.preventDefault();
+        cycleFocus(mgr, e.shiftKey ? "prev" : "next");
+      },
+      true
+    );
+    const origin = window.location.origin;
+    window.addEventListener("message", (e) => {
+      if (e.origin !== origin) {
+        return;
+      }
+      const data = e.data;
+      if (!data || data.type !== "desktop-mode-window-switch") {
+        return;
+      }
+      cycleFocus(mgr, data.direction === "prev" ? "prev" : "next");
+    });
+  }
+  function switchToAdjacentDesktop(mgr, direction) {
+    const desktops = mgr.getDesktops();
+    if (desktops.length < 2) {
+      return false;
+    }
+    const activeId = mgr.getActiveDesktopId();
+    const idx = desktops.findIndex((d) => d.id === activeId);
+    if (idx === -1) {
+      return false;
+    }
+    const step = direction === "next" ? 1 : -1;
+    const targetIdx = (idx + step + desktops.length) % desktops.length;
+    if (targetIdx === idx) {
+      return false;
+    }
+    mgr.switchDesktop(desktops[targetIdx].id, { direction });
+    return true;
+  }
+  function cycleOverviewCursor(mgr, direction) {
+    if (!mgr._overviewActive) {
+      return false;
+    }
+    const desktops = mgr.getDesktops();
+    const cycleLength = desktops.length + 1;
+    const ADD_INDEX = desktops.length;
+    const currentIdx = mgr._overviewAddTileFocused ? ADD_INDEX : desktops.findIndex((d) => d.id === mgr.getActiveDesktopId());
+    if (currentIdx === -1) {
+      return false;
+    }
+    const step = direction === "next" ? 1 : -1;
+    const targetIdx = (currentIdx + step + cycleLength) % cycleLength;
+    if (targetIdx === currentIdx) {
+      return false;
+    }
+    if (targetIdx === ADD_INDEX) {
+      mgr._overviewAddTileFocused = true;
+      refreshOverviewTopBar(mgr);
+      return true;
+    }
+    mgr._overviewAddTileFocused = false;
+    mgr.switchDesktop(desktops[targetIdx].id, { direction });
+    return true;
+  }
+  function toggleOverview(mgr) {
+    if (mgr._overviewActive) {
+      mgr.exitOverview();
+    } else {
+      mgr.enterOverview();
+    }
+    return true;
+  }
+  function toggleShowDesktop(mgr) {
+    if (mgr._overviewActive) {
+      return false;
+    }
+    if (mgr.getAll().length === 0) {
+      return false;
+    }
+    mgr.toggleShowDesktop();
+    return true;
+  }
+  function exitOverviewIfActive(mgr) {
+    if (!mgr._overviewActive) {
+      return false;
+    }
+    mgr.exitOverview();
+    return true;
+  }
+  function isShowDesktopActive(mgr) {
+    const all2 = mgr.getAll();
+    if (all2.length === 0) {
+      return false;
+    }
+    return all2.every((w) => w.state === "minimized");
+  }
+  function exitShowDesktopIfActive(mgr) {
+    if (!isShowDesktopActive(mgr)) {
+      return false;
+    }
+    mgr.toggleShowDesktop();
+    return true;
+  }
+  let installed$2 = false;
+  function installDesktopArrowShortcuts(mgr) {
+    if (installed$2) {
+      return;
+    }
+    installed$2 = true;
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+          return;
+        }
+        if (e.code !== "ArrowLeft" && e.code !== "ArrowRight" && e.code !== "ArrowUp" && e.code !== "ArrowDown") {
+          return;
+        }
+        if (isTextEntryFocus(document)) {
+          return;
+        }
+        let handled = false;
+        switch (e.code) {
+          case "ArrowLeft":
+            handled = mgr._overviewActive ? cycleOverviewCursor(mgr, "prev") : switchToAdjacentDesktop(mgr, "prev");
+            break;
+          case "ArrowRight":
+            handled = mgr._overviewActive ? cycleOverviewCursor(mgr, "next") : switchToAdjacentDesktop(mgr, "next");
+            break;
+          case "ArrowUp":
+            handled = exitOverviewIfActive(mgr) || exitShowDesktopIfActive(mgr) || toggleOverview(mgr);
+            break;
+          case "ArrowDown":
+            handled = exitOverviewIfActive(mgr) || toggleShowDesktop(mgr);
+            break;
+        }
+        if (handled) {
+          e.preventDefault();
+        }
+      },
+      true
+    );
+  }
+  const IDENTITY_PARAMS = [
+    "post_type",
+    "page",
+    "taxonomy",
+    // WooCommerce (and other React-app-style plugins) register
+    // SEPARATE top-level admin menus that all share `?page=wc-admin`
+    // and only differ by `path` (e.g. `path=/analytics/overview`,
+    // `path=/marketing`). Without `path` in the identity set, every
+    // such menu collapses to the same window id — opening any one of
+    // them lights up the dock indicator for ALL of them. WC's
+    // /admin/path query is the most prominent example today; future
+    // plugins that route inside `admin.php?page=` via a custom param
+    // can either piggyback on `path` or grow this list.
+    "path",
+    // The post ID on `post.php?post=X&action=edit`. Without this, every
+    // individual post edit URL collapses to `post-php`, so clicking a
+    // second row in the Posts window just refocuses the first post's
+    // window instead of opening the new one.
+    "post",
+    // Site-editor entity path: `site-editor.php?p=/wp_template_part/
+    // twentytwentyfive//footer-columns`. Each template / template
+    // part / pattern / navigation entity is a distinct "page" from
+    // the user's perspective — picking "Header" after "Footer column"
+    // should open a new window, not refocus the existing footer one.
+    // Without `p` in identity, every site-editor URL collapses to
+    // `site-editor-php` and the second pick is a no-op.
+    "p"
+  ];
+  function slugify$1(path) {
+    return path.replace(/\.php/g, "-php").replace(/[?&=]/g, "-").replace(/[^a-zA-Z0-9_-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "index";
+  }
+  function deriveWindowId(url, adminUrl) {
+    let parsed = null;
+    try {
+      parsed = new URL(url, adminUrl);
+    } catch (err) {
+      parsed = null;
+    }
+    if (parsed) {
+      const basePath = new URL(adminUrl).pathname;
+      const filename = parsed.pathname.replace(basePath, "").replace(/^\/+/, "");
+      const significant = new URLSearchParams();
+      for (const key of IDENTITY_PARAMS) {
+        const value = parsed.searchParams.get(key);
+        if (value) {
+          significant.set(key, value);
+        }
+      }
+      const query = significant.toString();
+      return slugify$1(query ? `${filename}?${query}` : filename);
+    }
+    let path = url.replace(adminUrl, "");
+    if (path.startsWith("/")) {
+      path = path.substring(1);
+    }
+    return slugify$1(path);
+  }
+  function sanitizeClassName(value) {
+    return value.replace(/[^a-zA-Z0-9_-]/g, "");
+  }
+  function applyTileEntryStagger(tile2) {
+    tile2.style.setProperty(
+      "--desktop-mode-file-tile-enter-delay",
+      `${(Math.random() * 0.25).toFixed(3)}s`
+    );
+    tile2.style.setProperty(
+      "--desktop-mode-file-tile-enter-duration",
+      `${(0.3 + Math.random() * 0.25).toFixed(3)}s`
+    );
+  }
+  function urlMatchKey(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      parsed.searchParams.delete("desktop_mode_chromeless");
+      parsed.searchParams.delete("desktop_mode_portal");
+      return parsed.pathname.replace(/\/+$/, "") + "?" + parsed.searchParams.toString();
+    } catch {
+      return url;
+    }
+  }
+  function sanitizeIconSvg(svg) {
+    if (typeof svg !== "string" || svg === "") {
+      return "";
+    }
+    if (typeof DOMParser === "undefined") {
+      return "";
+    }
+    let doc;
+    try {
+      doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+    } catch {
+      return "";
+    }
+    const root = doc.documentElement;
+    if (!root || root.nodeName.toLowerCase() !== "svg") {
+      return "";
+    }
+    if (doc.getElementsByTagName("parsererror").length > 0) {
+      return "";
+    }
+    const BANNED_TAGS = /* @__PURE__ */ new Set(["script", "style", "foreignobject", "iframe", "object", "embed"]);
+    const walk2 = (el) => {
+      const children = Array.from(el.children);
+      for (const child of children) {
+        if (BANNED_TAGS.has(child.nodeName.toLowerCase())) {
+          child.remove();
+          continue;
+        }
+        for (const attr of Array.from(child.attributes)) {
+          const name = attr.name.toLowerCase();
+          const value = attr.value.trim().toLowerCase();
+          if (name.startsWith("on")) {
+            child.removeAttribute(attr.name);
+            continue;
+          }
+          if (value.startsWith("javascript:")) {
+            child.removeAttribute(attr.name);
+          }
+        }
+        walk2(child);
+      }
+    };
+    walk2(root);
+    for (const attr of Array.from(root.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+      if (name.startsWith("on") || value.startsWith("javascript:")) {
+        root.removeAttribute(attr.name);
+      }
+    }
+    return root.outerHTML;
+  }
+  const _parentSubs = /* @__PURE__ */ new Map();
+  const _nativeSubs = /* @__PURE__ */ new Map();
+  function bucket(root, windowId, channel, create) {
+    let perWindow = root.get(windowId);
+    if (!perWindow) {
+      if (!create) {
+        return void 0;
+      }
+      perWindow = /* @__PURE__ */ new Map();
+      root.set(windowId, perWindow);
+    }
+    let bucketSet = perWindow.get(channel);
+    if (!bucketSet) {
+      if (!create) {
+        return void 0;
+      }
+      bucketSet = /* @__PURE__ */ new Set();
+      perWindow.set(channel, bucketSet);
+    }
+    return bucketSet;
+  }
+  function dispatch(root, windowId, channel, payload) {
+    const meta = { channel, windowId };
+    const exact = bucket(root, windowId, channel, false);
+    if (exact) {
+      for (const cb of Array.from(exact)) {
+        try {
+          cb(payload, meta);
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              `[desktop-mode] window-channel subscriber for "${channel}" threw:`,
+              err
+            );
+          }
+        }
+      }
+    }
+    const wildcard = bucket(root, windowId, "*", false);
+    if (wildcard) {
+      for (const cb of Array.from(wildcard)) {
+        try {
+          cb(payload, meta);
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              `[desktop-mode] window-channel wildcard subscriber for "${windowId}" threw:`,
+              err
+            );
+          }
+        }
+      }
+    }
+  }
+  function addParentSubscriber(windowId, channel, cb) {
+    const set = bucket(_parentSubs, windowId, channel, true);
+    set.add(cb);
+    let removed = false;
+    return () => {
+      if (removed) {
+        return;
+      }
+      removed = true;
+      set.delete(cb);
+    };
+  }
+  function dispatchFromWindow(windowId, channel, payload) {
+    dispatch(_parentSubs, windowId, channel, payload);
+  }
+  function dispatchToNative(windowId, channel, payload) {
+    dispatch(_nativeSubs, windowId, channel, payload);
+  }
+  const _readyWindows = /* @__PURE__ */ new Set();
+  const _loadingWindows = /* @__PURE__ */ new Set();
+  const _pendingSends = /* @__PURE__ */ new Map();
+  function markWindowContentReady(windowId) {
+    if (!_readyWindows.has(windowId)) {
+      _readyWindows.add(windowId);
+      const queued = _pendingSends.get(windowId);
+      if (queued) {
+        _pendingSends.delete(windowId);
+        for (const m of queued) {
+          try {
+            m.flush();
+          } catch (err) {
+            if (typeof console !== "undefined") {
+              console.error(
+                `[desktop-mode] flushing queued window-send for "${m.channel}" threw:`,
+                err
+              );
+            }
+          }
+        }
+      }
+    }
+    if (_loadingWindows.delete(windowId)) {
+      doAction(HOOKS.WINDOW_CONTENT_LOADED, { windowId });
+      if (typeof document !== "undefined") {
+        document.dispatchEvent(
+          new CustomEvent("desktop-mode-window-content-loaded", {
+            detail: { windowId }
+          })
+        );
+      }
+    }
+  }
+  const WINDOW_CONFIG_KEY = Symbol.for("desktop-mode/window-config");
+  function getWindowConfigFromElement(el) {
+    return el[WINDOW_CONFIG_KEY];
+  }
+  function buildDefaultLoadingOverlay() {
+    const overlay = document.createElement("div");
+    overlay.className = "desktop-mode-window__loading";
+    overlay.setAttribute("aria-hidden", "true");
+    const spinner = document.createElement("wpd-spinner");
+    spinner.setAttribute("preset", "classic");
+    spinner.setAttribute("size", "clamp(96px, 14vw, 192px)");
+    spinner.setAttribute("label", __("Loading window content"));
+    overlay.appendChild(spinner);
+    return overlay;
+  }
+  function createLoadingOverlay(config) {
+    let overlay = buildDefaultLoadingOverlay();
+    const ctx = { windowId: config.id, config };
+    if (typeof config.loading?.render === "function") {
+      try {
+        config.loading.render(overlay, ctx);
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            `[desktop-mode] loading.render threw for "${config.id}":`,
+            err
+          );
+        }
+      }
+    }
+    try {
+      const filtered = applyFilters(
+        HOOKS.WINDOW_LOADING_OVERLAY,
+        overlay,
+        ctx
+      );
+      if (filtered instanceof HTMLElement) {
+        overlay = filtered;
+      }
+    } catch (err) {
+      if (typeof console !== "undefined") {
+        console.error(
+          `[desktop-mode] WINDOW_LOADING_OVERLAY filter threw for "${config.id}":`,
+          err
+        );
+      }
+    }
+    if (overlay && !overlay.classList.contains("desktop-mode-window__loading")) {
+      overlay.classList.add("desktop-mode-window__loading");
+    }
+    return overlay;
+  }
+  function removeLoadingOverlay(windowEl) {
+    const overlay = windowEl.querySelector(":scope .desktop-mode-window__loading");
+    overlay?.remove();
+  }
+  function ensureLoadingOverlay(windowEl) {
+    const body = windowEl.querySelector(
+      ":scope .desktop-mode-window__body"
+    );
+    if (!body) {
+      return;
+    }
+    const existing = body.querySelector(":scope .desktop-mode-window__loading");
+    if (existing) {
+      return;
+    }
+    const config = getWindowConfigFromElement(windowEl);
+    body.appendChild(config ? createLoadingOverlay(config) : buildDefaultLoadingOverlay());
+  }
+  const FADE_OUT_MS$1 = 250;
+  let _installed$2 = false;
+  function findWindowElement(windowId) {
+    if (!windowId) {
+      return null;
+    }
+    return document.getElementById(`wp-window-${windowId}`);
+  }
+  function installWindowLoadingTransitions() {
+    if (_installed$2) {
+      return;
+    }
+    _installed$2 = true;
+    _installSubscriptions();
+  }
+  function _installSubscriptions() {
+    addAction(
+      HOOKS.WINDOW_CONTENT_LOADING,
+      "desktop-mode/window-loading-enter",
+      (e) => {
+        const el = findWindowElement(e?.windowId ?? "");
+        if (!el) {
+          return;
+        }
+        const body = el.querySelector(
+          ":scope .desktop-mode-window__body"
+        );
+        if (!body) {
+          return;
+        }
+        body.classList.add("desktop-mode-window__body--loading");
+        ensureLoadingOverlay(el);
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_CONTENT_LOADED,
+      "desktop-mode/window-loading-exit",
+      (e) => {
+        const el = findWindowElement(e?.windowId ?? "");
+        if (!el) {
+          return;
+        }
+        const body = el.querySelector(
+          ":scope .desktop-mode-window__body"
+        );
+        if (!body) {
+          return;
+        }
+        body.classList.remove("desktop-mode-window__body--loading");
+        window.setTimeout(() => {
+          if (!body.classList.contains("desktop-mode-window__body--loading")) {
+            removeLoadingOverlay(el);
+          }
+        }, FADE_OUT_MS$1);
+      }
+    );
+    addAction(
+      HOOKS.INIT,
+      "desktop-mode/loading-overlay-init-sweep",
+      () => {
+        queueMicrotask(() => repaintLoadingOverlays());
+      }
+    );
+  }
+  function repaintLoadingOverlays() {
+    const bodies = document.querySelectorAll(
+      ".desktop-mode-window__body--loading"
+    );
+    bodies.forEach((body) => {
+      const windowEl = body.closest(".desktop-mode-window");
+      if (!windowEl) {
+        return;
+      }
+      body.querySelector(":scope .desktop-mode-window__loading")?.remove();
+      ensureLoadingOverlay(windowEl);
+    });
+  }
+  const SHARED_STORES_SLOT = "__desktopModeSharedStores";
+  function resolveSlot() {
+    const w = window;
+    let slot = w[SHARED_STORES_SLOT];
+    if (!slot) {
+      slot = /* @__PURE__ */ new Map();
+      w[SHARED_STORES_SLOT] = slot;
+    }
+    return slot;
+  }
+  function createSharedStore(key, initialState) {
+    const slot = resolveSlot();
+    let record = slot.get(key);
+    if (!record) {
+      record = {
+        state: initialState(),
+        listeners: /* @__PURE__ */ new Set(),
+        rebuild: initialState
+      };
+      slot.set(key, record);
+    }
+    const handle = {
+      // `record.state` is the live reference. The getter on the
+      // `state` field reads the latest value even if `reset()`
+      // reassigned it to a fresh object.
+      get state() {
+        return record.state;
+      },
+      set state(next) {
+        record.state = next;
+      },
+      getState() {
+        return record.state;
+      },
+      notify() {
+        for (const cb of Array.from(record.listeners)) {
+          try {
+            cb(record.state);
+          } catch (err) {
+            console.error(
+              `[desktop-mode/shared-store:${key}] subscriber threw:`,
+              err
+            );
+          }
+        }
+      },
+      subscribe(cb) {
+        record.listeners.add(cb);
+        return () => {
+          record.listeners.delete(cb);
+        };
+      },
+      setState(patch) {
+        const cur = record.state;
+        if (typeof cur !== "object" || cur === null) {
+          console.warn(
+            `[desktop-mode/shared-store:${key}] setState called on a primitive store; use the state setter instead.`
+          );
+          return;
+        }
+        Object.assign(cur, patch);
+        handle.notify();
+      },
+      reset() {
+        const fresh = record.rebuild();
+        const cur = record.state;
+        if (typeof cur === "object" && cur !== null && typeof fresh === "object" && fresh !== null) {
+          const target = cur;
+          for (const k of Object.keys(target)) {
+            delete target[k];
+          }
+          Object.assign(target, fresh);
+        } else {
+          record.state = fresh;
+        }
+        record.listeners.clear();
+      }
+    };
+    return handle;
+  }
+  const remapStore = createSharedStore(
+    "desktop-mode/native-url-remap",
+    () => ({ remaps: [], deps: null })
+  );
+  function bindNativeUrlRemap(bound) {
+    remapStore.state.deps = bound;
+  }
+  function registerNativeUrlRemap(entry) {
+    if (!entry || typeof entry.id !== "string" || entry.id.trim() === "") {
+      return () => {
+      };
+    }
+    if (typeof entry.nativeWindowId !== "string" || entry.nativeWindowId === "") {
+      return () => {
+      };
+    }
+    if (typeof entry.matches !== "function") {
+      return () => {
+      };
+    }
+    const remaps = remapStore.state.remaps;
+    const existingIdx = remaps.findIndex((r) => r.id === entry.id);
+    if (existingIdx >= 0) {
+      remaps.splice(existingIdx, 1);
+    }
+    remaps.push(entry);
+    return () => unregisterNativeUrlRemap(entry.id);
+  }
+  function unregisterNativeUrlRemap(id) {
+    const remaps = remapStore.state.remaps;
+    const i = remaps.findIndex((r) => r.id === id);
+    if (i >= 0) {
+      remaps.splice(i, 1);
+    }
+  }
+  function resolveNativeUrlRemap(url) {
+    const { deps: deps2, remaps } = remapStore.state;
+    if (!deps2 || !url) {
+      return null;
+    }
+    let parsed;
+    try {
+      parsed = new URL(url, deps2.adminUrl);
+    } catch {
+      return null;
+    }
+    const snapshot = deps2.getSnapshot();
+    for (const entry of remaps) {
+      if (!entry.matches(url, parsed)) {
+        continue;
+      }
+      if (entry.enabled && !entry.enabled(snapshot)) {
+        continue;
+      }
+      return entry.nativeWindowId;
+    }
+    return null;
+  }
+  function tryNativeUrlRemap(url) {
+    const { deps: deps2, remaps } = remapStore.state;
+    if (!deps2 || !url) {
+      return false;
+    }
+    let parsed;
+    try {
+      parsed = new URL(url, deps2.adminUrl);
+    } catch {
+      return false;
+    }
+    const snapshot = deps2.getSnapshot();
+    for (const entry of remaps) {
+      if (!entry.matches(url, parsed)) {
+        continue;
+      }
+      if (entry.enabled && !entry.enabled(snapshot)) {
+        continue;
+      }
+      if (entry.onMatch) {
+        try {
+          entry.onMatch(url, parsed);
+        } catch (err) {
+          console.warn(
+            `[desktop-mode] URL remap onMatch hook threw for "${entry.id}":`,
+            err
+          );
+        }
+      }
+      if (deps2.openById(entry.nativeWindowId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  const HOOK_PREFIX = "desktop-mode.activity.";
+  function hookName(channel) {
+    return `${HOOK_PREFIX}${String(channel)}`;
+  }
+  let subscribeSeq = 0;
+  const activity = {
+    publish(channel, payload) {
+      doAction(hookName(channel), payload);
+    },
+    subscribe(channel, cb) {
+      const ns = `desktop-mode/activity-sub/${++subscribeSeq}`;
+      const hook = hookName(channel);
+      addAction(
+        hook,
+        ns,
+        (payload) => cb(payload)
+      );
+      let removed = false;
+      return () => {
+        if (removed) {
+          return;
+        }
+        removed = true;
+        removeAction(hook, ns);
+      };
+    },
+    filter(channel, value, ...args) {
+      return applyFilters(hookName(channel), value, ...args);
+    }
+  };
+  const DEFAULT_DURATION_MS = 4e3;
+  const FADE_OUT_MS = 200;
+  function showToast(options) {
+    const intent = activity.filter(
+      "desktop-mode/toast-requested",
+      { ...options }
+    );
+    if (!intent || intent.cancel === true) {
+      return () => void 0;
+    }
+    let dismissRequested = false;
+    let realDismiss = null;
+    openWithShellOverlays(
+      () => !dismissRequested,
+      () => {
+        realDismiss = renderToast(intent);
+      }
+    );
+    return () => {
+      dismissRequested = true;
+      if (realDismiss) {
+        realDismiss();
+      }
+    };
+  }
+  function renderToast(intent) {
+    const container = ensureContainer();
+    const toast = document.createElement("wpd-toast");
+    toast.textContent = intent.message;
+    if (intent.action) {
+      toast.setAttribute("action", intent.action.label);
+      toast.addEventListener("wpd-toast-action", () => {
+        intent.action?.onClick();
+        dismiss();
+      });
+    }
+    container.appendChild(toast);
+    let dismissed = false;
+    let dismissTimer = null;
+    const dismiss = () => {
+      if (dismissed) {
+        return;
+      }
+      dismissed = true;
+      if (dismissTimer !== null) {
+        window.clearTimeout(dismissTimer);
+        dismissTimer = null;
+      }
+      toast.setAttribute("state", "out");
+      window.setTimeout(() => {
+        toast.remove();
+      }, FADE_OUT_MS);
+    };
+    requestAnimationFrame(() => {
+      toast.setAttribute("state", "in");
+    });
+    dismissTimer = window.setTimeout(
+      dismiss,
+      intent.duration ?? DEFAULT_DURATION_MS
+    );
+    activity.publish("desktop-mode/toast-shown", { ...intent });
+    return dismiss;
+  }
+  function ensureContainer() {
+    const existing = document.querySelector(
+      "wpd-toast-container"
+    );
+    if (existing) {
+      return existing;
+    }
+    const el = document.createElement("wpd-toast-container");
+    document.body.appendChild(el);
+    return el;
+  }
+  const store$d = createSharedStore(
+    "desktop-mode/destructive-admin-actions",
+    () => ({ entries: [] })
+  );
+  function registerDestructiveAdminAction(entry) {
+    if (!entry || typeof entry.id !== "string" || entry.id.trim() === "") {
+      return () => {
+      };
+    }
+    if (typeof entry.matches !== "function") {
+      return () => {
+      };
+    }
+    const entries = store$d.state.entries;
+    const idx = entries.findIndex((e) => e.id === entry.id);
+    if (idx >= 0) {
+      entries.splice(idx, 1);
+    }
+    entries.push(entry);
+    return () => unregisterDestructiveAdminAction(entry.id);
+  }
+  function unregisterDestructiveAdminAction(id) {
+    const entries = store$d.state.entries;
+    const idx = entries.findIndex((e) => e.id === id);
+    if (idx >= 0) {
+      entries.splice(idx, 1);
+    }
+  }
+  function listDestructiveAdminActions() {
+    return store$d.state.entries.slice();
+  }
+  const adminLinkDepsStore = createSharedStore(
+    "desktop-mode/admin-link-deps",
+    () => ({ deps: null })
+  );
+  function bindAdminLinkDispatch(deps2) {
+    adminLinkDepsStore.state.deps = deps2;
+  }
+  function collectRegistrationErrors(def, checks) {
+    if (!def || typeof def !== "object") {
+      return ["def (not an object)"];
+    }
+    const d = def;
+    const errors = [];
+    for (const check of checks) {
+      if (!check.valid(d)) {
+        errors.push(`${check.field} (${check.message})`);
+      }
+    }
+    return errors;
+  }
+  class RegistrationError extends Error {
+    constructor(kind, errors, def) {
+      super(
+        `[desktop-mode] ${kind} registration rejected — fields: ` + errors.join(", ") + "."
+      );
+      this.name = "RegistrationError";
+      this.kind = kind;
+      this.errors = errors;
+      this.def = def;
+    }
+  }
+  function throwOnRegistrationErrors(kind, errors, def) {
+    if (errors.length === 0) {
+      return;
+    }
+    throw new RegistrationError(kind, errors, def);
+  }
+  const store$c = createSharedStore(
+    "desktop-mode/wallpaper-registry",
+    () => ({
+      seed: [],
+      listeners: /* @__PURE__ */ new Set()
+    })
+  );
+  const seed$3 = store$c.state.seed;
+  const listeners$b = store$c.state.listeners;
+  function register$2(def) {
+    throwOnRegistrationErrors(
+      "Wallpaper",
+      collectRegistrationErrors(def, WALLPAPER_CHECKS),
+      def
+    );
+    const idx = seed$3.findIndex((w) => w.id === def.id);
+    if (idx >= 0) {
+      seed$3[idx] = def;
+    } else {
+      seed$3.push(def);
+    }
+    notify$d();
+  }
+  function unregister$2(id) {
+    const idx = seed$3.findIndex((w) => w.id === id);
+    if (idx >= 0) {
+      seed$3.splice(idx, 1);
+      notify$d();
+    }
+  }
+  function notify$d() {
+    const snapshot = Array.from(listeners$b);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] wallpaper registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function all$1() {
+    const copy = seed$3.slice();
+    const filtered = applyFilters(HOOKS.WALLPAPERS, copy);
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.wallpapers` filter returned a non-array; falling back to seed list."
+        );
+      }
+      return copy;
+    }
+    return filtered.filter(isValidDef$1);
+  }
+  function get$1(id) {
+    return all$1().find((w) => w.id === id);
+  }
+  const WALLPAPER_CHECKS = [
+    {
+      field: "id",
+      message: "missing or not a non-empty string",
+      valid: (d) => typeof d.id === "string" && d.id !== ""
+    },
+    {
+      field: "label",
+      message: "missing or not a non-empty string",
+      valid: (d) => typeof d.label === "string" && d.label !== ""
+    },
+    {
+      field: "preview",
+      message: "missing or not a non-empty string",
+      valid: (d) => typeof d.preview === "string" && d.preview !== ""
+    },
+    {
+      field: "type",
+      message: 'must be "css" or "canvas"',
+      valid: (d) => d.type === "css" || d.type === "canvas"
+    },
+    {
+      field: "value/resolveValue/mount",
+      message: "css types need `value` or `resolveValue`; canvas types need `mount`",
+      valid: (d) => {
+        if (d.type === "css") {
+          return typeof d.value === "string" || typeof d.resolveValue === "function";
+        }
+        if (d.type === "canvas") {
+          return typeof d.mount === "function";
+        }
+        return true;
+      }
+    }
+  ];
+  function isValidDef$1(def) {
+    return collectRegistrationErrors(def, WALLPAPER_CHECKS).length === 0;
+  }
+  const STORAGE_KEY = "desktop-mode-os-settings";
+  const CUSTOM_GRADIENT_ID = "custom-gradient";
+  const CUSTOM_IMAGE_ID = "custom-image";
+  const DEFAULT_WALLPAPER_ID = "dark";
+  const DEFAULT_ACCENTS = [
+    { id: "wp-blue", label: "WordPress Blue", value: "#2271b1" },
+    { id: "indigo", label: "Indigo", value: "#3858e9" },
+    { id: "teal", label: "Teal", value: "#04a4cc" },
+    { id: "emerald", label: "Emerald", value: "#059669" },
+    { id: "amber", label: "Amber", value: "#d97706" },
+    { id: "rose", label: "Rose", value: "#e11d48" }
+  ];
+  function getAccents() {
+    const config = window.wp?.desktop?.config;
+    const raw = config?.accentColors;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return DEFAULT_ACCENTS;
+    }
+    const clean = [];
+    for (const entry of raw) {
+      if (entry && typeof entry === "object" && typeof entry.id === "string" && typeof entry.label === "string" && typeof entry.value === "string" && entry.id !== "" && entry.label !== "" && /^#[0-9a-f]{3,8}$/i.test(entry.value)) {
+        clean.push({ id: entry.id, label: entry.label, value: entry.value });
+      }
+    }
+    return clean.length > 0 ? clean : DEFAULT_ACCENTS;
+  }
+  function getDefaultWallpaperId() {
+    const config = window.wp?.desktop?.config;
+    const raw = config?.defaultWallpaper;
+    if (typeof raw === "string" && raw !== "") {
+      return raw;
+    }
+    return DEFAULT_WALLPAPER_ID;
+  }
+  const DOCK_SIZES = [
+    { id: "compact", label: "Compact", width: 48, icon: 18 },
+    { id: "default", label: "Default", width: 56, icon: 20 },
+    { id: "large", label: "Large", width: 72, icon: 26 }
+  ];
+  const DESKTOP_LAYOUTS = [
+    { id: "classic", label: "Classic" },
+    { id: "unified", label: "Unified" },
+    { id: "spatial", label: "Spatial" }
+  ];
+  const DEFAULTS = {
+    wallpaper: DEFAULT_WALLPAPER_ID,
+    accent: "wp-blue",
+    dockSize: "default",
+    desktopLayout: "classic",
+    dockRailRenderer: "default",
+    customGradient: {
+      from: "#2271b1",
+      to: "#7c3aed",
+      angle: 135
+    },
+    customImage: null,
+    libraryHdOnly: true,
+    ai: {
+      enabled: false,
+      provider: "openai",
+      apiKey: "",
+      apiKeys: {},
+      transport: "off"
+    },
+    // Opt-out as of 0.8.0. Fresh installs land on the native Posts
+    // window — same screen the rest of desktop mode is built for. A
+    // user can still flip this off to fall back to the chromeless
+    // `edit.php` iframe, but the new default is "use the native UI."
+    heartbeatRate: 60,
+    nativePostsEnabled: true,
+    nativePostsHiddenColumns: [],
+    // Same opt-out posture as Posts — fresh installs land on the
+    // native Pages window, users can flip back to the iframe.
+    nativePagesEnabled: true,
+    // Native Users window — same opt-out posture. Capability-gated
+    // server-side (the window is only registered for users with
+    // `list_users`), so flipping this off only affects the small set
+    // of users who can see the Users tile in the first place.
+    nativeUsersEnabled: true,
+    // Native Plugins window — replaces `plugins.php` and
+    // `plugin-install.php`. Same opt-out posture; cap-gated on
+    // `activate_plugins` server-side, so flipping this off only
+    // affects users who could see the Plugins tile anyway.
+    nativePluginsEnabled: true,
+    // Native Comments window — replaces `edit-comments.php`. Same
+    // opt-out posture; cap-gated on `edit_posts` server-side.
+    nativeCommentsEnabled: true,
+    showDesktopOnWallpaperClick: false,
+    showPostStatusRibbons: true,
+    foldersSharingEnabled: true,
+    itemVisibility: {},
+    dockOrder: [],
+    dockPromotedPositions: {}
+  };
+  const AI_TRANSPORTS = [
+    { id: "off", label: "Off" },
+    { id: "sse", label: "Streaming (SSE)" }
+  ];
+  const AI_PROVIDERS = [
+    {
+      id: "openai",
+      label: "OpenAI",
+      apiKeyLabel: "OpenAI API key",
+      apiKeyLink: "https://platform.openai.com/api-keys"
+    }
+  ];
+  function getAiProviders() {
+    const cfg = window.desktopModeConfig;
+    const list2 = cfg?.aiProviders;
+    if (!Array.isArray(list2) || list2.length === 0) {
+      return AI_PROVIDERS;
+    }
+    return list2.map((p) => ({
+      id: p.id,
+      label: p.label,
+      description: p.description,
+      apiKeyLabel: p.api_key_label,
+      apiKeyLink: p.api_key_link
+    }));
+  }
+  function isHexColor(value) {
+    return typeof value === "string" && /^#[0-9a-f]{3,8}$/i.test(value);
+  }
+  const NONCE_HEADER = "X-WP-Nonce";
+  function injectRestNonce(input, init2) {
+    const nonce = readRestNonce$3();
+    if (!nonce) {
+      return init2;
+    }
+    const url = resolveUrl(input);
+    if (!url || !isSameOriginRestUrl(url)) {
+      return init2;
+    }
+    const baseHeaders = init2?.headers ?? (typeof Request !== "undefined" && input instanceof Request ? input.headers : void 0);
+    const headers = new Headers(baseHeaders ?? {});
+    if (headers.has(NONCE_HEADER)) {
+      return init2;
+    }
+    headers.set(NONCE_HEADER, nonce);
+    return { ...init2 ?? {}, headers };
+  }
+  function readRestNonce$3() {
+    if (typeof window === "undefined") {
+      return void 0;
+    }
+    const cfg = window.desktopModeConfig;
+    const value = cfg?.restNonce;
+    return typeof value === "string" && value.length > 0 ? value : void 0;
+  }
+  function resolveUrl(input) {
+    try {
+      const base = typeof window !== "undefined" && window.location ? window.location.href : void 0;
+      if (typeof input === "string") {
+        return new URL(input, base);
+      }
+      if (input instanceof URL) {
+        return input;
+      }
+      if (typeof Request !== "undefined" && input instanceof Request) {
+        return new URL(input.url, base);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  function isSameOriginRestUrl(url) {
+    if (typeof window === "undefined" || !window.location || url.origin !== window.location.origin) {
+      return false;
+    }
+    if (url.pathname.includes("/wp-json/")) {
+      return true;
+    }
+    if (url.searchParams.has("rest_route")) {
+      return true;
+    }
+    return false;
+  }
+  function trackedFetch$1(input, init2, opts = {}) {
+    const fn = window.wp?.desktop?.fetch;
+    if (typeof fn === "function") {
+      return fn(input, init2, opts);
+    }
+    const finalInit = injectRestNonce(input, init2);
+    return fetch(input, finalInit);
+  }
+  function loadState() {
+    const serverRaw = _readServerSettings();
+    if (serverRaw) {
+      const state2 = _parseRaw(serverRaw);
+      _writeLocalStorage(state2);
+      return state2;
+    }
+    try {
+      const cached = window.localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        return _parseRaw(JSON.parse(cached));
+      }
+    } catch {
+    }
+    return structuredDefaults();
+  }
+  function _readServerSettings() {
+    const config = window.desktopModeConfig;
+    const raw = config?.osSettings;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return null;
+    }
+    return raw;
+  }
+  function _parseRaw(parsed) {
+    const accents = getAccents();
+    return {
+      wallpaper: typeof parsed.wallpaper === "string" && parsed.wallpaper !== "" ? parsed.wallpaper : getDefaultWallpaperId(),
+      accent: accents.some((a) => a.id === parsed.accent) ? parsed.accent : DEFAULTS.accent,
+      dockSize: DOCK_SIZES.some((d) => d.id === parsed.dockSize) ? parsed.dockSize : DEFAULTS.dockSize,
+      desktopLayout: DESKTOP_LAYOUTS.some(
+        (l) => l.id === parsed.desktopLayout
+      ) ? parsed.desktopLayout : DEFAULTS.desktopLayout,
+      // Dock rail renderer — any sanitize_key()-clean string
+      // survives; the registry resolves at use time and falls back
+      // to `'default'` when the picked renderer isn't registered.
+      dockRailRenderer: typeof parsed.dockRailRenderer === "string" && /^[a-z0-9_-]+$/.test(parsed.dockRailRenderer) ? parsed.dockRailRenderer : DEFAULTS.dockRailRenderer,
+      customGradient: sanitizeCustomGradient(parsed.customGradient),
+      customImage: sanitizeCustomImage(parsed.customImage),
+      libraryHdOnly: typeof parsed.libraryHdOnly === "boolean" ? parsed.libraryHdOnly : DEFAULTS.libraryHdOnly,
+      ai: sanitizeAi(parsed.ai),
+      heartbeatRate: parsed.heartbeatRate === 15 || parsed.heartbeatRate === 30 || parsed.heartbeatRate === 45 || parsed.heartbeatRate === 60 ? parsed.heartbeatRate : DEFAULTS.heartbeatRate,
+      nativePostsEnabled: typeof parsed.nativePostsEnabled === "boolean" ? parsed.nativePostsEnabled : DEFAULTS.nativePostsEnabled,
+      nativePostsHiddenColumns: Array.isArray(parsed.nativePostsHiddenColumns) ? parsed.nativePostsHiddenColumns.filter((v) => typeof v === "string" && v !== "").slice(0, 32) : DEFAULTS.nativePostsHiddenColumns.slice(),
+      nativePagesEnabled: typeof parsed.nativePagesEnabled === "boolean" ? parsed.nativePagesEnabled : DEFAULTS.nativePagesEnabled,
+      nativeUsersEnabled: typeof parsed.nativeUsersEnabled === "boolean" ? parsed.nativeUsersEnabled : DEFAULTS.nativeUsersEnabled,
+      nativePluginsEnabled: typeof parsed.nativePluginsEnabled === "boolean" ? parsed.nativePluginsEnabled : DEFAULTS.nativePluginsEnabled,
+      nativeCommentsEnabled: typeof parsed.nativeCommentsEnabled === "boolean" ? parsed.nativeCommentsEnabled : DEFAULTS.nativeCommentsEnabled,
+      showDesktopOnWallpaperClick: typeof parsed.showDesktopOnWallpaperClick === "boolean" ? parsed.showDesktopOnWallpaperClick : DEFAULTS.showDesktopOnWallpaperClick,
+      showPostStatusRibbons: typeof parsed.showPostStatusRibbons === "boolean" ? parsed.showPostStatusRibbons : DEFAULTS.showPostStatusRibbons,
+      foldersSharingEnabled: typeof parsed.foldersSharingEnabled === "boolean" ? parsed.foldersSharingEnabled : DEFAULTS.foldersSharingEnabled,
+      itemVisibility: sanitizeItemVisibility(parsed.itemVisibility),
+      dockOrder: sanitizeDockOrder(parsed.dockOrder),
+      dockPromotedPositions: sanitizeDockPromotedPositions(
+        parsed.dockPromotedPositions
+      )
+    };
+  }
+  function sanitizeItemVisibility(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return {};
+    }
+    const allowed = [
+      "both",
+      "dock",
+      "desktop",
+      "hidden"
+    ];
+    const out = {};
+    let count = 0;
+    for (const [k, v] of Object.entries(raw)) {
+      if (count >= 256) {
+        break;
+      }
+      if (typeof k !== "string" || k === "") {
+        continue;
+      }
+      if (typeof v !== "string") {
+        continue;
+      }
+      const placement = v;
+      if (!allowed.includes(placement)) {
+        continue;
+      }
+      out[k] = placement;
+      count++;
+    }
+    return out;
+  }
+  function sanitizeDockOrder(raw) {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const id of raw) {
+      if (typeof id !== "string" || id === "" || seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      out.push(id);
+      if (out.length >= 256) {
+        break;
+      }
+    }
+    return out;
+  }
+  function sanitizeDockPromotedPositions(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return {};
+    }
+    const out = {};
+    let count = 0;
+    const MAX_COORD = 1e5;
+    for (const [k, v] of Object.entries(raw)) {
+      if (count >= 256) {
+        break;
+      }
+      if (typeof k !== "string" || k === "") {
+        continue;
+      }
+      if (!v || typeof v !== "object" || Array.isArray(v)) {
+        continue;
+      }
+      const pos = v;
+      if (typeof pos.x !== "number" || typeof pos.y !== "number" || !Number.isFinite(pos.x) || !Number.isFinite(pos.y) || Math.abs(pos.x) > MAX_COORD || Math.abs(pos.y) > MAX_COORD) {
+        continue;
+      }
+      out[k] = { x: pos.x, y: pos.y };
+      count++;
+    }
+    return out;
+  }
+  let _syncTimer = null;
+  const SYNC_DEBOUNCE_MS = 250;
+  let _lastConfirmedState = null;
+  function setLastConfirmedState(state2) {
+    _lastConfirmedState = _cloneState(state2);
+  }
+  function _cloneState(state2) {
+    return {
+      ...state2,
+      customGradient: { ...state2.customGradient },
+      customImage: state2.customImage ? { ...state2.customImage } : null,
+      ai: { ...state2.ai, apiKeys: { ...state2.ai.apiKeys } },
+      nativePostsHiddenColumns: state2.nativePostsHiddenColumns.slice(),
+      itemVisibility: { ...state2.itemVisibility },
+      dockOrder: state2.dockOrder.slice(),
+      dockPromotedPositions: Object.fromEntries(
+        Object.entries(state2.dockPromotedPositions).map(([k, v]) => [
+          k,
+          { ...v }
+        ])
+      )
+    };
+  }
+  function saveState(state2, opts = {}) {
+    _writeLocalStorage(state2);
+    _scheduleSyncToServer(state2, opts.windowId);
+  }
+  function _writeLocalStorage(state2) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state2));
+    } catch {
+    }
+  }
+  function _scheduleSyncToServer(state2, windowId) {
+    if (_syncTimer !== null) {
+      clearTimeout(_syncTimer);
+    }
+    if (windowId) {
+      _pendingActivityWindowId = windowId;
+    }
+    _emitSaveLifecycle("pending");
+    _syncTimer = setTimeout(() => {
+      _syncTimer = null;
+      const id = _pendingActivityWindowId;
+      _pendingActivityWindowId = null;
+      _postToServer(state2, id);
+    }, SYNC_DEBOUNCE_MS);
+  }
+  let _pendingActivityWindowId = null;
+  function _postToServer(state2, windowId) {
+    const config = window.desktopModeConfig;
+    const url = config?.osSettingsUrl;
+    const nonce = config?.restNonce;
+    if (!url || !nonce) {
+      _emitSaveLifecycle("saved");
+      return;
+    }
+    _emitSaveLifecycle("saving");
+    const attributedWindowId = windowId || "desktop-mode-os-settings";
+    trackedFetch$1(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": nonce
+        },
+        body: JSON.stringify({ settings: state2 })
+      },
+      { windowId: attributedWindowId }
+    ).then((res) => {
+      if (!res.ok) {
+        throw new Error(`${res.status} ${res.statusText}`);
+      }
+      _lastConfirmedState = _cloneState(state2);
+      _emitSaveLifecycle("saved");
+    }).catch((err) => {
+      if (_lastConfirmedState) {
+        _writeLocalStorage(_lastConfirmedState);
+        _emitSaveLifecycle(
+          "failed",
+          err instanceof Error ? err.message : String(err),
+          _cloneState(_lastConfirmedState)
+        );
+      } else {
+        _emitSaveLifecycle(
+          "failed",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
+    });
+  }
+  function _emitSaveLifecycle(phase, error, rolledBackTo) {
+    const detail = { phase };
+    if (error) {
+      detail.error = error;
+    }
+    if (rolledBackTo) {
+      detail.rolledBackTo = rolledBackTo;
+    }
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-os-settings-save-lifecycle", { detail })
+    );
+  }
+  function structuredDefaults() {
+    return {
+      ...DEFAULTS,
+      customGradient: { ...DEFAULTS.customGradient },
+      customImage: null,
+      ai: { ...DEFAULTS.ai }
+    };
+  }
+  function sanitizeAi(raw) {
+    if (!raw || typeof raw !== "object") {
+      return { ...DEFAULTS.ai, apiKeys: {} };
+    }
+    const { enabled, provider, apiKey, apiKeys, transport } = raw;
+    const known = getAiProviders();
+    const validProvider = typeof provider === "string" && known.some((p) => p.id === provider) ? provider : DEFAULTS.ai.provider;
+    const cleanKeys = {};
+    if (apiKeys && typeof apiKeys === "object") {
+      for (const [pid, val] of Object.entries(apiKeys)) {
+        if (typeof val === "string") {
+          cleanKeys[pid] = val.slice(0, 512);
+        }
+      }
+    }
+    const validTransport = typeof transport === "string" && AI_TRANSPORTS.some((t) => t.id === transport) ? transport : DEFAULTS.ai.transport;
+    return {
+      enabled: typeof enabled === "boolean" ? enabled : DEFAULTS.ai.enabled,
+      provider: validProvider,
+      apiKey: typeof apiKey === "string" ? apiKey : DEFAULTS.ai.apiKey,
+      apiKeys: cleanKeys,
+      transport: validTransport
+    };
+  }
+  function sanitizeCustomGradient(raw) {
+    if (!raw || typeof raw !== "object") {
+      return { ...DEFAULTS.customGradient };
+    }
+    const { from, to, angle } = raw;
+    return {
+      from: isHexColor(from) ? from : DEFAULTS.customGradient.from,
+      to: isHexColor(to) ? to : DEFAULTS.customGradient.to,
+      angle: typeof angle === "number" && Number.isFinite(angle) && angle >= 0 && angle <= 360 ? angle : DEFAULTS.customGradient.angle
+    };
+  }
+  function sanitizeCustomImage(raw) {
+    if (!raw || typeof raw !== "object") {
+      return null;
+    }
+    const { id, url } = raw;
+    if (typeof id !== "number" || !Number.isFinite(id) || id <= 0) {
+      return null;
+    }
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+      return null;
+    }
+    return { id, url };
+  }
+  const store$b = createSharedStore(
+    "desktop-mode/dock-rail-registry",
+    () => ({
+      registry: /* @__PURE__ */ new Map(),
+      listeners: /* @__PURE__ */ new Set(),
+      activeId: "default"
+    })
+  );
+  const registry$8 = store$b.state.registry;
+  const listeners$a = store$b.state.listeners;
+  const ID_RE = /^[a-z0-9_-]+$/;
+  function register$1(renderer) {
+    if (!renderer || typeof renderer !== "object") {
+      throw new TypeError(
+        "[desktop-mode] registerDockRailRenderer: renderer must be an object."
+      );
+    }
+    if (typeof renderer.id !== "string" || !ID_RE.test(renderer.id)) {
+      throw new TypeError(
+        `[desktop-mode] registerDockRailRenderer: id must match /^[a-z0-9_-]+$/, got: ${String(renderer.id)}`
+      );
+    }
+    if (typeof renderer.label !== "string" || renderer.label === "") {
+      throw new TypeError(
+        "[desktop-mode] registerDockRailRenderer: label must be a non-empty string."
+      );
+    }
+    if (typeof renderer.mount !== "function") {
+      throw new TypeError(
+        "[desktop-mode] registerDockRailRenderer: mount must be a function."
+      );
+    }
+    if (renderer.apiVersion !== void 0 && renderer.apiVersion !== 1) {
+      throw new TypeError(
+        `[desktop-mode] registerDockRailRenderer: unsupported apiVersion ${renderer.apiVersion} (this shell speaks v1).`
+      );
+    }
+    registry$8.set(renderer.id, renderer);
+    notify$c();
+  }
+  function unregister$1(id) {
+    if (registry$8.delete(id)) {
+      notify$c();
+    }
+  }
+  function unregisterByOwner$1(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, renderer] of Array.from(registry$8.entries())) {
+      if (renderer.owner === owner) {
+        registry$8.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$c();
+    }
+    return removed;
+  }
+  function list() {
+    return Array.from(registry$8.values());
+  }
+  function subscribe$3(cb) {
+    listeners$a.add(cb);
+    return () => {
+      listeners$a.delete(cb);
+    };
+  }
+  function setActiveRenderer(id) {
+    if (store$b.state.activeId === id) {
+      return;
+    }
+    store$b.state.activeId = id;
+    notify$c();
+  }
+  function resolveActive() {
+    return registry$8.get(store$b.state.activeId) ?? registry$8.get("default") ?? registry$8.values().next().value;
+  }
+  function notify$c() {
+    const snapshot = Array.from(listeners$a);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] dock-rail-renderer listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function hashTitleToHue(input) {
+    if (!input) {
+      return 214;
+    }
+    let hash2 = 5381;
+    for (let i = 0; i < input.length; i++) {
+      hash2 = Math.imul(hash2, 33) + input.charCodeAt(i);
+    }
+    return (hash2 % 360 + 360) % 360;
+  }
+  const SHOW_DELAY_MS = 180;
+  const HIDE_DELAY_MS = 220;
+  const STAGGER_MS = 32;
+  function attachDockPeek(deps2) {
+    const { tile: tile2 } = deps2;
+    let popover = null;
+    let showTimer = null;
+    let hideTimer = null;
+    let inside = false;
+    const cancelShow = () => {
+      if (showTimer !== null) {
+        window.clearTimeout(showTimer);
+        showTimer = null;
+      }
+    };
+    const cancelHide = () => {
+      if (hideTimer !== null) {
+        window.clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    };
+    const tearDown = () => {
+      cancelShow();
+      cancelHide();
+      if (popover) {
+        popover.remove();
+        popover = null;
+      }
+      deps2.suppressTooltip(false);
+    };
+    const onPointerEnterTile = (e) => {
+      if (e.pointerType !== "mouse") {
+        return;
+      }
+      if (!shouldShowPeek(deps2)) {
+        return;
+      }
+      inside = true;
+      cancelHide();
+      if (popover) {
+        return;
+      }
+      showTimer = window.setTimeout(() => {
+        showTimer = null;
+        if (!inside) {
+          return;
+        }
+        showPeek();
+      }, SHOW_DELAY_MS);
+    };
+    const onPointerLeaveTile = (e) => {
+      if (popover && e.relatedTarget instanceof Node && popover.contains(e.relatedTarget)) {
+        return;
+      }
+      inside = false;
+      cancelShow();
+      scheduleHide();
+    };
+    const scheduleHide = () => {
+      cancelHide();
+      hideTimer = window.setTimeout(() => {
+        hideTimer = null;
+        if (inside) {
+          return;
+        }
+        tearDown();
+      }, HIDE_DELAY_MS);
+    };
+    const showPeek = () => {
+      deps2.suppressTooltip(true);
+      popover = buildPopover(deps2, () => tearDown());
+      document.body.appendChild(popover);
+      inheritShellSchemeVars(popover);
+      positionPopover(popover, tile2, deps2.getOrientation());
+      requestAnimationFrame(() => {
+        popover?.classList.add("desktop-mode-dock-peek--open");
+      });
+      popover.addEventListener("pointerenter", () => {
+        inside = true;
+        cancelHide();
+      });
+      popover.addEventListener("pointerleave", (e) => {
+        if (e.relatedTarget instanceof Node && tile2.contains(e.relatedTarget)) {
+          return;
+        }
+        inside = false;
+        scheduleHide();
+      });
+    };
+    tile2.addEventListener("pointerenter", onPointerEnterTile);
+    tile2.addEventListener("pointerleave", onPointerLeaveTile);
+    return () => {
+      tile2.removeEventListener("pointerenter", onPointerEnterTile);
+      tile2.removeEventListener("pointerleave", onPointerLeaveTile);
+      tearDown();
+    };
+  }
+  function shouldShowPeek(deps2) {
+    return deps2.getInstances().length >= 1;
+  }
+  function buildPopover(deps2, dismiss) {
+    const root = document.createElement("div");
+    root.className = "desktop-mode-dock-peek";
+    root.setAttribute("role", "menu");
+    root.setAttribute("aria-label", sprintf(
+      // translators: %s is the dock item's admin-page title (e.g., "Posts")
+      __("%s — open windows"),
+      deps2.item.title
+    ));
+    const cards = document.createElement("div");
+    cards.className = "desktop-mode-dock-peek__cards";
+    root.appendChild(cards);
+    const instances = deps2.getInstances();
+    let cardIndex = 0;
+    for (const win of instances) {
+      const card = buildInstanceCard(win, deps2, cardIndex++, dismiss);
+      cards.appendChild(card);
+    }
+    if (deps2.enableGhost !== false) {
+      const ghost = buildGhostCard(deps2, cardIndex, dismiss);
+      cards.appendChild(ghost);
+    }
+    return root;
+  }
+  function buildInstanceCard(win, deps2, index2, dismiss) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.setAttribute("role", "menuitem");
+    card.className = "desktop-mode-dock-peek__card desktop-mode-dock-peek__card--instance";
+    card.style.setProperty("--peek-card-index", String(index2));
+    card.style.setProperty(
+      "--peek-card-delay",
+      `${index2 * STAGGER_MS}ms`
+    );
+    const title = win.config.title || deps2.item.title;
+    card.style.setProperty(
+      "--peek-card-hue",
+      `${hashTitleToHue(win.id || title)}`
+    );
+    card.style.setProperty(
+      "--peek-card-vt-name",
+      `desktop-mode-peek-card-${win.id}`
+    );
+    const titlebar = document.createElement("span");
+    titlebar.className = "desktop-mode-dock-peek__card-titlebar";
+    const dots = document.createElement("span");
+    dots.className = "desktop-mode-dock-peek__card-dots";
+    dots.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 3; i++) {
+      dots.appendChild(document.createElement("i"));
+    }
+    titlebar.appendChild(dots);
+    const iconHost = document.createElement("span");
+    iconHost.className = "desktop-mode-dock-peek__card-icon";
+    iconHost.setAttribute("aria-hidden", "true");
+    const iconCls = win.config.icon || deps2.item.icon;
+    if (iconCls.startsWith("dashicons-")) {
+      iconHost.classList.add("dashicons", sanitizeClassName(iconCls));
+    } else {
+      iconHost.classList.add("dashicons", "dashicons-admin-generic");
+    }
+    titlebar.appendChild(iconHost);
+    const label = document.createElement("span");
+    label.className = "desktop-mode-dock-peek__card-label";
+    label.textContent = title;
+    titlebar.appendChild(label);
+    card.appendChild(titlebar);
+    const defaultBody = document.createElement("span");
+    defaultBody.className = "desktop-mode-dock-peek__card-body";
+    defaultBody.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 3; i++) {
+      const line = document.createElement("span");
+      line.className = "desktop-mode-dock-peek__card-line";
+      defaultBody.appendChild(line);
+    }
+    const ctx = { window: win, item: deps2.item };
+    const body = applyFilters(
+      HOOKS.DOCK_PEEK_CARD_CONTENT,
+      defaultBody,
+      ctx
+    );
+    if (body !== defaultBody) {
+      body.classList.add("desktop-mode-dock-peek__card-body--custom");
+    }
+    card.appendChild(body);
+    card.addEventListener("click", () => {
+      spawnFocusViewTransition(deps2, win, card, dismiss);
+    });
+    card.addEventListener("pointerenter", () => {
+      if (deps2.windowManager.getFocused() === win) {
+        return;
+      }
+      deps2.windowManager.focus(win);
+    });
+    const finalCard = applyFilters(
+      HOOKS.DOCK_PEEK_CARD_ELEMENT,
+      card,
+      ctx
+    );
+    return finalCard;
+  }
+  function spawnFocusViewTransition(deps2, win, card, dismiss) {
+    const doc = document;
+    const vtName = `desktop-mode-peek-card-${win.id}`;
+    const focus = () => {
+      dismiss();
+      deps2.windowManager.focus(win);
+    };
+    if (typeof doc.startViewTransition !== "function") {
+      focus();
+      return;
+    }
+    const targetEl = win.element;
+    card.style.setProperty("view-transition-name", vtName);
+    targetEl.style.setProperty("view-transition-name", vtName);
+    const transition = doc.startViewTransition(focus);
+    const cleanup = () => {
+      card.style.removeProperty("view-transition-name");
+      targetEl.style.removeProperty("view-transition-name");
+    };
+    const t = transition;
+    if (t.finished && typeof t.finished.then === "function") {
+      t.finished.then(cleanup, cleanup);
+    } else {
+      Promise.resolve().then(cleanup);
+    }
+  }
+  function buildGhostCard(deps2, index2, dismiss) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.setAttribute("role", "menuitem");
+    card.className = "desktop-mode-dock-peek__card desktop-mode-dock-peek__card--ghost";
+    card.style.setProperty("--peek-card-index", String(index2));
+    card.style.setProperty(
+      "--peek-card-delay",
+      `${index2 * STAGGER_MS}ms`
+    );
+    const plus = document.createElement("span");
+    plus.className = "desktop-mode-dock-peek__card-plus";
+    plus.setAttribute("aria-hidden", "true");
+    plus.textContent = "+";
+    card.appendChild(plus);
+    const label = document.createElement("span");
+    label.className = "desktop-mode-dock-peek__card-label";
+    label.textContent = sprintf(
+      // translators: %s is the admin-page title (e.g., "Posts")
+      __("New %s"),
+      deps2.item.title
+    );
+    card.appendChild(label);
+    card.addEventListener("click", () => {
+      spawnWithViewTransition(deps2, dismiss);
+    });
+    return card;
+  }
+  function spawnWithViewTransition(deps2, dismiss) {
+    const doc = document;
+    const spawn = () => {
+      dismiss();
+      deps2.openNew();
+    };
+    if (typeof doc.startViewTransition === "function") {
+      doc.startViewTransition(spawn);
+      return;
+    }
+    spawn();
+  }
+  const VIEWPORT_MARGIN_PX = 12;
+  const SHELL_SCHEME_VARS = [
+    "--wp-admin-theme-color",
+    "--desktop-mode-titlebar-bg",
+    "--desktop-mode-titlebar-bg-focused",
+    "--desktop-mode-titlebar-color",
+    "--desktop-mode-titlebar-color-focused"
+  ];
+  function inheritShellSchemeVars(popover) {
+    const shell = document.querySelector(".desktop-mode-shell");
+    if (!shell) {
+      return;
+    }
+    const computed = window.getComputedStyle(shell);
+    for (const name of SHELL_SCHEME_VARS) {
+      const value = computed.getPropertyValue(name).trim();
+      if (value) {
+        popover.style.setProperty(name, value);
+      }
+    }
+  }
+  function positionPopover(popover, tile2, orientation) {
+    const rect = tile2.getBoundingClientRect();
+    popover.dataset.orientation = orientation;
+    if (orientation === "bottom") {
+      popover.style.left = `${rect.left + rect.width / 2}px`;
+      popover.style.top = `${rect.top - 12}px`;
+    } else if (orientation === "right") {
+      popover.style.top = `${rect.top + rect.height / 2}px`;
+      popover.style.left = `${rect.left - 12}px`;
+    } else {
+      popover.style.top = `${rect.top + rect.height / 2}px`;
+      popover.style.left = `${rect.right + 12}px`;
+    }
+    requestAnimationFrame(() => clampToViewport$1(popover));
+  }
+  function clampToViewport$1(popover, orientation) {
+    const rect = popover.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    const min = VIEWPORT_MARGIN_PX;
+    let dy = 0;
+    let dx = 0;
+    if (rect.top < min) {
+      dy = min - rect.top;
+    } else if (rect.bottom > vh - min) {
+      dy = vh - min - rect.bottom;
+    }
+    if (rect.left < min) {
+      dx = min - rect.left;
+    } else if (rect.right > vw - min) {
+      dx = vw - min - rect.right;
+    }
+    if (dx === 0 && dy === 0) {
+      return;
+    }
+    popover.style.setProperty("--peek-clamp-x", `${dx}px`);
+    popover.style.setProperty("--peek-clamp-y", `${dy}px`);
+    popover.classList.add("desktop-mode-dock-peek--clamped");
+  }
+  function tryOpenExternalUrl(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      if (parsed.origin === window.location.origin) {
+        return false;
+      }
+      window.open(parsed.toString(), "_blank", "noopener,noreferrer");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function synthDockId(desktopIconId) {
+    return `desktop:${desktopIconId}`;
+  }
+  function synthIconId(dockItemId) {
+    return `dock:${dockItemId}`;
+  }
+  function canonicalItemId(id) {
+    if (id.startsWith("dock:")) {
+      return id.slice(5);
+    }
+    if (id.startsWith("desktop:")) {
+      return id.slice(8);
+    }
+    return id;
+  }
+  function resolvePlacement(id, nativeRail, visibility) {
+    const override = visibility[id];
+    if (override) {
+      return override;
+    }
+    return nativeRail;
+  }
+  function shouldShowOnDock(placement) {
+    return placement === "dock" || placement === "both";
+  }
+  function shouldShowOnDesktop(placement) {
+    return placement === "desktop" || placement === "both";
+  }
+  function applyDockPlacement(dockItems, desktopIcons, settings, dockedNativeWindows) {
+    const visibility = settings.itemVisibility;
+    const order = settings.dockOrder;
+    const kept = [];
+    for (const item of dockItems) {
+      const placement = resolvePlacement(item.id, "dock", visibility);
+      if (shouldShowOnDock(placement)) {
+        kept.push(item);
+      }
+    }
+    for (const icon of desktopIcons) {
+      const placement = resolvePlacement(icon.id, "desktop", visibility);
+      if (!shouldShowOnDock(placement)) {
+        continue;
+      }
+      if (icon.window && dockedNativeWindows && dockedNativeWindows.has(icon.window)) {
+        continue;
+      }
+      kept.push({
+        id: synthIconId(icon.id),
+        title: icon.title,
+        icon: icon.icon,
+        url: icon.url || "",
+        // Carry the native-window id forward so the dock can light
+        // the active-dot indicator + show the hover-peek card when
+        // the target window is open. Without this, window-target
+        // icons (no `url`) synthesize a tile whose only id-bearing
+        // field is an empty string — deriveWindowId('') matches
+        // nothing the window manager has stored.
+        windowId: icon.window || void 0,
+        badge: 0,
+        submenu: [],
+        isCore: false
+      });
+    }
+    return applyOrder(kept, order);
+  }
+  function applyDesktopPlacement(desktopIcons, dockItems, visibility) {
+    const out = [];
+    for (const icon of desktopIcons) {
+      const placement = resolvePlacement(icon.id, "desktop", visibility);
+      if (shouldShowOnDesktop(placement)) {
+        out.push(icon);
+      }
+    }
+    let synthIndex = 0;
+    for (const item of dockItems) {
+      const placement = resolvePlacement(item.id, "dock", visibility);
+      if (!shouldShowOnDesktop(placement)) {
+        continue;
+      }
+      out.push({
+        id: synthDockId(item.id),
+        title: item.title,
+        icon: item.icon,
+        window: "",
+        url: item.url || "",
+        // Place synthesized dock-promoted icons after server-registered
+        // ones. Stable ordering by source-list index inside the bucket.
+        position: 2e3 + synthIndex++
+      });
+    }
+    return out;
+  }
+  function applyOrder(items, order) {
+    if (order.length === 0 || items.length <= 1) {
+      return items;
+    }
+    const byId = /* @__PURE__ */ new Map();
+    for (const item of items) {
+      byId.set(item.id, item);
+    }
+    const out = [];
+    const placed = /* @__PURE__ */ new Set();
+    for (const id of order) {
+      const item = byId.get(id);
+      if (item) {
+        out.push(item);
+        placed.add(id);
+      }
+    }
+    for (const item of items) {
+      if (!placed.has(item.id)) {
+        out.push(item);
+      }
+    }
+    return out;
+  }
+  function html(strings, ...values) {
+    return { __wpdHtml: true, strings, values };
+  }
+  function isTemplateResult(v) {
+    return !!v && v.__wpdHtml === true;
+  }
+  const MARKER_PREFIX = "$$wpd$$";
+  const MARKER_RE = /\$\$wpd\$\$(\d+)\$\$/g;
+  function joinWithMarkers(strings) {
+    let out = strings[0];
+    for (let i = 1; i < strings.length; i++) {
+      out += `${MARKER_PREFIX}${i - 1}$$` + strings[i];
+    }
+    return out;
+  }
+  const compiledCache = /* @__PURE__ */ new WeakMap();
+  function compile(strings) {
+    const cached = compiledCache.get(strings);
+    if (cached) {
+      return cached;
+    }
+    const template = document.createElement("template");
+    template.innerHTML = joinWithMarkers(strings);
+    const recipes = [];
+    const walk2 = (node, path) => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node;
+        for (const attr of Array.from(el.attributes)) {
+          const rawName = attr.name;
+          const rawValue = attr.value;
+          const prefix = rawName[0];
+          if (MARKER_RE.test(rawValue)) {
+            MARKER_RE.lastIndex = 0;
+            if (prefix === "@") {
+              const match = MARKER_RE.exec(rawValue);
+              MARKER_RE.lastIndex = 0;
+              recipes.push({
+                path,
+                kind: "event",
+                name: rawName.slice(1),
+                valueIndex: match ? Number(match[1]) : 0
+              });
+              el.removeAttribute(rawName);
+            } else if (prefix === ".") {
+              const match = MARKER_RE.exec(rawValue);
+              MARKER_RE.lastIndex = 0;
+              recipes.push({
+                path,
+                kind: "prop",
+                name: rawName.slice(1),
+                valueIndex: match ? Number(match[1]) : 0
+              });
+              el.removeAttribute(rawName);
+            } else if (prefix === "?") {
+              const match = MARKER_RE.exec(rawValue);
+              MARKER_RE.lastIndex = 0;
+              recipes.push({
+                path,
+                kind: "bool",
+                name: rawName.slice(1),
+                valueIndex: match ? Number(match[1]) : 0
+              });
+              el.removeAttribute(rawName);
+            } else {
+              const fragments = [];
+              const indices = [];
+              let lastEnd = 0;
+              let m;
+              MARKER_RE.lastIndex = 0;
+              while ((m = MARKER_RE.exec(rawValue)) !== null) {
+                fragments.push(rawValue.slice(lastEnd, m.index));
+                indices.push(Number(m[1]));
+                lastEnd = m.index + m[0].length;
+              }
+              fragments.push(rawValue.slice(lastEnd));
+              recipes.push({
+                path,
+                kind: "attr",
+                name: rawName,
+                template: fragments,
+                valueIndices: indices
+              });
+              el.setAttribute(rawName, "");
+            }
+          }
+        }
+      }
+      const children = Array.from(node.childNodes);
+      let shift = 0;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        const liveIndex = i + shift;
+        if (child.nodeType === Node.TEXT_NODE) {
+          const text = child.textContent || "";
+          if (!MARKER_RE.test(text)) {
+            MARKER_RE.lastIndex = 0;
+            continue;
+          }
+          MARKER_RE.lastIndex = 0;
+          const parent = child.parentNode;
+          let lastEnd = 0;
+          let m;
+          const newNodes = [];
+          const newRecipes = [];
+          MARKER_RE.lastIndex = 0;
+          while ((m = MARKER_RE.exec(text)) !== null) {
+            if (m.index > lastEnd) {
+              newNodes.push(document.createTextNode(text.slice(lastEnd, m.index)));
+            }
+            const placeholder = document.createTextNode("");
+            newNodes.push(placeholder);
+            newRecipes.push({
+              path: [...path, liveIndex + newNodes.length - 1],
+              kind: "node",
+              valueIndex: Number(m[1])
+            });
+            lastEnd = m.index + m[0].length;
+          }
+          if (lastEnd < text.length) {
+            newNodes.push(document.createTextNode(text.slice(lastEnd)));
+          }
+          for (const nn of newNodes) {
+            parent.insertBefore(nn, child);
+          }
+          parent.removeChild(child);
+          shift += newNodes.length - 1;
+          recipes.push(...newRecipes);
+        } else {
+          walk2(child, [...path, liveIndex]);
+        }
+      }
+    };
+    walk2(template.content, []);
+    const buildParts = (fragment) => {
+      const out = [];
+      for (const r of recipes) {
+        let node = fragment;
+        for (const idx of r.path) {
+          node = node.childNodes[idx];
+        }
+        if (r.kind === "node") {
+          out.push({
+            kind: "node",
+            valueIndex: r.valueIndex,
+            child: {
+              anchor: node,
+              state: null
+            }
+          });
+        } else if (r.kind === "attr") {
+          out.push({
+            kind: "attr",
+            element: node,
+            name: r.name,
+            template: r.template,
+            valueIndices: r.valueIndices
+          });
+        } else if (r.kind === "event") {
+          out.push({
+            kind: "event",
+            valueIndex: r.valueIndex,
+            element: node,
+            name: r.name
+          });
+        } else if (r.kind === "prop") {
+          out.push({
+            kind: "prop",
+            valueIndex: r.valueIndex,
+            element: node,
+            name: r.name
+          });
+        } else if (r.kind === "bool") {
+          out.push({
+            kind: "bool",
+            valueIndex: r.valueIndex,
+            element: node,
+            name: r.name
+          });
+        }
+      }
+      return out;
+    };
+    const entry = { template, buildParts };
+    compiledCache.set(strings, entry);
+    return entry;
+  }
+  const mountState = /* @__PURE__ */ new WeakMap();
+  function render$1(result, container) {
+    const existing = mountState.get(container);
+    if (existing && existing.strings === result.strings) {
+      applyValues(existing.parts, result.values);
+      return;
+    }
+    const compiled = compile(result.strings);
+    const fragment = compiled.template.content.cloneNode(true);
+    const parts = compiled.buildParts(fragment);
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    container.appendChild(fragment);
+    applyValues(parts, result.values);
+    mountState.set(container, { strings: result.strings, parts });
+  }
+  function applyValues(parts, values) {
+    for (const part of parts) {
+      if (part.kind === "node") {
+        updateChildPart(part.child, values[part.valueIndex]);
+      } else if (part.kind === "attr") {
+        let composed = part.template[0];
+        for (let i = 0; i < part.valueIndices.length; i++) {
+          composed += formatText(values[part.valueIndices[i]]);
+          composed += part.template[i + 1];
+        }
+        if (composed !== part.last) {
+          part.last = composed;
+          if (composed === "") {
+            part.element.removeAttribute(part.name);
+          } else {
+            part.element.setAttribute(part.name, composed);
+          }
+        }
+      } else if (part.kind === "event") {
+        const next = values[part.valueIndex];
+        if (next !== part.current) {
+          if (part.current) {
+            part.element.removeEventListener(part.name, part.current);
+          }
+          if (next) {
+            part.element.addEventListener(part.name, next);
+          }
+          part.current = next;
+        }
+      } else if (part.kind === "prop") {
+        const next = values[part.valueIndex];
+        if (next !== part.last) {
+          part.last = next;
+          part.element[part.name] = next;
+        }
+      } else if (part.kind === "bool") {
+        const next = !!values[part.valueIndex];
+        if (next !== part.last) {
+          part.last = next;
+          if (next) {
+            part.element.setAttribute(part.name, "");
+          } else {
+            part.element.removeAttribute(part.name);
+          }
+        }
+      }
+    }
+  }
+  function updateChildPart(child, value) {
+    if (value === null || value === void 0 || value === false) {
+      if (child.state) {
+        disposeChildState(child.state);
+        child.state = null;
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      updateArrayChild(child, value);
+      return;
+    }
+    if (isTemplateResult(value)) {
+      updateTemplateChild(child, value);
+      return;
+    }
+    if (value instanceof Node) {
+      updateNodeChild(child, value);
+      return;
+    }
+    updateTextChild(child, formatText(value));
+  }
+  function updateNodeChild(child, node) {
+    const old = child.state;
+    if (old?.shape === "node" && old.node === node) {
+      return;
+    }
+    if (old) {
+      disposeChildState(old);
+    }
+    insertBeforeAnchor(child, [node]);
+    child.state = { shape: "node", node };
+  }
+  function updateTextChild(child, text) {
+    const old = child.state;
+    if (old?.shape === "text") {
+      if (old.text !== text) {
+        old.node.textContent = text;
+        old.text = text;
+      }
+      return;
+    }
+    if (old) {
+      disposeChildState(old);
+    }
+    const node = document.createTextNode(text);
+    insertBeforeAnchor(child, [node]);
+    child.state = { shape: "text", node, text };
+  }
+  function updateTemplateChild(child, result) {
+    const old = child.state;
+    if (old?.shape === "template" && old.strings === result.strings) {
+      applyValues(old.parts, result.values);
+      return;
+    }
+    if (old) {
+      disposeChildState(old);
+    }
+    const compiled = compile(result.strings);
+    const fragment = compiled.template.content.cloneNode(true);
+    const parts = compiled.buildParts(fragment);
+    const topNodes = Array.from(fragment.childNodes);
+    insertBeforeAnchor(child, [fragment]);
+    applyValues(parts, result.values);
+    child.state = {
+      shape: "template",
+      strings: result.strings,
+      parts,
+      nodes: topNodes
+    };
+  }
+  function updateArrayChild(child, arr) {
+    const old = child.state;
+    if (old?.shape === "array" && old.entries.length === arr.length) {
+      for (let i = 0; i < arr.length; i++) {
+        updateChildPart(old.entries[i], arr[i]);
+      }
+      return;
+    }
+    if (old) {
+      disposeChildState(old);
+    }
+    const entries = [];
+    for (const v of arr) {
+      const entryAnchor = document.createTextNode("");
+      insertBeforeAnchor(child, [entryAnchor]);
+      const entry = { anchor: entryAnchor, state: null };
+      updateChildPart(entry, v);
+      entries.push(entry);
+    }
+    child.state = { shape: "array", entries };
+  }
+  function insertBeforeAnchor(child, nodes) {
+    const parent = child.anchor.parentNode;
+    if (!parent) {
+      return;
+    }
+    for (const node of nodes) {
+      parent.insertBefore(node, child.anchor);
+    }
+  }
+  function disposeChildState(state2) {
+    if (state2.shape === "text") {
+      state2.node.remove();
+      return;
+    }
+    if (state2.shape === "template") {
+      for (const node of state2.nodes) {
+        if (node.parentNode) {
+          node.parentNode.removeChild(node);
+        }
+      }
+      return;
+    }
+    if (state2.shape === "node") {
+      if (state2.node.parentNode) {
+        state2.node.parentNode.removeChild(state2.node);
+      }
+      return;
+    }
+    for (const entry of state2.entries) {
+      if (entry.state) {
+        disposeChildState(entry.state);
+      }
+      entry.anchor.remove();
+    }
+  }
+  function formatText(v) {
+    if (v === null || v === void 0 || v === false) {
+      return "";
+    }
+    return String(v);
+  }
+  const _Component = class _Component extends HTMLElement {
+    constructor() {
+      super();
+      this._renderScheduled = false;
+      this._propValues = {};
+      const ctor = this.constructor;
+      if (ctor.shadow) {
+        this.attachShadow({ mode: "open" });
+        this._renderRoot = this.shadowRoot;
+      } else {
+        this._renderRoot = this;
+      }
+      this._installPropAccessors();
+    }
+    static get observedAttributes() {
+      return this.props.map(kebab);
+    }
+    connectedCallback() {
+      this._adoptStyles();
+      this.requestUpdate();
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+      if (oldValue === newValue) {
+        return;
+      }
+      const prop = camel(name);
+      this._propValues[prop] = newValue;
+      this.requestUpdate();
+    }
+    /**
+     * Declarative class-name setter. Assign an array (or a
+     * space-separated string) and the host's `class` attribute is
+     * rewritten to match. Intended for programmatic styling — when
+     * a plugin has enqueued its own stylesheet and wants to apply
+     * one of those classes to a shell component:
+     *
+     * ```js
+     * element.classNames = [ 'my-plugin-brand', 'is-active' ];
+     * // → <wpd-select class="my-plugin-brand is-active">
+     * ```
+     *
+     * The plain HTML `class="…"` attribute works just the same and
+     * is always preferred when writing markup by hand — this setter
+     * exists for the JS-API case where the caller has an array of
+     * conditional classes in hand.
+     *
+     * Getter returns the current `classList` as a plain array for
+     * symmetric read/write.
+     *
+     * @since 0.13.0
+     */
+    get classNames() {
+      return Array.from(this.classList);
+    }
+    set classNames(next) {
+      if (next === null || next === void 0) {
+        this.removeAttribute("class");
+        return;
+      }
+      const list2 = Array.isArray(next) ? next : String(next).split(/\s+/);
+      const cleaned = list2.map((s) => String(s).trim()).filter((s) => s !== "");
+      this.className = cleaned.join(" ");
+    }
+    /**
+     * Request a re-render explicitly. Components rarely need this —
+     * declare state via props + attribute observers and the render
+     * loop picks up changes automatically.
+     */
+    requestUpdate() {
+      this._scheduleRender();
+    }
+    /**
+     * Dispatch a `CustomEvent` with a `detail`. Bubbles + composed
+     * by default (matches typical WC UX — events cross shadow
+     * boundaries, parents can listen without knowing about internal
+     * structure).
+     */
+    emit(name, detail) {
+      return this.dispatchEvent(
+        new CustomEvent(name, {
+          detail,
+          bubbles: true,
+          composed: true
+        })
+      );
+    }
+    // ------------------------------------------------------------------
+    // Internals
+    // ------------------------------------------------------------------
+    /**
+     * Wire every `static props` entry to a matched property getter +
+     * setter on the element. Setting the property reflects into the
+     * attribute (so downstream observers + CSS selectors see it);
+     * reading the property falls back to the attribute.
+     */
+    _installPropAccessors() {
+      const ctor = this.constructor;
+      for (const prop of ctor.props) {
+        if (Object.getOwnPropertyDescriptor(this, prop)) {
+          continue;
+        }
+        const attr = kebab(prop);
+        Object.defineProperty(this, prop, {
+          get: () => {
+            if (prop in this._propValues) {
+              return this._propValues[prop];
+            }
+            return this.getAttribute(attr);
+          },
+          set: (value) => {
+            let str;
+            if (value === null || value === void 0 || value === false) {
+              str = null;
+            } else if (value === true) {
+              str = "";
+            } else {
+              str = String(value);
+            }
+            this._propValues[prop] = str;
+            if (str === null) {
+              this.removeAttribute(attr);
+            } else {
+              this.setAttribute(attr, str);
+            }
+            this.requestUpdate();
+          },
+          enumerable: true,
+          configurable: true
+        });
+      }
+    }
+    /**
+     * Schedule a render on the next microtask. Multiple property
+     * assignments in the same tick collapse into a single render.
+     */
+    _scheduleRender() {
+      if (this._renderScheduled || !this.isConnected) {
+        return;
+      }
+      this._renderScheduled = true;
+      queueMicrotask(() => {
+        this._renderScheduled = false;
+        if (!this.isConnected) {
+          return;
+        }
+        render$1(this.render(), this._renderRoot);
+      });
+    }
+    /**
+     * Mount adoptable stylesheets onto the shadow root (via
+     * `adoptedStyleSheets`) or the light DOM (via one `<style>`
+     * tag per def). No-op if `static styles` is empty.
+     */
+    _adoptStyles() {
+      const ctor = this.constructor;
+      if (ctor.styles.length === 0) {
+        return;
+      }
+      if (ctor.shadow && this.shadowRoot) {
+        const sheets = ctor.styles.map((s) => s.sheet).filter((s) => s !== null);
+        this.shadowRoot.adoptedStyleSheets = sheets;
+        if (sheets.length !== ctor.styles.length) {
+          for (const s of ctor.styles) {
+            if (!s.sheet) {
+              const tag = document.createElement("style");
+              tag.textContent = s.cssText;
+              this.shadowRoot.appendChild(tag);
+            }
+          }
+        }
+      } else {
+        this._adoptLightStyles(ctor);
+      }
+    }
+    _adoptLightStyles(ctor) {
+      if (_Component._lightStylesAdopted.has(ctor)) {
+        return;
+      }
+      _Component._lightStylesAdopted.add(ctor);
+      for (const s of ctor.styles) {
+        const tag = document.createElement("style");
+        tag.dataset.wpdUi = this.tagName.toLowerCase();
+        tag.textContent = s.cssText;
+        document.head.appendChild(tag);
+      }
+    }
+  };
+  _Component.props = [];
+  _Component.styles = [];
+  _Component.shadow = true;
+  _Component._lightStylesAdopted = /* @__PURE__ */ new WeakSet();
+  let Component = _Component;
+  function defineComponent(tag, ctor) {
+    if (customElements.get(tag)) {
+      return;
+    }
+    customElements.define(tag, ctor);
+  }
+  function kebab(s) {
+    return s.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+  }
+  function camel(s) {
+    return s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  }
+  const SUPPORTS_CONSTRUCTABLE_SHEETS = (() => {
+    try {
+      const s = new CSSStyleSheet();
+      return typeof s.replaceSync === "function";
+    } catch {
+      return false;
+    }
+  })();
+  function css(strings, ...values) {
+    let text = strings[0];
+    for (let i = 1; i < strings.length; i++) {
+      const v = values[i - 1];
+      if (typeof v === "string" || typeof v === "number") {
+        text += String(v);
+      } else if (v && v.__wpdCss) {
+        text += v.cssText;
+      } else {
+        throw new TypeError(
+          "[wpd-ui] css`` interpolations must be strings, numbers, or other css`` results. Got: " + typeof v
+        );
+      }
+      text += strings[i];
+    }
+    if (SUPPORTS_CONSTRUCTABLE_SHEETS) {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(text);
+      return { __wpdCss: true, sheet, cssText: text };
+    }
+    return { __wpdCss: true, sheet: null, cssText: text };
+  }
+  function computeAutoId(element) {
+    const parts = [];
+    const tabs = [];
+    let windowId = null;
+    let node = element.parentElement;
+    while (node) {
+      if (node === document.body || node === document.documentElement) {
+        break;
+      }
+      const id = node.id || "";
+      if (id.startsWith("wp-window-")) {
+        windowId = id.slice("wp-window-".length);
+        break;
+      }
+      if (node.tagName.toLowerCase() === "wpd-tabpanel") {
+        const forValue = node.getAttribute("for");
+        if (forValue) {
+          tabs.unshift(forValue);
+        }
+      }
+      node = node.parentElement;
+    }
+    if (windowId) {
+      parts.push(slugify(windowId));
+    }
+    for (const tab of tabs) {
+      parts.push("tab-" + slugify(tab));
+    }
+    const label = element.getAttribute("label");
+    if (label) {
+      parts.push(slugify(label));
+    }
+    if (parts.length === 0) {
+      return "wpd-unnamed";
+    }
+    return "wpd-" + parts.filter((p) => p !== "").join("-");
+  }
+  function slugify(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+  function ensureAutoId(element) {
+    if (element.id) {
+      return element.id;
+    }
+    const id = computeAutoId(element);
+    element.id = id;
+    return id;
+  }
+  const dialogStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000}:host( [ open ] ){display:flex}.dialog{width:min( 420px,92vw );background:var( --wpd-confirm-dialog-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-confirm-dialog-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );padding:20px 22px 18px;display:flex;flex-direction:column;gap:10px;position:relative}.close{position:absolute;top:8px;right:10px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:6px;color:var( --wpd-confirm-dialog-fg-muted,rgba( 255,255,255,0.7 ) );cursor:pointer;font-size:22px;line-height:1;padding:0}.close:hover{background:rgba( 255,255,255,0.08 );color:inherit}.title{margin:0 0 4px;font-size:16px;font-weight:600}.message{margin:0;color:var( --wpd-confirm-dialog-fg-muted,rgba( 255,255,255,0.7 ) );line-height:1.45;white-space:pre-line}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}.btn{border:0;border-radius:6px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:500}.btn--secondary{background:rgba( 255,255,255,0.08 );color:inherit}.btn--secondary:hover{background:rgba( 255,255,255,0.14 )}.btn--primary{background:var( --wp-admin-theme-color,#2271b1 );color:#fff}.btn--primary:hover{filter:brightness( 1.08 )}.btn--danger{background:#d63638;color:#fff}.btn--danger:hover{filter:brightness( 1.08 )}`;
+  const _WpdConfirmDialog = class _WpdConfirmDialog extends Component {
+    constructor() {
+      super(...arguments);
+      this._onKey = (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          this._cancel();
+        }
+        if (e.key === "Enter" && !e.isComposing) {
+          e.preventDefault();
+          this._confirm();
+        }
+      };
+      this._onBackdrop = (e) => {
+        const path = e.composedPath();
+        const original = path.length > 0 ? path[0] : e.target;
+        if (original === this) {
+          this._cancel();
+        }
+      };
+      this._confirm = () => {
+        this.emit("wpd-confirm", { confirmed: true });
+        this.removeAttribute("open");
+      };
+      this._cancel = () => {
+        this.emit("wpd-cancel", { confirmed: false });
+        this.removeAttribute("open");
+      };
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      this.setAttribute("role", "dialog");
+      this.setAttribute("aria-modal", "true");
+      this.addEventListener("keydown", this._onKey);
+      this.addEventListener("click", this._onBackdrop);
+    }
+    disconnectedCallback() {
+      this.removeEventListener("keydown", this._onKey);
+      this.removeEventListener("click", this._onBackdrop);
+    }
+    render() {
+      const title = this.title ?? "";
+      const message = this.message ?? "";
+      const confirmLabel = this["confirm-label"] || "Confirm";
+      const cancelLabel = this["cancel-label"] || "Cancel";
+      const isDanger = this.hasAttribute("danger");
+      const hideCancel = this.hasAttribute("hide-cancel");
+      const isDismissable = this.hasAttribute("dismissable");
+      return html`
+			<div class="dialog" tabindex="-1">
+				${isDismissable ? html`<button
+						type="button"
+						class="close"
+						aria-label="Close"
+						@click=${() => this._cancel()}
+					>&times;</button>` : html``}
+				${title ? html`<h2 class="title">${title}</h2>` : html``}
+				${message ? html`<p class="message">${message}</p>` : html``}
+				<div class="actions">
+					${hideCancel ? html`` : html`<button
+							type="button"
+							class="btn btn--secondary"
+							@click=${() => this._cancel()}
+						>
+							${cancelLabel}
+						</button>`}
+					<button
+						type="button"
+						class="btn ${isDanger ? "btn--danger" : "btn--primary"}"
+						@click=${() => this._confirm()}
+					>
+						${confirmLabel}
+					</button>
+				</div>
+			</div>
+		`;
+    }
+  };
+  _WpdConfirmDialog.props = [
+    "open",
+    "title",
+    "message",
+    "confirm-label",
+    "cancel-label",
+    "danger",
+    "hide-cancel",
+    "dismissable"
+  ];
+  _WpdConfirmDialog.styles = [dialogStyles];
+  _WpdConfirmDialog.help = {
+    title: "Confirm dialog",
+    summary: "Modal Yes/No replacement for window.confirm(). Two consumption paths: declarative element with `open` + `wpd-confirm` event, or the imperative Promise-returning `wpdConfirm()` helper.",
+    status: "experimental",
+    since: "0.9.0",
+    props: [
+      { name: "open", type: "boolean attribute", description: "Mounts the dialog visible." },
+      { name: "title", type: "string", description: "Heading shown at the top." },
+      { name: "message", type: "string", description: "Body copy. Newlines preserved." },
+      { name: "confirm-label", type: "string", default: "Confirm", description: "Confirm-button label." },
+      { name: "cancel-label", type: "string", default: "Cancel", description: "Cancel-button label." },
+      { name: "danger", type: "boolean attribute", description: "Renders the confirm button red." },
+      { name: "hide-cancel", type: "boolean attribute", description: "Hides the cancel button entirely. Useful when there is no alternative action — pair with `dismissable` so the user still has an explicit way to close." },
+      { name: "dismissable", type: "boolean attribute", description: "Renders an X close button in the top-right corner. Click emits `wpd-cancel`." }
+    ],
+    events: [
+      {
+        name: "wpd-confirm",
+        description: "Fires on confirm. Detail: `{ confirmed: true }`."
+      },
+      {
+        name: "wpd-cancel",
+        description: "Fires on cancel (Cancel button, Escape, backdrop click). Detail: `{ confirmed: false }`."
+      }
+    ]
+  };
+  let WpdConfirmDialog = _WpdConfirmDialog;
+  defineComponent("wpd-confirm-dialog", WpdConfirmDialog);
+  function wpdConfirm$1(options) {
+    return new Promise((resolve2) => {
+      const dialog2 = document.createElement("wpd-confirm-dialog");
+      dialog2.setAttribute("open", "");
+      if (options.title) {
+        dialog2.setAttribute("title", options.title);
+      }
+      dialog2.setAttribute("message", options.message);
+      if (options.confirmLabel) {
+        dialog2.setAttribute("confirm-label", options.confirmLabel);
+      }
+      if (options.cancelLabel) {
+        dialog2.setAttribute("cancel-label", options.cancelLabel);
+      }
+      if (options.danger) {
+        dialog2.setAttribute("danger", "");
+      }
+      if (options.hideCancel) {
+        dialog2.setAttribute("hide-cancel", "");
+      }
+      if (options.dismissable) {
+        dialog2.setAttribute("dismissable", "");
+      }
+      const cleanup = (ok) => {
+        dialog2.remove();
+        resolve2(ok);
+      };
+      dialog2.addEventListener("wpd-confirm", () => cleanup(true));
+      dialog2.addEventListener("wpd-cancel", () => cleanup(false));
+      document.body.appendChild(dialog2);
+      const inner = dialog2.shadowRoot?.querySelector(".dialog");
+      (inner ?? dialog2).focus?.();
+    });
+  }
+  const FALLBACK_BASE = "http://localhost/";
+  function joinRestUrl(restRoot, path) {
+    const base = typeof window !== "undefined" && window.location ? window.location.href : FALLBACK_BASE;
+    const url = new URL(restRoot, base);
+    const trimmed = path.replace(/^\/+/, "");
+    const queryAt = trimmed.indexOf("?");
+    const route = queryAt === -1 ? trimmed : trimmed.slice(0, queryAt);
+    const extraQuery = queryAt === -1 ? "" : trimmed.slice(queryAt + 1);
+    if (url.searchParams.has("rest_route")) {
+      const existing = url.searchParams.get("rest_route") ?? "/";
+      const prefix = existing.endsWith("/") ? existing : existing + "/";
+      url.searchParams.set("rest_route", prefix + route);
+    } else {
+      const pathname = url.pathname.endsWith("/") ? url.pathname : url.pathname + "/";
+      url.pathname = pathname + route;
+    }
+    if (extraQuery) {
+      const extras = new URLSearchParams(extraQuery);
+      extras.forEach((value, key) => {
+        url.searchParams.append(key, value);
+      });
+    }
+    return url.toString();
+  }
+  function getApi() {
+    const w = window;
+    return w.wp?.desktop ?? null;
+  }
+  let activeMenu$3 = null;
+  function closeMenu$1() {
+    if (activeMenu$3) {
+      activeMenu$3.remove();
+      activeMenu$3 = null;
+    }
+  }
+  function writeVisibility(canonicalId, placement) {
+    const api = getApi();
+    if (!api?.getOsSettings || !api?.updateOsSettings) {
+      return;
+    }
+    const snap = api.getOsSettings();
+    const next = { ...snap.itemVisibility };
+    next[canonicalId] = placement;
+    api.updateOsSettings({ itemVisibility: next });
+  }
+  let openGeneration$2 = 0;
+  function openItemVisibilityMenu(opts) {
+    closeMenu$1();
+    const myGen = ++openGeneration$2;
+    openWithShellOverlays(
+      () => myGen === openGeneration$2,
+      () => openItemVisibilityMenuImmediate(opts)
+    );
+  }
+  function openItemVisibilityMenuImmediate(opts) {
+    closeMenu$1();
+    const canonical = canonicalItemId(opts.id);
+    const options = [];
+    if (opts.surface === "dock") {
+      options.push({
+        id: "hide-from-dock",
+        label: __("Hide from dock"),
+        icon: "dashicons-hidden",
+        onPick: () => writeVisibility(canonical, "desktop")
+      });
+      options.push({
+        id: "show-on-desktop-too",
+        label: __("Also show on desktop"),
+        icon: "dashicons-desktop",
+        onPick: () => writeVisibility(canonical, "both")
+      });
+    } else {
+      options.push({
+        id: "hide-from-desktop",
+        label: __("Hide from desktop"),
+        icon: "dashicons-hidden",
+        onPick: () => writeVisibility(canonical, "dock")
+      });
+      options.push({
+        id: "show-on-dock-too",
+        label: __("Also show on dock"),
+        icon: "dashicons-menu",
+        onPick: () => writeVisibility(canonical, "both")
+      });
+    }
+    options.push({
+      id: "hide-everywhere",
+      label: __("Hide everywhere"),
+      icon: "dashicons-no",
+      danger: true,
+      onPick: () => writeVisibility(canonical, "hidden")
+    });
+    options.push({
+      id: "open-settings",
+      label: __("Apps & Icons settings…"),
+      icon: "dashicons-admin-generic",
+      onPick: () => {
+        const api = getApi();
+        api?.openOsSettings?.({ tabId: "apps-icons" });
+      }
+    });
+    if (opts.pluginFile) {
+      const pluginFile = opts.pluginFile;
+      const pluginLabel = opts.pluginName || opts.title;
+      options.push({ kind: "separator" });
+      options.push({
+        id: "deactivate-plugin",
+        // translators: %s is the owning plugin's display name.
+        label: sprintf(__("Deactivate %s…"), pluginLabel),
+        icon: "dashicons-trash",
+        danger: true,
+        onPick: () => {
+          void confirmAndDeactivatePlugin(pluginFile, pluginLabel);
+        }
+      });
+    }
+    const menu = document.createElement("wpd-context-menu");
+    menu.setAttribute("open", "");
+    menu.classList.add("desktop-mode-item-visibility-menu");
+    menu.dataset.itemId = opts.id;
+    menu.style.position = "fixed";
+    menu.style.left = "-9999px";
+    menu.style.top = "-9999px";
+    menu.style.visibility = "hidden";
+    menu.style.zIndex = "1000000";
+    const byKey = /* @__PURE__ */ new Map();
+    for (const opt of options) {
+      if (opt.kind === "separator") {
+        const hr = document.createElement("hr");
+        hr.style.cssText = "border: 0; border-top: 1px solid var( --wpd-context-menu-separator-color, rgba(255,255,255,0.12) ); margin: 4px 6px;";
+        menu.appendChild(hr);
+        continue;
+      }
+      byKey.set(opt.id, opt);
+      const node = document.createElement("wpd-context-menu-option");
+      node.dataset.menuItemId = opt.id;
+      node.setAttribute("value", opt.id);
+      if (opt.icon) {
+        node.setAttribute("icon", opt.icon);
+      }
+      if (opt.danger) {
+        node.setAttribute("danger", "");
+      }
+      node.textContent = opt.label;
+      menu.appendChild(node);
+    }
+    menu.addEventListener("wpd-context-menu-pick", (e) => {
+      const detail = e.detail;
+      const key = detail?.id || detail?.value || "";
+      const opt = byKey.get(key);
+      closeMenu$1();
+      try {
+        opt?.onPick();
+      } catch {
+      }
+    });
+    document.body.appendChild(menu);
+    activeMenu$3 = menu;
+    const positionMenu = () => {
+      if (menu !== activeMenu$3) {
+        return;
+      }
+      const rect = menu.getBoundingClientRect();
+      const margin = 8;
+      let left = opts.x;
+      let top;
+      if (opts.surface === "dock") {
+        top = Math.max(margin, opts.y - rect.height - margin);
+      } else {
+        top = opts.y;
+        if (top + rect.height + margin > window.innerHeight) {
+          top = Math.max(margin, opts.y - rect.height);
+        }
+      }
+      if (left + rect.width + margin > window.innerWidth) {
+        left = Math.max(margin, opts.x - rect.width);
+      }
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      menu.style.visibility = "";
+    };
+    requestAnimationFrame(positionMenu);
+    const onOutside = (ev) => {
+      if (!activeMenu$3) {
+        return;
+      }
+      if (!activeMenu$3.contains(ev.target)) {
+        closeMenu$1();
+        document.removeEventListener("mousedown", onOutside, true);
+        document.removeEventListener("keydown", onKey, true);
+      }
+    };
+    const onKey = (ev) => {
+      if (ev.key === "Escape") {
+        closeMenu$1();
+        document.removeEventListener("mousedown", onOutside, true);
+        document.removeEventListener("keydown", onKey, true);
+      }
+    };
+    document.addEventListener("mousedown", onOutside, true);
+    document.addEventListener("keydown", onKey, true);
+  }
+  async function confirmAndDeactivatePlugin(pluginFile, title) {
+    const confirmed = await wpdConfirm$1({
+      /* translators: %s: plugin title. */
+      title: sprintf(__("Deactivate %s?"), title),
+      message: __(
+        "This plugin will stop running on the site. You can re-activate it later from the Plugins screen."
+      ),
+      confirmLabel: __("Deactivate"),
+      cancelLabel: __("Cancel"),
+      danger: true
+    });
+    if (!confirmed) {
+      return;
+    }
+    const cfg = window.desktopModeConfig ?? {};
+    const restRoot = typeof cfg.restRoot === "string" && cfg.restRoot ? cfg.restRoot : `${window.location.origin}/wp-json/`;
+    const restNonce = typeof cfg.restNonce === "string" && cfg.restNonce ? cfg.restNonce : "";
+    const stripped = pluginFile.endsWith(".php") ? pluginFile.slice(0, -4) : pluginFile;
+    const encoded = stripped.split("/").map(encodeURIComponent).join("/");
+    const url = joinRestUrl(restRoot, `wp/v2/plugins/${encoded}`);
+    try {
+      const res = await trackedFetch$1(
+        url,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-WP-Nonce": restNonce
+          },
+          body: JSON.stringify({ status: "inactive" }),
+          credentials: "same-origin"
+        },
+        { source: "desktop-mode/dock-deactivate-plugin" }
+      );
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (err) {
+      showToast({
+        message: sprintf(
+          /* translators: %s: plugin title. */
+          __("Could not deactivate %s."),
+          title
+        ),
+        duration: 4e3
+      });
+      console.error("[desktop-mode] deactivate plugin failed", err);
+      return;
+    }
+    const closedTitles = closeWindowsForPlugin(pluginFile);
+    const deactivatedMsg = closedTitles.length > 0 ? sprintf(
+      /* translators: 1: plugin title. 2: number of windows that were closed. */
+      __("%1$s deactivated. Closed %2$d window(s)."),
+      title,
+      closedTitles.length
+    ) : sprintf(
+      /* translators: %s: plugin title. */
+      __("%s deactivated."),
+      title
+    );
+    showToast({ message: deactivatedMsg, duration: 3e3 });
+    const w = window;
+    w.wp?.desktop?.refreshMenu?.();
+  }
+  function closeWindowsForPlugin(pluginFile) {
+    const api = window.wp?.desktop;
+    if (!api?.windowManager?.getAll) {
+      return [];
+    }
+    const items = api.getMenuItems?.() ?? [];
+    const owned = items.filter((i) => i.pluginFile === pluginFile);
+    if (owned.length === 0) {
+      return [];
+    }
+    const ownedKeys = /* @__PURE__ */ new Set();
+    for (const item of owned) {
+      ownedKeys.add(item.id);
+      if (api.deriveWindowId) {
+        ownedKeys.add(api.deriveWindowId(item.url));
+      }
+    }
+    const toClose = /* @__PURE__ */ new Map();
+    const windows = api.windowManager.getAll() ?? [];
+    const derive = api.deriveWindowId;
+    for (const w of windows) {
+      if (ownedKeys.has(w.id)) {
+        toClose.set(w.id, w);
+        continue;
+      }
+      if (w.config?.baseId && ownedKeys.has(w.config.baseId)) {
+        toClose.set(w.id, w);
+        continue;
+      }
+      if (derive && w.config?.url) {
+        const derivedFromConfig = derive(w.config.url);
+        if (ownedKeys.has(derivedFromConfig)) {
+          toClose.set(w.id, w);
+          continue;
+        }
+      }
+      if (derive && w.iframe) {
+        let liveUrl = "";
+        try {
+          liveUrl = w.iframe.src || "";
+        } catch {
+        }
+        if (liveUrl) {
+          const derivedFromLive = derive(liveUrl);
+          if (ownedKeys.has(derivedFromLive)) {
+            toClose.set(w.id, w);
+          }
+        }
+      }
+    }
+    const titles = [];
+    for (const w of toClose.values()) {
+      titles.push(w.config?.title ?? w.id);
+      try {
+        w.close();
+      } catch {
+      }
+    }
+    return titles;
+  }
+  const _Dock = class _Dock {
+    constructor(container, windowManager, items, adminUrl, orientation = "left") {
+      this.itemElements = /* @__PURE__ */ new Map();
+      this.systemItems = [];
+      this.systemItemElements = /* @__PURE__ */ new Map();
+      this.systemSeparator = null;
+      this.badgeOverrides = /* @__PURE__ */ new Map();
+      this.attentionTimers = /* @__PURE__ */ new Map();
+      this.peekTeardowns = /* @__PURE__ */ new Map();
+      this.boundRefresh = () => void 0;
+      this.container = container;
+      this.windowManager = windowManager;
+      this.items = items;
+      this.adminUrl = adminUrl;
+      this.orientation = orientation;
+      this.rail = orientation === "bottom" ? "taskbar" : "dock";
+      this.hooksNamespace = `desktop-mode/dock/${++_Dock.instanceCounter}`;
+      this.container.setAttribute(
+        "data-desktop-mode-dock-placement",
+        orientation
+      );
+      this.tooltip = document.createElement("div");
+      this.tooltip.className = "desktop-mode-dock__tooltip";
+      this.tooltip.setAttribute("role", "tooltip");
+      if (orientation === "bottom") {
+        this.tooltip.classList.add("desktop-mode-dock__tooltip--above");
+      } else if (orientation === "right") {
+        this.tooltip.classList.add("desktop-mode-dock__tooltip--before");
+      } else {
+        this.tooltip.classList.add("desktop-mode-dock__tooltip--after");
+      }
+      document.body.appendChild(this.tooltip);
+      this.render();
+      this.bindWindowEvents();
+    }
+    /**
+     * Build the base context object every dock decoration hook
+     * receives. Read from `this` so a single subscriber can
+     * disambiguate two coexisting rails by `dockId`.
+     */
+    buildHookContextBase() {
+      return {
+        rail: this.rail,
+        orientation: this.orientation,
+        dockId: this.container.id,
+        container: this.container
+      };
+    }
+    /**
+     * Replace the menu-derived tile list with a fresh one, preserving
+     * any JS-registered system tiles. Used by the live menu-refresh
+     * path: after a plugin is activated or deactivated, the chromeless
+     * bridge postMessages a fresh payload built from real admin
+     * context, and the shell calls this so the dock repaints without
+     * a tab reload.
+     *
+     * Old menu tiles are removed from both the DOM and the lookup
+     * map; new tiles are inserted before the system separator (or
+     * appended at the end if none exists yet), so the menu-items →
+     * hairline → system-items ordering stays intact. Active-state
+     * classes are re-computed once the new tiles are in place so
+     * window indicators survive the swap.
+     *
+     * @param items New DockItem list. Pass `[]` to clear everything
+     *              menu-derived.
+     */
+    /**
+     * Update the dock's orientation. Writes the new value to the
+     * dock element's `data-desktop-mode-dock-placement` attribute (CSS
+     * keys off it for layout) and keeps the tooltip anchor in sync.
+     *
+     * In practice, the layout dispatcher in `desktop.ts` rebuilds the
+     * dock(s) from scratch on a layout change rather than re-orienting
+     * a live instance — but this stays correct in case any caller
+     * wants to flip orientation without the rebuild.
+     */
+    setOrientation(orientation) {
+      if (this.orientation === orientation) {
+        return;
+      }
+      this.orientation = orientation;
+      this.container.setAttribute(
+        "data-desktop-mode-dock-placement",
+        orientation
+      );
+      this.tooltip.classList.remove(
+        "desktop-mode-dock__tooltip--above",
+        "desktop-mode-dock__tooltip--before",
+        "desktop-mode-dock__tooltip--after"
+      );
+      if (orientation === "bottom") {
+        this.tooltip.classList.add("desktop-mode-dock__tooltip--above");
+      } else if (orientation === "right") {
+        this.tooltip.classList.add("desktop-mode-dock__tooltip--before");
+      } else {
+        this.tooltip.classList.add("desktop-mode-dock__tooltip--after");
+      }
+    }
+    replaceItems(items) {
+      for (const itemId of this.itemElements.keys()) {
+        const teardown = this.peekTeardowns.get(itemId);
+        if (teardown) {
+          teardown();
+          this.peekTeardowns.delete(itemId);
+        }
+      }
+      for (const el of this.itemElements.values()) {
+        el.remove();
+      }
+      this.container.querySelectorAll(
+        ".desktop-mode-dock__separator--group"
+      ).forEach((el) => el.remove());
+      this.itemElements.clear();
+      this.items = items;
+      const base = this.buildHookContextBase();
+      doAction(HOOKS.DOCK_BEFORE_RENDER, {
+        ...base,
+        items,
+        tileElements: this.itemElements
+      });
+      let insertedGroupSeparator = false;
+      let tilesInsertedThisPass = 0;
+      for (const item of items) {
+        if (!insertedGroupSeparator && item.isCore === false) {
+          if (tilesInsertedThisPass > 0) {
+            const sep = document.createElement("div");
+            sep.className = "desktop-mode-dock__separator desktop-mode-dock__separator--group";
+            sep.setAttribute("aria-hidden", "true");
+            if (this.systemSeparator) {
+              this.container.insertBefore(sep, this.systemSeparator);
+            } else {
+              this.container.appendChild(sep);
+            }
+          }
+          insertedGroupSeparator = true;
+        }
+        const btn = this.createItemButton(item);
+        this.itemElements.set(item.id, btn);
+        if (this.systemSeparator) {
+          this.container.insertBefore(btn, this.systemSeparator);
+        } else {
+          this.container.appendChild(btn);
+        }
+        tilesInsertedThisPass++;
+        const override = this.badgeOverrides.get(item.id);
+        if (override !== void 0) {
+          const primary = btn.querySelector(
+            ".desktop-mode-dock__item-primary"
+          );
+          _applyBadgeNode(primary ?? btn, override);
+        }
+        doAction(HOOKS.DOCK_TILE_RENDERED, {
+          ...base,
+          item,
+          isSystem: false,
+          el: btn
+        });
+      }
+      this.updateActiveStates();
+      doAction(HOOKS.DOCK_AFTER_RENDER, {
+        ...base,
+        items,
+        tileElements: this.itemElements
+      });
+    }
+    /**
+     * True when the rail currently has ANY renderable tile —
+     * either a menu-derived item or a JS-registered system item.
+     * Lets callers (the shell's live-refresh path) decide whether
+     * to hide the whole rail without having to peek into two
+     * internal maps. "System tiles keep the rail alive even when
+     * menu items are empty" is the user-visible contract we enforce.
+     */
+    hasItems() {
+      return this.itemElements.size > 0 || this.systemItemElements.size > 0;
+    }
+    /**
+     * Remove a previously-registered system item. Used by the
+     * server-driven native-window sync path — when a plugin is
+     * deactivated, its native-window entry disappears from the
+     * server's payload and the shell calls this to pull the tile
+     * back off the rail without a reload.
+     *
+     * Idempotent: an unknown id is a silent no-op. The system
+     * separator is kept in place as long as at least one system
+     * item remains; removing the last system item also strips the
+     * separator so the rail doesn't dangle a divider under nothing.
+     */
+    removeSystemItem(id) {
+      const tile2 = this.systemItemElements.get(id);
+      if (!tile2) {
+        return;
+      }
+      tile2.remove();
+      this.systemItemElements.delete(id);
+      this.systemItems = this.systemItems.filter((s) => s.id !== id);
+      this.badgeOverrides.delete(id);
+      if (this.systemItemElements.size === 0 && this.systemSeparator) {
+        this.systemSeparator.remove();
+        this.systemSeparator = null;
+      }
+      doAction(HOOKS.DOCK_ITEM_REMOVED, { id, placement: this.rail });
+    }
+    /**
+     * Set the badge count on a tile. Live-updates without a full
+     * dock re-render — the existing tile's badge node is mutated in
+     * place (or created if missing). Pass `0` to remove the badge.
+     *
+     * Resolves the tile in id order: menu items (`data-menu-slug`)
+     * first, then system items (`data-system-id`), so callers can
+     * use the same id surface regardless of which rail the tile
+     * happens to live on.
+     *
+     * Idempotent: applying the same count is a no-op (no DOM mutation).
+     *
+     * @since 0.22.0
+     *
+     * @param itemId Tile id (menu slug for admin pages, system id
+     *               for `appendSystemItem` / `registerSystemTile`).
+     * @param count  Non-negative integer. `>99` renders as `99+`.
+     */
+    setBadge(itemId, count) {
+      const tile2 = this._resolveTileElement(itemId);
+      if (!tile2) {
+        return;
+      }
+      const safe = Math.max(0, Math.floor(Number(count) || 0));
+      if (safe === 0) {
+        this.badgeOverrides.delete(itemId);
+      } else {
+        this.badgeOverrides.set(itemId, safe);
+      }
+      const primary = tile2.querySelector(
+        ".desktop-mode-dock__item-primary"
+      );
+      _applyBadgeNode(primary ?? tile2, safe);
+      activity.publish("desktop-mode/badge-changed", {
+        itemId,
+        count: safe,
+        rail: this.rail
+      });
+    }
+    /**
+     * Clear the badge on a tile. Equivalent to `setBadge( id, 0 )`.
+     *
+     * @since 0.22.0
+     */
+    clearBadge(itemId) {
+      this.setBadge(itemId, 0);
+    }
+    /**
+     * Apply or clear an attention animation on a tile.
+     *
+     *   - `'pulse'`  — soft halo + scale, ~1.4 s loop. Default.
+     *   - `'shake'`  — short horizontal jiggle.
+     *   - `'bounce'` — vertical bob, attention-grabbing.
+     *   - `null`     — clear any active attention.
+     *
+     * Animations are gated on `prefers-reduced-motion: no-preference`;
+     * the reduced-motion fallback shows a static accent ring for the
+     * same duration so the affordance still works. `durationMs` of
+     * `0` keeps the attention until the next call clears it.
+     *
+     * @since 0.22.0
+     *
+     * @param itemId Tile id.
+     * @param mode   Animation mode or `null` to clear.
+     * @param opts   Optional duration / intensity overrides.
+     */
+    setAttention(itemId, mode, opts = {}) {
+      const tile2 = this._resolveTileElement(itemId);
+      if (!tile2) {
+        return;
+      }
+      const pending2 = this.attentionTimers.get(itemId);
+      if (pending2 !== void 0) {
+        window.clearTimeout(pending2);
+        this.attentionTimers.delete(itemId);
+      }
+      tile2.classList.remove(
+        "desktop-mode-dock__item--attention-pulse",
+        "desktop-mode-dock__item--attention-shake",
+        "desktop-mode-dock__item--attention-bounce",
+        "desktop-mode-dock__item--intensity-subtle",
+        "desktop-mode-dock__item--intensity-normal",
+        "desktop-mode-dock__item--intensity-strong"
+      );
+      if (mode === null) {
+        return;
+      }
+      tile2.classList.add(`desktop-mode-dock__item--attention-${mode}`);
+      const intensity = opts.intensity ?? "normal";
+      tile2.classList.add(`desktop-mode-dock__item--intensity-${intensity}`);
+      const duration = opts.durationMs ?? 4e3;
+      if (duration > 0) {
+        const handle = window.setTimeout(() => {
+          this.attentionTimers.delete(itemId);
+          this.setAttention(itemId, null);
+        }, duration);
+        this.attentionTimers.set(itemId, handle);
+      }
+    }
+    /**
+     * Resolve a tile element by id — checks menu items first
+     * (`data-menu-slug`), then system items (`data-system-id`). Used
+     * by `setBadge` / `setAttention` so callers can reach either rail
+     * with one id surface.
+     */
+    _resolveTileElement(itemId) {
+      return this.itemElements.get(itemId) ?? this.systemItemElements.get(itemId) ?? null;
+    }
+    /**
+     * Append a JS-registered system item to the dock.
+     *
+     * System items render after the menu-derived items, separated by a
+     * hairline divider. Use for shell affordances that don't live in
+     * the admin menu: OS Settings today, Jorvy and desktop widgets
+     * later. Callers supply their own `onOpen` — the dock doesn't
+     * assume the item opens a window at all.
+     */
+    appendSystemItem(item) {
+      this.systemItems.push(item);
+      if (!this.systemSeparator) {
+        this.systemSeparator = document.createElement("div");
+        this.systemSeparator.className = "desktop-mode-dock__separator";
+        this.systemSeparator.setAttribute("aria-hidden", "true");
+        this.container.appendChild(this.systemSeparator);
+      }
+      const tile2 = this.createSystemItemButton(item);
+      this.systemItemElements.set(item.id, tile2);
+      this.container.appendChild(tile2);
+      this.updateActiveStates();
+      doAction(HOOKS.DOCK_TILE_RENDERED, {
+        ...this.buildHookContextBase(),
+        item,
+        isSystem: true,
+        el: tile2
+      });
+    }
+    /**
+     * Render the dock contents.
+     *
+     * Items are ordered server-side with core WordPress menus first and
+     * plugin-contributed menus after. We insert a `--group` separator
+     * at the first core→plugin transition so the two clusters read as
+     * distinct groups of tiles — "default apps" and "installed apps"
+     * in macOS-dock parlance. The separator is skipped when the menu
+     * contains only one kind (no plugin menus, or a theme's filter
+     * reordered everything into one class).
+     */
+    render() {
+      if (_Dock.activeDragReset) {
+        const prev = _Dock.activeDragReset;
+        _Dock.activeDragReset = null;
+        prev();
+      }
+      for (const teardown of this.peekTeardowns.values()) {
+        teardown();
+      }
+      this.peekTeardowns.clear();
+      this.container.innerHTML = "";
+      const base = this.buildHookContextBase();
+      doAction(HOOKS.DOCK_BEFORE_RENDER, {
+        ...base,
+        items: this.items,
+        tileElements: this.itemElements
+      });
+      let insertedGroupSeparator = false;
+      for (const item of this.items) {
+        if (!insertedGroupSeparator && item.isCore === false) {
+          if (this.container.childElementCount > 0) {
+            const sep = document.createElement("div");
+            sep.className = "desktop-mode-dock__separator desktop-mode-dock__separator--group";
+            sep.setAttribute("aria-hidden", "true");
+            this.container.appendChild(sep);
+          }
+          insertedGroupSeparator = true;
+        }
+        const btn = this.createItemButton(item);
+        this.itemElements.set(item.id, btn);
+        this.container.appendChild(btn);
+        doAction(HOOKS.DOCK_TILE_RENDERED, {
+          ...base,
+          item,
+          isSystem: false,
+          el: btn
+        });
+      }
+      doAction(HOOKS.DOCK_AFTER_RENDER, {
+        ...base,
+        items: this.items,
+        tileElements: this.itemElements
+      });
+    }
+    /**
+     * Create a tile for a JS-registered system item. Structurally simpler
+     * than a menu tile — no submenu, no multi-instance rail, no badge —
+     * but uses the same base classes so the hover / focus / active
+     * styling is shared.
+     */
+    createSystemItemButton(item) {
+      const ctx = {
+        ...this.buildHookContextBase(),
+        item,
+        isSystem: true
+      };
+      const tile2 = document.createElement("div");
+      const baseClasses = [
+        "desktop-mode-dock__item",
+        "desktop-mode-dock__item--system"
+      ];
+      const filteredClasses = applyFilters(
+        HOOKS.DOCK_TILE_CLASS,
+        baseClasses,
+        ctx
+      );
+      tile2.className = filteredClasses.join(" ");
+      tile2.dataset.systemId = item.id;
+      const primary = document.createElement("button");
+      primary.className = "desktop-mode-dock__item-primary";
+      primary.setAttribute("type", "button");
+      primary.setAttribute("aria-label", item.title);
+      primary.appendChild(this.resolveIcon(item.icon, item.title));
+      primary.addEventListener("click", () => item.onOpen());
+      tile2.appendChild(primary);
+      this.bindTooltipFiltered(tile2, item.title, ctx);
+      const teardown = attachDockPeek({
+        tile: tile2,
+        item: {
+          id: item.id,
+          title: item.title,
+          icon: item.icon,
+          url: ""
+        },
+        getInstances: () => {
+          const win = this.windowManager.getById(item.id);
+          return win ? [win] : [];
+        },
+        enableGhost: !!item.multi,
+        windowManager: this.windowManager,
+        getOrientation: () => this.orientation,
+        openNew: () => {
+          const fn = item.onOpenNew ?? item.onOpen;
+          fn();
+        },
+        suppressTooltip: (on) => {
+          if (on) {
+            this.tooltip.classList.remove(
+              "desktop-mode-dock__tooltip--visible"
+            );
+          }
+        }
+      });
+      this.peekTeardowns.set(`system:${item.id}`, teardown);
+      return applyFilters(
+        HOOKS.DOCK_TILE_ELEMENT,
+        tile2,
+        ctx
+      );
+    }
+    /**
+     * Create a single dock icon tile.
+     *
+     * A tile is a vertical stack: the primary icon button, plus — for
+     * multi-capable pages — an instance rail rendered below it showing one
+     * dot per open window and a trailing "+" to open another. The rail is
+     * hydrated by {@link updateActiveStates}; here we only place the empty
+     * container so the DOM is stable.
+     */
+    createItemButton(item) {
+      const ctx = {
+        ...this.buildHookContextBase(),
+        item,
+        isSystem: false
+      };
+      const tile2 = document.createElement("div");
+      const baseClasses = ["desktop-mode-dock__item"];
+      if (item.multi) {
+        baseClasses.push("desktop-mode-dock__item--multi");
+      }
+      const filteredClasses = applyFilters(
+        HOOKS.DOCK_TILE_CLASS,
+        baseClasses,
+        ctx
+      );
+      tile2.className = filteredClasses.join(" ");
+      tile2.dataset.menuSlug = item.id;
+      const primary = document.createElement("button");
+      primary.className = "desktop-mode-dock__item-primary";
+      primary.setAttribute("type", "button");
+      primary.setAttribute("aria-label", item.title);
+      const iconEl = this.resolveIcon(item.icon, item.title, item.url);
+      primary.appendChild(iconEl);
+      if (item.badge > 0) {
+        const displayCount = item.badge > 99 ? "99+" : String(item.badge);
+        const badge = document.createElement("span");
+        badge.className = "desktop-mode-dock__badge";
+        badge.textContent = displayCount;
+        badge.setAttribute(
+          "aria-label",
+          sprintf(
+            // translators: %d is the number of pending updates / items.
+            _n("%d update", "%d updates", item.badge),
+            item.badge
+          )
+        );
+        primary.appendChild(badge);
+      }
+      primary.addEventListener("click", () => {
+        this.openPage(item);
+      });
+      tile2.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        openItemVisibilityMenu({
+          x: ev.clientX,
+          y: ev.clientY,
+          id: item.id,
+          title: item.title,
+          surface: "dock",
+          pluginFile: item.pluginFile ?? null,
+          pluginName: item.pluginName ?? null
+        });
+      });
+      tile2.appendChild(primary);
+      this.bindTooltipFiltered(tile2, item.title, ctx);
+      const baseId = this.resolveItemBaseId(item);
+      const teardown = attachDockPeek({
+        tile: tile2,
+        item: {
+          id: item.id,
+          title: item.title,
+          icon: item.icon,
+          url: item.url
+        },
+        getInstances: () => {
+          if (item.multi) {
+            return this.windowManager.getAllByBaseId(baseId);
+          }
+          const single = this.windowManager.getById(baseId) || this.windowManager.getById(item.id);
+          return single ? [single] : [];
+        },
+        // Ghost Card on EVERY tile, regardless of `multi`. The
+        // affordance reads consistently across the dock — every
+        // hover-peek surfaces a "+ open another <Page>" card. For
+        // multi-capable items, clicking it spawns a fresh
+        // instance. For singletons it falls through to the same
+        // open-or-focus path the tile click takes — usually a
+        // no-op (focuses the existing window) but cheap and
+        // visually consistent.
+        enableGhost: true,
+        windowManager: this.windowManager,
+        getOrientation: () => this.orientation,
+        openNew: () => this.openNewInstance(item),
+        suppressTooltip: (on) => {
+          if (on) {
+            this.tooltip.classList.remove(
+              "desktop-mode-dock__tooltip--visible"
+            );
+          }
+        }
+      });
+      this.peekTeardowns.set(item.id, teardown);
+      this.attachDragReorder(tile2, item.id);
+      return applyFilters(
+        HOOKS.DOCK_TILE_ELEMENT,
+        tile2,
+        ctx
+      );
+    }
+    /**
+     * Drag-to-reorder for menu tiles. Fixed slots — no interpolated
+     * positioning. While dragging:
+     *
+     * 1. Pointer down on the primary button starts a tentative drag.
+     *    Click handling is preserved by requiring movement past a
+     *    small threshold before we claim the gesture.
+     * 2. Once claimed, the tile gets a `--dragging` modifier so CSS
+     *    can lift it visually. Every `pointermove` checks which other
+     *    menu tile the cursor is currently over; if it's a different
+     *    tile, we splice the dragged tile in front of it (so adjacent
+     *    tiles slide into the vacated slot).
+     * 3. On `pointerup` we read the resulting DOM order, persist the
+     *    new id list to `dockOrder` via the public settings writer,
+     *    and the layout-dispatcher subscriber re-applies. Cancellation
+     *    (Escape, pointercancel) reverts to the original order.
+     *
+     * @since 0.25.0
+     */
+    attachDragReorder(tile2, itemId) {
+      const THRESHOLD = 5;
+      const FLIP_MS = 200;
+      let active2 = false;
+      let startX = 0;
+      let startY = 0;
+      let originalOrder = [];
+      let originalNext = null;
+      let pointerId = -1;
+      let originRect = null;
+      let justDragged = false;
+      const hardReset = () => {
+        active2 = false;
+        tile2.classList.remove("desktop-mode-dock__item--dragging");
+        tile2.style.transform = "";
+        tile2.style.transition = "";
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onCancel);
+        document.removeEventListener("keydown", onKey, true);
+        window.removeEventListener("blur", onBlur);
+        document.removeEventListener("visibilitychange", onVisibility);
+        pointerId = -1;
+        originRect = null;
+      };
+      const isMenuTile = (el) => {
+        return !!el && el instanceof HTMLElement && el.classList.contains("desktop-mode-dock__item") && !el.classList.contains("desktop-mode-dock__item--system") && !!el.dataset.menuSlug;
+      };
+      const eachSiblingTile = (fn) => {
+        for (const child of Array.from(this.container.children)) {
+          if (child instanceof HTMLElement && child !== tile2 && isMenuTile(child)) {
+            fn(child);
+          }
+        }
+      };
+      const snapshotMenuOrder = () => {
+        const ids = [];
+        for (const child of Array.from(this.container.children)) {
+          if (isMenuTile(child)) {
+            ids.push(child.dataset.menuSlug);
+          }
+        }
+        return ids;
+      };
+      const flipSiblings = (prevRects) => {
+        eachSiblingTile((sib) => {
+          const prev = prevRects.get(sib);
+          if (!prev) {
+            return;
+          }
+          const now = sib.getBoundingClientRect();
+          const dx = prev.left - now.left;
+          const dy = prev.top - now.top;
+          if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+            return;
+          }
+          sib.style.transition = "none";
+          sib.style.transform = `translate(${dx}px, ${dy}px)`;
+          void sib.offsetHeight;
+          sib.style.transition = `transform ${FLIP_MS}ms cubic-bezier(0.2, 0.7, 0.3, 1)`;
+          sib.style.transform = "";
+          const onEnd = () => {
+            sib.style.transition = "";
+            sib.style.transform = "";
+            sib.removeEventListener("transitionend", onEnd);
+          };
+          sib.addEventListener("transitionend", onEnd);
+        });
+      };
+      const onMove = (ev) => {
+        if (pointerId !== -1 && ev.pointerId !== pointerId) {
+          return;
+        }
+        if (!active2) {
+          const dx2 = ev.clientX - startX;
+          const dy2 = ev.clientY - startY;
+          if (dx2 * dx2 + dy2 * dy2 < THRESHOLD * THRESHOLD) {
+            return;
+          }
+          active2 = true;
+          originalOrder = snapshotMenuOrder();
+          originalNext = tile2.nextSibling;
+          originRect = tile2.getBoundingClientRect();
+          tile2.classList.add("desktop-mode-dock__item--dragging");
+          this.tooltip.classList.remove(
+            "desktop-mode-dock__tooltip--visible"
+          );
+        }
+        if (!originRect) {
+          return;
+        }
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        tile2.style.transform = `translate(${dx}px, ${dy}px)`;
+        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+        const targetTile = under?.closest(
+          ".desktop-mode-dock__item"
+        );
+        if (!targetTile || targetTile === tile2) {
+          return;
+        }
+        if (!isMenuTile(targetTile)) {
+          return;
+        }
+        const rect = targetTile.getBoundingClientRect();
+        let insertBefore;
+        if (this.orientation === "bottom") {
+          insertBefore = ev.clientX < rect.left + rect.width / 2;
+        } else {
+          insertBefore = ev.clientY < rect.top + rect.height / 2;
+        }
+        const prevRects = /* @__PURE__ */ new Map();
+        eachSiblingTile((sib) => {
+          prevRects.set(sib, sib.getBoundingClientRect());
+        });
+        let reordered = false;
+        if (insertBefore) {
+          if (targetTile !== tile2.nextSibling) {
+            this.container.insertBefore(tile2, targetTile);
+            reordered = true;
+          }
+        } else if (targetTile.nextSibling !== tile2) {
+          this.container.insertBefore(tile2, targetTile.nextSibling);
+          reordered = true;
+        }
+        if (reordered) {
+          tile2.style.transform = "";
+          const fresh = tile2.getBoundingClientRect();
+          startX = fresh.left + fresh.width / 2;
+          startY = fresh.top + fresh.height / 2;
+          tile2.style.transform = `translate(${ev.clientX - startX}px, ${ev.clientY - startY}px)`;
+          flipSiblings(prevRects);
+        }
+      };
+      const cleanup = () => {
+        tile2.classList.remove("desktop-mode-dock__item--dragging");
+        tile2.style.transform = "";
+        tile2.style.transition = "";
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onCancel);
+        document.removeEventListener("keydown", onKey, true);
+        window.removeEventListener("blur", onBlur);
+        document.removeEventListener("visibilitychange", onVisibility);
+        pointerId = -1;
+        originRect = null;
+        active2 = false;
+        if (_Dock.activeDragReset === hardReset) {
+          _Dock.activeDragReset = null;
+        }
+      };
+      const animateHome = () => {
+        tile2.style.transition = `transform ${FLIP_MS}ms cubic-bezier(0.2, 0.7, 0.3, 1)`;
+        tile2.style.transform = "";
+        const onEnd = () => {
+          tile2.style.transition = "";
+          tile2.removeEventListener("transitionend", onEnd);
+        };
+        tile2.addEventListener("transitionend", onEnd);
+      };
+      const persistDockOrder = (finalOrder) => {
+        const api = window.wp?.desktop;
+        if (!api?.getOsSettings || !api?.updateOsSettings) {
+          return;
+        }
+        const existing = api.getOsSettings().dockOrder;
+        const finalSet = new Set(finalOrder);
+        const merged = [];
+        let injected = false;
+        for (const id of existing) {
+          if (finalSet.has(id)) {
+            if (!injected) {
+              merged.push(...finalOrder);
+              injected = true;
+            }
+            continue;
+          }
+          merged.push(id);
+        }
+        if (!injected) {
+          merged.push(...finalOrder);
+        }
+        api.updateOsSettings({ dockOrder: merged });
+      };
+      const onUp = (ev) => {
+        if (pointerId !== -1 && ev.pointerId !== pointerId) {
+          return;
+        }
+        if (!active2) {
+          cleanup();
+          return;
+        }
+        justDragged = true;
+        const finalOrder = snapshotMenuOrder();
+        animateHome();
+        cleanup();
+        const same = finalOrder.length === originalOrder.length && finalOrder.every((id, i) => id === originalOrder[i]);
+        if (!same) {
+          persistDockOrder(finalOrder);
+        }
+        setTimeout(() => {
+          justDragged = false;
+        }, 200);
+      };
+      const onCancel = (ev) => {
+        if (ev && pointerId !== -1 && ev.pointerId !== pointerId) {
+          return;
+        }
+        if (active2 && originalNext !== void 0) {
+          const prevRects = /* @__PURE__ */ new Map();
+          eachSiblingTile((sib) => {
+            prevRects.set(sib, sib.getBoundingClientRect());
+          });
+          this.container.insertBefore(tile2, originalNext);
+          flipSiblings(prevRects);
+        }
+        animateHome();
+        cleanup();
+      };
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          onCancel();
+        }
+      };
+      const onBlur = () => onCancel();
+      const onVisibility = () => {
+        if (document.visibilityState !== "visible") {
+          onCancel();
+        }
+      };
+      tile2.addEventListener("pointerdown", (ev) => {
+        if (ev.button !== 0) {
+          return;
+        }
+        if (_Dock.activeDragReset) {
+          const prev = _Dock.activeDragReset;
+          _Dock.activeDragReset = null;
+          prev();
+        }
+        if (active2 || pointerId !== -1) {
+          hardReset();
+        }
+        startX = ev.clientX;
+        startY = ev.clientY;
+        pointerId = ev.pointerId;
+        active2 = false;
+        _Dock.activeDragReset = hardReset;
+        document.addEventListener("pointermove", onMove);
+        document.addEventListener("pointerup", onUp);
+        document.addEventListener("pointercancel", onCancel);
+        document.addEventListener("keydown", onKey, true);
+        window.addEventListener("blur", onBlur);
+        document.addEventListener("visibilitychange", onVisibility);
+      });
+      tile2.addEventListener(
+        "click",
+        (ev) => {
+          if (justDragged) {
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+          }
+        },
+        true
+      );
+    }
+    /**
+     * Resolve a registered icon value into a DOM element.
+     *
+     * Priority: dashicons class → inline SVG data URI → image URL →
+     * letter badge derived from the item's title. The letter fallback is
+     * important for plugin tiles: plugin authors routinely register
+     * top-level menus with `add_menu_page()` and omit the icon argument
+     * (defaulting to `'div'` or empty), which would otherwise render as
+     * an indistinguishable wall of generic wrenches. A colored letter
+     * tile gives each plugin a stable, unique-ish visual identity with
+     * zero plugin-side effort — the hue derives deterministically from
+     * the title so the same plugin always gets the same color.
+     *
+     * @param icon  The icon value from the menu entry.
+     * @param title Human-readable title, used when falling back to a
+     *              letter badge.
+     */
+    resolveIcon(icon, title, url) {
+      if (icon.startsWith("dashicons-") && icon !== "dashicons-admin-generic") {
+        const el = document.createElement("span");
+        el.className = `dashicons ${icon}`;
+        el.setAttribute("aria-hidden", "true");
+        return el;
+      }
+      if (icon.startsWith("data:image/svg+xml;base64,")) {
+        const base64Part = icon.slice("data:image/svg+xml;base64,".length);
+        if (/^[A-Za-z0-9+/=]+$/.test(base64Part)) {
+          return this._makeSvgIcon(icon);
+        }
+      }
+      if (icon.startsWith("url(")) {
+        return this._makeSvgIcon(icon);
+      }
+      if (icon.startsWith("http://") || icon.startsWith("https://")) {
+        const img = document.createElement("img");
+        img.className = "desktop-mode-dock__item-img";
+        img.src = icon;
+        img.alt = "";
+        img.setAttribute("aria-hidden", "true");
+        return img;
+      }
+      if (url) {
+        const native = this._extractNativeMenuIcon(url);
+        if (native) {
+          return native;
+        }
+      }
+      if (icon === "dashicons-admin-generic") {
+        const el = document.createElement("span");
+        el.className = "dashicons dashicons-admin-generic";
+        el.setAttribute("aria-hidden", "true");
+        return el;
+      }
+      return this.createLetterBadge(title);
+    }
+    /**
+     * Build an SVG-background icon tile. Shared between the data-URI
+     * branch of {@link resolveIcon} and the native-menu extractor.
+     */
+    _makeSvgIcon(bgValue) {
+      const el = document.createElement("span");
+      el.className = "desktop-mode-dock__item-svg";
+      el.style.backgroundImage = bgValue.startsWith("url(") ? bgValue : `url("${bgValue}")`;
+      el.style.backgroundSize = "contain";
+      el.style.backgroundRepeat = "no-repeat";
+      el.style.backgroundPosition = "center";
+      el.setAttribute("aria-hidden", "true");
+      return el;
+    }
+    /**
+     * Extract a plugin's icon from the hidden `#adminmenu` that still
+     * exists in the parent shell DOM (display:none'd by desktop.css).
+     * Handles the three shapes plugins commonly use when the menu-page
+     * icon_url is 'none' or 'div':
+     *
+     *   (a) `<img src="...">` nested inside `.wp-menu-image`
+     *   (b) a dashicon class on `.wp-menu-image` itself
+     *   (c) a CSS background-image on `.wp-menu-image::before` (the
+     *       `menu-icon-XYZ` pattern Yoast, WooCommerce, Jetpack, etc. use)
+     *
+     * Returns null when the URL doesn't match any admin-menu entry or
+     * none of the three shapes are detectable.
+     */
+    _extractNativeMenuIcon(url) {
+      const adminMenu = document.getElementById("adminmenu");
+      if (!adminMenu) {
+        return null;
+      }
+      let target;
+      try {
+        const u = new URL(url, window.location.href);
+        const filename = u.pathname.split("/").pop() || "";
+        target = filename + u.search;
+      } catch {
+        return null;
+      }
+      if (!target) {
+        return null;
+      }
+      const links = adminMenu.querySelectorAll("li.menu-top > a");
+      let matchLi = null;
+      for (const link of Array.from(links)) {
+        if (link.href.endsWith(target)) {
+          matchLi = link.closest("li.menu-top");
+          break;
+        }
+      }
+      if (!matchLi) {
+        return null;
+      }
+      const imgWrap = matchLi.querySelector(".wp-menu-image");
+      if (!imgWrap) {
+        return null;
+      }
+      const img = imgWrap.querySelector("img");
+      if (img && img.src) {
+        const el = document.createElement("img");
+        el.className = "desktop-mode-dock__item-img";
+        el.src = img.src;
+        el.alt = "";
+        el.setAttribute("aria-hidden", "true");
+        return el;
+      }
+      const dashMatch = imgWrap.className.match(/\bdashicons-[\w-]+\b/);
+      if (dashMatch && dashMatch[0] !== "dashicons-before") {
+        const el = document.createElement("span");
+        el.className = `dashicons ${dashMatch[0]}`;
+        el.setAttribute("aria-hidden", "true");
+        return el;
+      }
+      const before = window.getComputedStyle(imgWrap, "::before");
+      const bg = before.backgroundImage;
+      if (bg && bg !== "none" && !bg.includes('url("")')) {
+        return this._makeSvgIcon(bg);
+      }
+      const bgWrap = window.getComputedStyle(imgWrap).backgroundImage;
+      if (bgWrap && bgWrap !== "none" && !bgWrap.includes('url("")')) {
+        return this._makeSvgIcon(bgWrap);
+      }
+      return null;
+    }
+    /**
+     * Create a letter-badge icon — a rounded square tinted with a
+     * deterministic hue derived from the title, displaying the first
+     * letter of the title. Mirrors the "app icon placeholder" look
+     * macOS uses when an app ships without artwork.
+     *
+     * The title always drives both the letter and the hue — same plugin,
+     * same color across reloads. An empty title falls through to a `?`
+     * on a neutral gray tile, but the menu builder upstream guards
+     * against empty titles, so this is a defensive branch.
+     */
+    createLetterBadge(title) {
+      const el = document.createElement("span");
+      el.className = "desktop-mode-dock__item-letter";
+      el.setAttribute("aria-hidden", "true");
+      const trimmed = title.trim();
+      const firstCodePoint = trimmed ? Array.from(trimmed)[0] : "?";
+      el.textContent = firstCodePoint.toUpperCase();
+      const hue = hashTitleToHue(trimmed);
+      el.style.background = `linear-gradient(135deg, hsl(${hue} 62% 55%), hsl(${(hue + 24) % 360} 58% 42%))`;
+      return el;
+    }
+    /**
+     * Bind tooltip show/hide on hover. Tooltip anchor differs per
+     * orientation: left dock → tile's right side, right dock → tile's
+     * left side, bottom dock → above the tile. We set the relevant
+     * coordinate inline each enter; the CSS takes care of the rest.
+     */
+    /**
+     * Resolves the tooltip text through {@link HOOKS.DOCK_TILE_TOOLTIP}
+     * once at bind time (so the dock doesn't re-filter on every
+     * pointerenter) and stashes the resolved text on
+     * `tile.dataset.dockTooltip` so the multi-instance chip can
+     * restore it on its own pointerleave without going through the
+     * filter again.
+     *
+     * Returning an empty string from the filter suppresses the
+     * tooltip — the listener short-circuits and never adds the
+     * `--visible` class.
+     */
+    bindTooltipFiltered(tile2, text, ctx) {
+      const filtered = applyFilters(
+        HOOKS.DOCK_TILE_TOOLTIP,
+        text,
+        ctx
+      );
+      tile2.dataset.dockTooltip = filtered;
+      if (filtered === "") {
+        return;
+      }
+      tile2.addEventListener("pointerenter", () => {
+        this.positionTooltip(tile2, filtered);
+        this.tooltip.classList.add("desktop-mode-dock__tooltip--visible");
+      });
+      tile2.addEventListener("pointerleave", () => {
+        this.tooltip.classList.remove("desktop-mode-dock__tooltip--visible");
+      });
+    }
+    /**
+     * Write the tooltip text + anchor coordinate for `el`. Split out
+     * because the multi-instance chip's pointerenter handler also
+     * needs to anchor to a specific element (the chip, not the tile).
+     */
+    positionTooltip(el, text) {
+      const rect = el.getBoundingClientRect();
+      this.tooltip.textContent = text;
+      if (this.orientation === "bottom") {
+        this.tooltip.style.left = `${rect.left + rect.width / 2}px`;
+        this.tooltip.style.top = `${rect.top - 14}px`;
+      } else if (this.orientation === "right") {
+        this.tooltip.style.top = `${rect.top + rect.height / 2 - 14}px`;
+        this.tooltip.style.left = `${rect.left}px`;
+      } else {
+        this.tooltip.style.top = `${rect.top + rect.height / 2 - 14}px`;
+        this.tooltip.style.left = `${rect.right + 8}px`;
+      }
+    }
+    /**
+     * Open an admin page in a window (or focus if already open).
+     *
+     * Consults the native URL-remap registry first — when an opt-in
+     * native window has registered itself as the replacement for this
+     * admin URL (e.g. the native Posts window for `edit.php` when the
+     * user has flipped `nativePostsEnabled`), the click is rerouted
+     * to that window and the iframe path is skipped. The dock item
+     * itself is untouched: same icon, same tooltip, same position —
+     * only the destination changes.
+     */
+    openPage(item) {
+      if (item.id.startsWith("dock:")) {
+        const iconId = item.id.slice(5);
+        const cfg = window.desktopModeConfig;
+        const icon = cfg?.desktopIcons?.find((i) => i.id === iconId);
+        if (icon?.window) {
+          const wp = window.wp?.desktop;
+          wp?.openWindow?.(icon.window);
+          return;
+        }
+        if (icon?.url) {
+          if (tryOpenExternalUrl(icon.url)) {
+            return;
+          }
+          const baseId2 = this.deriveWindowId(icon.url);
+          this.windowManager.open({
+            id: baseId2,
+            baseId: baseId2,
+            url: icon.url,
+            parentUrl: icon.url,
+            title: icon.title,
+            icon: icon.icon.startsWith("dashicons-") ? icon.icon : "dashicons-admin-generic",
+            submenu: [],
+            multi: false
+          });
+          return;
+        }
+        return;
+      }
+      if (tryOpenExternalUrl(item.url)) {
+        return;
+      }
+      if (tryNativeUrlRemap(item.url)) {
+        return;
+      }
+      const baseId = this.deriveWindowId(item.url);
+      this.windowManager.open({
+        id: baseId,
+        baseId,
+        url: item.url,
+        parentUrl: item.url,
+        title: item.title,
+        icon: item.icon.startsWith("dashicons-") ? item.icon : "dashicons-admin-generic",
+        submenu: item.submenu,
+        multi: !!item.multi
+      });
+    }
+    /**
+     * Open a brand-new instance of a page, even if one is already
+     * open. Invoked by the "+" ghost card in the dock peek.
+     *
+     * The user explicitly asked for "another window of this thing,"
+     * so we honour the request even when {@link tryNativeUrlRemap}
+     * would otherwise route the click into a native-window
+     * singleton. Result: clicking + while a native Posts window is
+     * open opens a fresh iframe of `edit.php` alongside it. Two
+     * windows of Posts is the explicit ask — that's what + is for.
+     */
+    openNewInstance(item) {
+      if (tryOpenExternalUrl(item.url)) {
+        return;
+      }
+      const remappedId = resolveNativeUrlRemap(item.url);
+      if (remappedId) {
+        const api = window.wp?.desktop;
+        if (api?.openNewWindow?.(remappedId, { source: "dock-peek" })) {
+          return;
+        }
+      }
+      const baseId = this.deriveWindowId(item.url);
+      void this.windowManager.openNew({
+        id: baseId,
+        baseId,
+        url: item.url,
+        parentUrl: item.url,
+        title: item.title,
+        icon: item.icon.startsWith("dashicons-") ? item.icon : "dashicons-admin-generic",
+        submenu: item.submenu,
+        multi: true
+      });
+    }
+    /**
+     * Derive a window ID from an admin page URL.
+     */
+    deriveWindowId(url) {
+      return deriveWindowId(url, this.adminUrl);
+    }
+    /**
+     * Resolve the window-manager key for a dock tile, in this order:
+     *
+     * 1. `item.windowId` — set by `applyDockPlacement` when the tile
+     *    is synthesized from a `desktop_mode_register_icon()` entry
+     *    whose target is a native window. Native-window ids never
+     *    pass through the URL → native-window remap layer, so we
+     *    short-circuit before touching it.
+     * 2. {@link resolveNativeUrlRemap} on `item.url` — captures the
+     *    `nativePostsEnabled` / `nativePagesEnabled` opt-ins that
+     *    repoint a URL-based tile at a native window.
+     * 3. {@link deriveWindowId} on `item.url` — the URL-based
+     *    fallback for ordinary admin-menu tiles.
+     *
+     * Shared by the hover-peek card and the active/focused-dot
+     * indicator; the two stayed in lockstep before this method existed
+     * by hand-rolling the same chain at each call site.
+     */
+    resolveItemBaseId(item) {
+      if (item.windowId) {
+        return item.windowId;
+      }
+      const remapped = resolveNativeUrlRemap(item.url);
+      return remapped ?? this.deriveWindowId(item.url);
+    }
+    /**
+     * Listen to window events to update active/focused indicators on dock items.
+     *
+     * The event detail isn't used — we just need to re-query the
+     * window manager on every change — so the handlers take no
+     * argument and the type cast is gone with it.
+     */
+    bindWindowEvents() {
+      const refresh = () => this.updateActiveStates();
+      this.boundRefresh = refresh;
+      document.addEventListener("desktop-mode-window-opened", refresh);
+      document.addEventListener("desktop-mode-window-closed", refresh);
+      document.addEventListener("desktop-mode-window-focused", refresh);
+      window.wp?.hooks?.addAction?.(
+        "desktop-mode.desktop.switched",
+        this.hooksNamespace,
+        refresh
+      );
+      window.wp?.hooks?.addAction?.(
+        "desktop-mode.desktop.closed",
+        this.hooksNamespace,
+        refresh
+      );
+    }
+    /**
+     * Tear the dock down: detach window-lifecycle listeners, clear
+     * pending attention timers, remove the floating tooltip from
+     * `document.body`, and empty the container's children. Used by
+     * the layout dispatcher when the user switches `desktopLayout`
+     * in OS Settings — old dock(s) get destroyed and a fresh set is
+     * constructed for the new layout.
+     *
+     * Idempotent: calling twice is safe.
+     */
+    destroy() {
+      document.removeEventListener(
+        "desktop-mode-window-opened",
+        this.boundRefresh
+      );
+      document.removeEventListener(
+        "desktop-mode-window-closed",
+        this.boundRefresh
+      );
+      document.removeEventListener(
+        "desktop-mode-window-focused",
+        this.boundRefresh
+      );
+      window.wp?.hooks?.removeAction?.(
+        "desktop-mode.desktop.switched",
+        this.hooksNamespace
+      );
+      window.wp?.hooks?.removeAction?.(
+        "desktop-mode.desktop.closed",
+        this.hooksNamespace
+      );
+      for (const handle of this.attentionTimers.values()) {
+        window.clearTimeout(handle);
+      }
+      this.attentionTimers.clear();
+      for (const teardown of this.peekTeardowns.values()) {
+        teardown();
+      }
+      this.peekTeardowns.clear();
+      this.tooltip.remove();
+      while (this.container.firstChild) {
+        this.container.removeChild(this.container.firstChild);
+      }
+      this.itemElements.clear();
+      this.systemItemElements.clear();
+      this.systemItems = [];
+      this.systemSeparator = null;
+      this.container.removeAttribute("data-desktop-mode-dock-placement");
+    }
+    /**
+     * Update the active/focused classes and multi-instance rail on every
+     * dock item in response to a window lifecycle event.
+     *
+     * For singletons the rail is absent; "active" means "the one window
+     * is open". For multi-capable items, active means "≥1 instance is
+     * open" and focused means "the focused window belongs to this item".
+     */
+    updateActiveStates() {
+      const focused = this.windowManager.getFocused();
+      const focusedBaseId = focused ? focused.config.baseId || focused.id : null;
+      const activeDesktopId = this.windowManager.getActiveDesktopId();
+      const onActiveDesktop = (w) => (w.config.desktopId || activeDesktopId) === activeDesktopId;
+      for (const item of this.items) {
+        const tile2 = this.itemElements.get(item.id);
+        if (!tile2) {
+          continue;
+        }
+        const baseId = this.resolveItemBaseId(item);
+        const instances = item.multi ? this.windowManager.getAllByBaseId(baseId).filter(onActiveDesktop) : [];
+        const single = this.windowManager.getById(baseId);
+        const singleOpen = !item.multi && !!single && onActiveDesktop(single);
+        const isOpen = item.multi ? instances.length > 0 : singleOpen;
+        const isFocused = focusedBaseId === baseId && !!focused && onActiveDesktop(focused);
+        tile2.classList.toggle("desktop-mode-dock__item--active", isOpen);
+        tile2.classList.toggle("desktop-mode-dock__item--focused", isFocused);
+      }
+      for (const sys of this.systemItems) {
+        const tile2 = this.systemItemElements.get(sys.id);
+        if (!tile2) {
+          continue;
+        }
+        const isOpen = sys.isOpen ? sys.isOpen() : false;
+        const isFocused = !!focused && focused.id === sys.id;
+        tile2.classList.toggle("desktop-mode-dock__item--active", isOpen);
+        tile2.classList.toggle("desktop-mode-dock__item--focused", isFocused);
+      }
+    }
+  };
+  _Dock.instanceCounter = 0;
+  _Dock.activeDragReset = null;
+  let Dock = _Dock;
+  function _applyBadgeNode(host, count) {
+    const existing = host.querySelector(
+      ":scope > .desktop-mode-dock__badge"
+    );
+    if (count <= 0) {
+      existing?.remove();
+      return;
+    }
+    const display = count > 99 ? "99+" : String(count);
+    if (existing) {
+      if (existing.textContent !== display) {
+        existing.textContent = display;
+      }
+      existing.setAttribute(
+        "aria-label",
+        sprintf(
+          // translators: %d is the number of pending items in a dock badge.
+          _n("%d notification", "%d notifications", count),
+          count
+        )
+      );
+      return;
+    }
+    const badge = document.createElement("span");
+    badge.className = "desktop-mode-dock__badge";
+    badge.textContent = display;
+    badge.setAttribute(
+      "aria-label",
+      sprintf(
+        // translators: %d is the number of pending items in a dock badge.
+        _n("%d notification", "%d notifications", count),
+        count
+      )
+    );
+    host.appendChild(badge);
+  }
+  const DEFAULT_RENDERER_DOCK = Symbol.for(
+    "desktop-mode/default-dock-rail-renderer/dock"
+  );
+  const defaultDockRailRenderer = {
+    id: "default",
+    label: "Icon strip",
+    description: "The shipped baseline — icon tiles with badges, tooltips, multi-instance chips, and attention animations.",
+    icon: "dashicons-menu-alt",
+    apiVersion: 1,
+    mount(deps2) {
+      const dock = new Dock(
+        deps2.container,
+        deps2.windowManager,
+        deps2.items,
+        deps2.adminUrl,
+        deps2.orientation
+      );
+      const controller = {
+        [DEFAULT_RENDERER_DOCK]: dock,
+        replaceItems: (items) => dock.replaceItems(items),
+        appendSystemItem: (item) => dock.appendSystemItem(item),
+        removeSystemItem: (id) => dock.removeSystemItem(id),
+        setBadge: (itemId, count) => dock.setBadge(itemId, count),
+        setAttention: (itemId, mode, opts) => dock.setAttention(itemId, mode, opts),
+        setOrientation: (orientation) => dock.setOrientation(orientation),
+        destroy: () => dock.destroy()
+      };
+      return controller;
+    }
+  };
+  function unwrapDefaultDock(controller) {
+    if (!controller) {
+      return null;
+    }
+    const probe = controller;
+    const dock = probe[DEFAULT_RENDERER_DOCK];
+    return dock instanceof Dock ? dock : null;
+  }
+  function installDefaultDockRailRenderer() {
+    register$1(defaultDockRailRenderer);
+  }
+  function customGradientCss(state2) {
+    const { from, to, angle } = state2.customGradient;
+    return `linear-gradient(${angle}deg, ${from}, ${to})`;
+  }
+  function registerCustomGradient(ctx) {
+    register$2({
+      id: CUSTOM_GRADIENT_ID,
+      label: __("Custom gradient"),
+      type: "css",
+      preview: customGradientCss(ctx.state),
+      resolveValue: () => customGradientCss(ctx.state)
+    });
+  }
+  function registerCustomImageIfPresent(state2) {
+    if (!state2.customImage) {
+      unregister$2(CUSTOM_IMAGE_ID);
+      return;
+    }
+    const safeUrl = encodeURI(state2.customImage.url);
+    const value = `url("${safeUrl}") center/cover no-repeat, #1d2327`;
+    register$2({
+      id: CUSTOM_IMAGE_ID,
+      label: __("Custom image"),
+      type: "css",
+      value,
+      preview: value
+    });
+  }
+  let _panelLoadPromise = null;
+  function loadOsSettingsPanelBundle(scriptUrl) {
+    if (window.desktopModeRenderOsSettingsPanel) {
+      return Promise.resolve(window.desktopModeRenderOsSettingsPanel);
+    }
+    if (_panelLoadPromise) {
+      return _panelLoadPromise;
+    }
+    _panelLoadPromise = new Promise((resolve2, reject) => {
+      const existing = document.querySelector(
+        'script[data-desktop-mode-os-settings-panel="1"]'
+      );
+      const finish = () => {
+        const fn = window.desktopModeRenderOsSettingsPanel;
+        if (!fn) {
+          reject(
+            new Error(
+              "[desktop-mode] os-settings-panel bundle loaded but did not register desktopModeRenderOsSettingsPanel"
+            )
+          );
+          return;
+        }
+        resolve2(fn);
+      };
+      if (existing) {
+        if (window.desktopModeRenderOsSettingsPanel) {
+          finish();
+        } else {
+          existing.addEventListener("load", finish);
+          existing.addEventListener(
+            "error",
+            () => reject(new Error("failed to load os-settings-panel bundle"))
+          );
+        }
+        return;
+      }
+      const s = document.createElement("script");
+      s.src = scriptUrl;
+      s.async = true;
+      s.dataset.desktopModeOsSettingsPanel = "1";
+      s.addEventListener("load", finish);
+      s.addEventListener(
+        "error",
+        () => reject(new Error("failed to load os-settings-panel bundle"))
+      );
+      document.head.appendChild(s);
+    });
+    return _panelLoadPromise;
+  }
+  class OsSettings {
+    constructor(config, layer) {
+      this.activeEditorTeardown = null;
+      this.tabRegistryUnsubscribe = null;
+      this.activeTabId = null;
+      this.osSettingsListeners = /* @__PURE__ */ new Set();
+      this._lastRenderedBody = null;
+      this.config = config;
+      this.layer = layer;
+      this.state = loadState();
+      setLastConfirmedState(this.state);
+      document.addEventListener(
+        "desktop-mode-os-settings-save-lifecycle",
+        (e) => {
+          const detail = e.detail;
+          if (!detail || detail.phase !== "failed" || !detail.rolledBackTo) {
+            return;
+          }
+          this.state = detail.rolledBackTo;
+          this.apply();
+          if (this._lastRenderedBody?.isConnected) {
+            this.renderPanel(this._lastRenderedBody);
+          }
+        }
+      );
+      registerCustomGradient(this);
+      registerCustomImageIfPresent(this.state);
+    }
+    /** Project the private state into the public snapshot shape. */
+    getOsSettingsSnapshot() {
+      return {
+        wallpaper: this.state.wallpaper,
+        accent: this.state.accent,
+        dockSize: this.state.dockSize,
+        desktopLayout: this.state.desktopLayout,
+        dockRailRenderer: this.state.dockRailRenderer,
+        ai: { ...this.state.ai },
+        nativePostsEnabled: this.state.nativePostsEnabled,
+        nativePostsHiddenColumns: this.state.nativePostsHiddenColumns.slice(),
+        nativePagesEnabled: this.state.nativePagesEnabled,
+        nativeUsersEnabled: this.state.nativeUsersEnabled,
+        nativePluginsEnabled: this.state.nativePluginsEnabled,
+        nativeCommentsEnabled: this.state.nativeCommentsEnabled,
+        foldersSharingEnabled: this.state.foldersSharingEnabled,
+        itemVisibility: { ...this.state.itemVisibility },
+        dockOrder: this.state.dockOrder.slice(),
+        dockPromotedPositions: Object.fromEntries(
+          Object.entries(this.state.dockPromotedPositions).map(
+            ([k, v]) => [k, { ...v }]
+          )
+        )
+      };
+    }
+    subscribeOsSettings(cb) {
+      this.osSettingsListeners.add(cb);
+      return () => {
+        this.osSettingsListeners.delete(cb);
+      };
+    }
+    /**
+     * Apply the current state: wallpaper via the layer, accent + dock
+     * size as CSS custom properties on the shell.
+     *
+     * Safe to call repeatedly — calls into `layer.apply` dedupe via
+     * generation counter; CSS property writes are idempotent.
+     */
+    apply() {
+      const shell = document.getElementById("desktop-mode-shell");
+      if (!shell) {
+        return;
+      }
+      const def = get$1(this.state.wallpaper) || get$1(getDefaultWallpaperId()) || get$1(DEFAULT_WALLPAPER_ID) || all$1()[0];
+      if (def) {
+        this.layer.apply(def);
+      }
+      const accents = getAccents();
+      const accent = accents.find((a) => a.id === this.state.accent) ?? accents[0];
+      const dockSize = DOCK_SIZES.find((d) => d.id === this.state.dockSize) ?? DOCK_SIZES[1];
+      const root = document.documentElement;
+      root.style.setProperty("--wp-admin-theme-color", accent.value);
+      root.style.setProperty("--desktop-mode-dock-width", `${dockSize.width}px`);
+      root.style.setProperty("--desktop-mode-dock-icon-size", `${dockSize.icon}px`);
+      shell.setAttribute(
+        "data-desktop-mode-layout",
+        this.state.desktopLayout
+      );
+      setActiveRenderer(this.state.dockRailRenderer);
+    }
+    save(opts = {}) {
+      saveState(this.state, opts);
+      if (this.osSettingsListeners.size > 0) {
+        const snapshot = this.getOsSettingsSnapshot();
+        const listeners2 = Array.from(this.osSettingsListeners);
+        for (const cb of listeners2) {
+          try {
+            cb(snapshot);
+          } catch (err) {
+            if (typeof console !== "undefined") {
+              console.error(
+                "[desktop-mode] os-settings listener threw:",
+                err
+              );
+            }
+          }
+        }
+      }
+    }
+    /**
+     * Render the settings panel into the given native-window body.
+     *
+     * Builds three sections (wallpaper, accent, dock size) and wires
+     * each to save/apply on change. The panel is a one-shot build per
+     * window open — closing and re-opening renders a fresh tree.
+     */
+    /**
+     * Render the settings panel into the given native-window body.
+     *
+     * Lazy since 0.8.4 — the actual rendering logic plus every
+     * `<wpd-*>` component the panel uses lives in
+     * `src/settings/panel.ts`, compiled into its own Vite target
+     * `os-settings-panel[.min].js`. The script is injected on the
+     * first call below and the matching
+     * `window.desktopModeRenderOsSettingsPanel( ctx, body )` global
+     * is then invoked. Subsequent calls (registry-driven re-render,
+     * save-failure rollback) skip the load and forward immediately.
+     *
+     * Why this is a `<script>`-injected sibling bundle rather than
+     * an in-bundle dynamic import: Vite IIFE lib mode inlines
+     * `import()` calls, so an in-bundle lazy import would give zero
+     * byte savings. A separate Vite target is the only mechanism
+     * that actually shrinks `desktop.min.js`. See the Stage 8
+     * section of `BUNDLE-SIZE-REPORT.md` for the full picture.
+     */
+    renderPanel(body) {
+      this._lastRenderedBody = body;
+      const fn = window.desktopModeRenderOsSettingsPanel;
+      if (fn) {
+        fn(this, body);
+        return;
+      }
+      void loadOsSettingsPanelBundle(
+        this.config.osSettingsPanelBundleUrl ?? ""
+      ).then((render2) => {
+        if (!body.isConnected) {
+          return;
+        }
+        render2(this, body);
+      }).catch((err) => {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] OS Settings panel failed to load:",
+            err
+          );
+        }
+      });
+    }
+  }
+  const EXIT_DESKTOP_MODE_TILE_ID = "desktop-mode-exit";
+  function getExitDesktopModeTileDef() {
+    return {
+      id: EXIT_DESKTOP_MODE_TILE_ID,
+      title: __("Exit Desktop Mode"),
+      // `dashicons-exit` (door with arrow) is the clearest "leave"
+      // glyph in the WordPress set, distinct from `dashicons-desktop`
+      // used by OS Settings.
+      icon: "dashicons-exit",
+      onOpen: () => {
+        void exitDesktopMode();
+      }
+    };
+  }
+  async function exitDesktopMode() {
+    const cfg = window.desktopModeAdminBar;
+    const fallback = cfg?.classicUrl || "/wp-admin/";
+    if (!cfg?.ajaxUrl || !cfg?.nonce) {
+      navigateTop(fallback);
+      return;
+    }
+    const body = new URLSearchParams();
+    body.set("action", "save-desktop-mode");
+    body.set("nonce", cfg.nonce);
+    body.set("enabled", "");
+    let target = fallback;
+    try {
+      const res = await fetch(cfg.ajaxUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: body.toString(),
+        credentials: "same-origin"
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.success && json.data?.redirect) {
+          target = json.data.redirect;
+        }
+      }
+    } catch {
+    }
+    navigateTop(target);
+  }
+  function navigateTop(url) {
+    try {
+      window.top.location.href = url;
+    } catch {
+      window.location.href = url;
+    }
+  }
+  const _initial$1 = {
+    userId: null,
+    requestedAt: 0,
+    tabRequested: false
+  };
+  let _store$2 = null;
+  function getStore$1() {
+    if (_store$2) {
+      return _store$2;
+    }
+    const w = window;
+    const factory = w.wp?.desktop?.createSharedStore;
+    if (typeof factory !== "function") {
+      return null;
+    }
+    _store$2 = factory(
+      "desktop-mode/user-edit/target",
+      () => ({ ..._initial$1 })
+    );
+    return _store$2;
+  }
+  function setUserEditTarget(userId) {
+    const store2 = getStore$1();
+    if (store2) {
+      store2.state.userId = userId;
+      store2.state.requestedAt = Date.now();
+      store2.state.tabRequested = true;
+      store2.notify();
+      return;
+    }
+    const w = window;
+    w._wpdUserEditTarget = {
+      userId,
+      requestedAt: Date.now(),
+      tabRequested: true
+    };
+  }
+  const pending = /* @__PURE__ */ new Map();
+  function loadVendorScript(url, extras) {
+    const existing = pending.get(url);
+    if (existing) {
+      return existing;
+    }
+    const promise = new Promise((resolve2, reject) => {
+      const selector = `script[data-desktop-mode-vendor="${cssEscape(url)}"]`;
+      const preexisting = document.querySelector(selector);
+      if (preexisting) {
+        if (preexisting.dataset.loaded === "1") {
+          resolve2();
+          return;
+        }
+        preexisting.addEventListener("load", () => resolve2(), { once: true });
+        preexisting.addEventListener(
+          "error",
+          () => reject(new Error(`Failed to load ${url}`)),
+          { once: true }
+        );
+        return;
+      }
+      if (extras?.translations) {
+        injectInline(extras.translations);
+      }
+      for (const code of extras?.l10n ?? []) {
+        injectInline(code);
+      }
+      for (const code of extras?.before ?? []) {
+        injectInline(code);
+      }
+      const script = document.createElement("script");
+      script.src = url;
+      script.async = true;
+      script.dataset.desktopModeVendor = url;
+      script.addEventListener(
+        "load",
+        () => {
+          script.dataset.loaded = "1";
+          for (const code of extras?.after ?? []) {
+            injectInline(code);
+          }
+          resolve2();
+        },
+        { once: true }
+      );
+      script.addEventListener(
+        "error",
+        () => {
+          pending.delete(url);
+          script.remove();
+          reject(new Error(`Failed to load ${url}`));
+        },
+        { once: true }
+      );
+      document.head.appendChild(script);
+    });
+    pending.set(url, promise);
+    return promise;
+  }
+  function injectInline(code) {
+    if (!code) {
+      return;
+    }
+    const tag = document.createElement("script");
+    tag.textContent = code;
+    tag.dataset.desktopModeVendorInline = "1";
+    document.head.appendChild(tag);
+  }
+  function cssEscape(value) {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+      return CSS.escape(value);
+    }
+    return value.replace(/["\\]/g, "\\$&");
+  }
+  const registry$7 = /* @__PURE__ */ new Map();
+  function registerModule(def) {
+    if (!def || typeof def.id !== "string" || def.id === "") {
+      if (typeof console !== "undefined") {
+        console.warn("[desktop-mode] Ignored invalid module registration:", def);
+      }
+      return;
+    }
+    if (typeof def.url !== "string" || def.url === "") {
+      if (typeof console !== "undefined") {
+        console.warn(
+          `[desktop-mode] Module "${def.id}" has no url; ignored.`
+        );
+      }
+      return;
+    }
+    registry$7.set(def.id, def);
+  }
+  function moduleIds() {
+    return Array.from(registry$7.keys());
+  }
+  async function loadModules(ids) {
+    if (!ids || ids.length === 0) {
+      return;
+    }
+    const unknown = ids.filter((id) => !registry$7.has(id));
+    if (unknown.length > 0) {
+      throw new Error(
+        `[desktop-mode] Unknown module(s) in needs: ${unknown.map((id) => `"${id}"`).join(", ")}. Known modules: ${moduleIds().join(", ") || "(none)"}.`
+      );
+    }
+    await Promise.all(
+      ids.map((id) => {
+        const def = registry$7.get(id);
+        if (!def) {
+          return Promise.resolve();
+        }
+        if (def.isReady && def.isReady()) {
+          return Promise.resolve();
+        }
+        return loadVendorScript(def.url);
+      })
+    );
+  }
+  function createContext(id, pluginUrl) {
+    return {
+      id,
+      pluginUrl,
+      prefersReducedMotion: prefersReducedMotion(),
+      visible: !document.hidden
+    };
+  }
+  function prefersReducedMotion() {
+    if (typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia("( prefers-reduced-motion: reduce )").matches;
+  }
+  class WallpaperLayer {
+    constructor(element, pluginUrl) {
+      this.generation = 0;
+      this.active = null;
+      this.boundVisibilityChange = () => {
+        if (!this.active) {
+          return;
+        }
+        doAction(HOOKS.WALLPAPER_VISIBILITY, {
+          id: this.active.id,
+          state: document.hidden ? "hidden" : "visible"
+        });
+      };
+      this.element = element;
+      this.pluginUrl = pluginUrl;
+      document.addEventListener("visibilitychange", this.boundVisibilityChange);
+    }
+    /**
+     * Apply a wallpaper definition. Safe to call from any event
+     * handler — handles type dispatch, teardown of the prior active
+     * canvas, and race-safe async mounts.
+     */
+    apply(def) {
+      const gen = ++this.generation;
+      this.teardownActive();
+      if (def.type === "css") {
+        this.applyCss(def);
+        return;
+      }
+      this.applyCanvas(def, gen);
+    }
+    /**
+     * Imperative teardown entry point — called from desktop.ts on
+     * `pagehide` so a canvas wallpaper's ticker doesn't compete with
+     * the session-beacon flush at unload.
+     */
+    teardownActive() {
+      if (!this.active) {
+        return;
+      }
+      const { id, teardown } = this.active;
+      this.active = null;
+      doAction(HOOKS.WALLPAPER_UNMOUNTING, { id });
+      try {
+        teardown();
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, { scope: "wallpaper-teardown", id, error: err });
+        if (typeof console !== "undefined") {
+          console.error(
+            `[desktop-mode] Wallpaper "${id}" teardown threw:`,
+            err
+          );
+        }
+      }
+      this.element.innerHTML = "";
+    }
+    /** Remove listeners. Not called in normal flow — reserved for tests. */
+    dispose() {
+      this.teardownActive();
+      document.removeEventListener("visibilitychange", this.boundVisibilityChange);
+    }
+    applyCss(def) {
+      const value = def.resolveValue ? def.resolveValue(createContext(def.id, this.pluginUrl)) : def.value;
+      if (typeof value === "string") {
+        this.element.style.setProperty("--desktop-mode-bg", value);
+        const shell = document.getElementById("desktop-mode-shell");
+        shell?.style.setProperty("--desktop-mode-bg", value);
+      }
+    }
+    applyCanvas(def, gen) {
+      const ctx = createContext(def.id, this.pluginUrl);
+      doAction(HOOKS.WALLPAPER_MOUNTING, { id: def.id, container: this.element, ctx });
+      const depsReady = def.needs && def.needs.length > 0 ? loadModules(def.needs) : Promise.resolve();
+      const onResolve = (teardown) => {
+        if (gen !== this.generation) {
+          try {
+            teardown();
+          } catch {
+          }
+          return;
+        }
+        this.active = { id: def.id, teardown };
+        doAction(HOOKS.WALLPAPER_MOUNTED, { id: def.id, container: this.element, ctx });
+      };
+      depsReady.then(
+        () => {
+          if (gen !== this.generation) {
+            return;
+          }
+          let result;
+          try {
+            result = def.mount(this.element, ctx);
+          } catch (err) {
+            this.handleMountFailure(def.id, err);
+            return;
+          }
+          if (isThenable$1(result)) {
+            result.then(onResolve, (err) => {
+              if (gen !== this.generation) {
+                return;
+              }
+              this.handleMountFailure(def.id, err);
+            });
+            return;
+          }
+          onResolve(result);
+        },
+        (err) => {
+          if (gen !== this.generation) {
+            return;
+          }
+          this.handleMountFailure(def.id, err);
+        }
+      );
+    }
+    handleMountFailure(id, err) {
+      this.element.innerHTML = "";
+      doAction(HOOKS.WALLPAPER_MOUNT_FAILED, { id, error: err });
+      doAction(HOOKS.SHELL_ERROR, { scope: "wallpaper-mount", id, error: err });
+      if (typeof console !== "undefined") {
+        console.error(
+          `[desktop-mode] Wallpaper "${id}" failed to mount:`,
+          err
+        );
+      }
+    }
+  }
+  function isThenable$1(value) {
+    return !!value && typeof value === "object" && typeof value.then === "function";
+  }
+  function createWallpaperRegistrySync(deps2) {
+    const { osSettings } = deps2;
+    const registered = /* @__PURE__ */ new Set();
+    const loadedScripts = /* @__PURE__ */ new Set();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedScripts.has(entry.scriptUrl)) {
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "wallpaper-script-load",
+          id: entry.id,
+          error: err
+        });
+      }
+      loadedScripts.add(entry.scriptUrl);
+    };
+    const readDef = (id) => {
+      const globals = window.desktopModeWallpapers || {};
+      return globals[id] ?? null;
+    };
+    const defFromCssEntry = (entry) => {
+      if (entry.type !== "css" || entry.value === "") {
+        return null;
+      }
+      return {
+        id: entry.id,
+        label: entry.label,
+        type: "css",
+        value: entry.value,
+        preview: entry.preview !== "" ? entry.preview : entry.value
+      };
+    };
+    const registerEntry = async (entry) => {
+      if (registered.has(entry.id)) {
+        return;
+      }
+      const cssDef = defFromCssEntry(entry);
+      if (cssDef) {
+        register$2(cssDef);
+        registered.add(entry.id);
+        osSettings.apply();
+        return;
+      }
+      await ensureScript(entry);
+      const def = readDef(entry.id);
+      if (!def) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "wallpaper-missing-def",
+          id: entry.id,
+          error: new Error(
+            `[desktop-mode] No wallpaper def on window.desktopModeWallpapers["${entry.id}"]. Script loaded but didn't publish a def — check the plugin's enqueue + global assignment.`
+          )
+        });
+        return;
+      }
+      try {
+        register$2(def);
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "wallpaper-register",
+          id: entry.id,
+          error: err
+        });
+        return;
+      }
+      registered.add(entry.id);
+      osSettings.apply();
+    };
+    const unregisterEntry = (id) => {
+      if (!registered.has(id)) {
+        return;
+      }
+      unregister$2(id);
+      registered.delete(id);
+      osSettings.apply();
+    };
+    return async (list2) => {
+      const incoming = /* @__PURE__ */ new Set();
+      for (const entry of list2) {
+        incoming.add(entry.id);
+      }
+      for (const id of Array.from(registered)) {
+        if (!incoming.has(id)) {
+          unregisterEntry(id);
+        }
+      }
+      for (const entry of list2) {
+        if (!registered.has(entry.id)) {
+          await registerEntry(entry);
+        }
+      }
+    };
+  }
+  const COMMAND_SLUG = /^[a-z0-9_/-]+$/;
+  const commandRegistryStore = createSharedStore(
+    "desktop-mode/commands-registry",
+    () => ({
+      registry: /* @__PURE__ */ new Map(),
+      listeners: /* @__PURE__ */ new Set()
+    })
+  );
+  const registry$6 = commandRegistryStore.state.registry;
+  const listeners$9 = commandRegistryStore.state.listeners;
+  function registerCommand(cmd) {
+    const errors = [];
+    const slug = typeof cmd?.slug === "string" ? cmd.slug.trim().toLowerCase() : "";
+    if (!cmd || typeof cmd !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof cmd.slug !== "string" || cmd.slug.trim() === "") {
+        errors.push("slug (missing)");
+      } else if (!COMMAND_SLUG.test(slug)) {
+        errors.push(
+          `slug (must match ${COMMAND_SLUG} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      }
+      if (typeof cmd.label !== "string" || cmd.label.trim() === "") {
+        errors.push("label (missing)");
+      }
+      if (typeof cmd.run !== "function") {
+        errors.push("run (must be a function)");
+      }
+    }
+    throwOnRegistrationErrors("Command", errors, cmd);
+    registry$6.set(slug, { ...cmd, slug });
+    notify$b();
+  }
+  function unregisterCommand(slug) {
+    if (registry$6.delete(slug.toLowerCase())) {
+      notify$b();
+    }
+  }
+  function unregisterByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [slug, cmd] of Array.from(registry$6.entries())) {
+      if (cmd.owner === owner) {
+        registry$6.delete(slug);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$b();
+    }
+    return removed;
+  }
+  function listCommands() {
+    return Array.from(registry$6.values());
+  }
+  function listAiCallableCommands() {
+    const out = [];
+    for (const cmd of registry$6.values()) {
+      if (cmd.aiCallable !== true) {
+        continue;
+      }
+      out.push({
+        slug: cmd.slug,
+        label: cmd.label,
+        description: cmd.description ?? "",
+        hint: cmd.hint ?? ""
+      });
+    }
+    return out;
+  }
+  function findCommand(slug) {
+    return registry$6.get(slug.toLowerCase()) ?? null;
+  }
+  function notify$b() {
+    const snapshot = Array.from(listeners$9);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error("[desktop-mode] command-registry listener threw:", err);
+        }
+      }
+    }
+  }
+  function createCommandRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    let prevSlugsByHandle = /* @__PURE__ */ new Map();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "command-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    const slugsByHandleFrom = (commands) => {
+      const map = /* @__PURE__ */ new Map();
+      if (!commands) {
+        return map;
+      }
+      for (const entry of commands) {
+        if (!entry.scriptHandle || !entry.slug) {
+          continue;
+        }
+        let set = map.get(entry.scriptHandle);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          map.set(entry.scriptHandle, set);
+        }
+        set.add(entry.slug);
+      }
+      return map;
+    };
+    const collectSlugsToRemove = (handle) => {
+      const slugs = /* @__PURE__ */ new Set();
+      for (const cmd of listCommands()) {
+        if (cmd.owner === handle) {
+          slugs.add(cmd.slug);
+        }
+      }
+      const declared = prevSlugsByHandle.get(handle);
+      if (declared) {
+        for (const slug of declared) {
+          slugs.add(slug);
+        }
+      }
+      return slugs;
+    };
+    return async (scripts, commands) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        for (const slug of collectSlugsToRemove(handle)) {
+          unregisterCommand(slug);
+        }
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+      prevSlugsByHandle = slugsByHandleFrom(commands);
+    };
+  }
+  const store$a = createSharedStore(
+    "desktop-mode/settings-tab-registry",
+    () => ({
+      registry: /* @__PURE__ */ new Map(),
+      listeners: /* @__PURE__ */ new Set()
+    })
+  );
+  const registry$5 = store$a.state.registry;
+  const listeners$8 = store$a.state.listeners;
+  function registerSettingsTab(tab) {
+    if (!tab || typeof tab.id !== "string" || tab.id.trim() === "") {
+      return;
+    }
+    if (typeof tab.label !== "string" || tab.label.trim() === "") {
+      return;
+    }
+    if (typeof tab.render !== "function") {
+      return;
+    }
+    const id = tab.id.trim().toLowerCase();
+    if (!/^[a-z0-9_\-]+$/.test(id)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] registerSettingsTab: id must be [a-z0-9_-]+, got",
+          tab.id
+        );
+      }
+      return;
+    }
+    registry$5.set(id, { ...tab, id });
+    notify$a();
+  }
+  function unregisterSettingsTab(id) {
+    if (registry$5.delete(id.toLowerCase())) {
+      notify$a();
+    }
+  }
+  function unregisterSettingsTabsByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, tab] of Array.from(registry$5.entries())) {
+      if (tab.owner === owner) {
+        registry$5.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$a();
+    }
+    return removed;
+  }
+  function listSettingsTabs() {
+    return Array.from(registry$5.values()).sort(
+      (a, b) => (a.order ?? 100) - (b.order ?? 100)
+    );
+  }
+  function notify$a() {
+    const snapshot = Array.from(listeners$8);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] settings-tab-registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function createSettingsTabRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    let prevIdsByHandle = /* @__PURE__ */ new Map();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "settings-tab-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    const idsByHandleFrom = (tabs) => {
+      const map = /* @__PURE__ */ new Map();
+      if (!tabs) {
+        return map;
+      }
+      for (const entry of tabs) {
+        if (!entry.scriptHandle || !entry.id) {
+          continue;
+        }
+        let set = map.get(entry.scriptHandle);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          map.set(entry.scriptHandle, set);
+        }
+        set.add(entry.id);
+      }
+      return map;
+    };
+    const removeByHandle = (handle) => {
+      unregisterSettingsTabsByOwner(handle);
+      const declared = prevIdsByHandle.get(handle);
+      if (declared) {
+        const present = new Set(
+          listSettingsTabs().map((t) => t.id)
+        );
+        for (const id of declared) {
+          if (present.has(id)) {
+            unregisterSettingsTab(id);
+          }
+        }
+      }
+    };
+    return async (scripts, tabs) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        removeByHandle(handle);
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+      prevIdsByHandle = idsByHandleFrom(tabs);
+    };
+  }
+  const store$9 = createSharedStore(
+    "desktop-mode/title-bar-buttons-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry$4 = store$9.state.registry;
+  const listeners$7 = store$9.state.listeners;
+  const TITLE_BAR_BUTTON_ID = /^[a-z0-9_/-]+$/;
+  function registerTitleBarButton(def) {
+    const errors = [];
+    if (!def || typeof def !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof def.id !== "string" || def.id.trim() === "") {
+        errors.push("id (missing)");
+      } else if (!TITLE_BAR_BUTTON_ID.test(def.id.trim().toLowerCase())) {
+        errors.push(
+          `id (must match ${TITLE_BAR_BUTTON_ID} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      }
+      if (typeof def.label !== "string" || def.label.trim() === "") {
+        errors.push("label (missing)");
+      }
+      if (typeof def.icon !== "string" || def.icon.trim() === "") {
+        errors.push("icon (missing)");
+      }
+      if (typeof def.match !== "function") {
+        errors.push("match (must be a function)");
+      }
+      if (typeof def.onClick !== "function" && typeof def.render !== "function") {
+        errors.push("onClick|render (at least one must be a function)");
+      }
+    }
+    throwOnRegistrationErrors("TitleBarButton", errors, def);
+    const id = def.id.trim().toLowerCase();
+    registry$4.set(id, { ...def, id });
+    notify$9();
+  }
+  function unregisterTitleBarButton(id) {
+    if (registry$4.delete(id.toLowerCase())) {
+      notify$9();
+    }
+  }
+  function unregisterTitleBarButtonsByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, def] of Array.from(registry$4.entries())) {
+      if (def.owner === owner) {
+        registry$4.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$9();
+    }
+    return removed;
+  }
+  function listTitleBarButtons() {
+    return Array.from(registry$4.values()).sort(
+      (a, b) => (a.order ?? 100) - (b.order ?? 100)
+    );
+  }
+  function notify$9() {
+    const snapshot = Array.from(listeners$7);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] title-bar-button registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function createTitleBarButtonRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "titlebar-button-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    return async (scripts) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        unregisterTitleBarButtonsByOwner(handle);
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+    };
+  }
+  function createDockRailRendererSync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "dock-rail-renderer-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    return async (scripts) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        unregisterByOwner$1(handle);
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+    };
+  }
+  const store$8 = createSharedStore(
+    "desktop-mode/window-themes-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry$3 = store$8.state.registry;
+  const listeners$6 = store$8.state.listeners;
+  const WINDOW_THEME_ID = /^[a-z0-9_/-]+$/;
+  function registerWindowTheme(def) {
+    const errors = [];
+    if (!def || typeof def !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof def.id !== "string" || def.id.trim() === "") {
+        errors.push("id (missing)");
+      } else if (!WINDOW_THEME_ID.test(def.id.trim().toLowerCase())) {
+        errors.push(
+          `id (must match ${WINDOW_THEME_ID} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      }
+      if (!def.tokens || typeof def.tokens !== "object") {
+        errors.push("tokens (must be an object of CSS custom-property → value)");
+      } else {
+        for (const key of Object.keys(def.tokens)) {
+          if (!key.startsWith("--")) {
+            errors.push(
+              `tokens.${key} (CSS custom-property keys must start with "--")`
+            );
+            break;
+          }
+        }
+      }
+      if (typeof def.match !== "function") {
+        errors.push("match (must be a function)");
+      }
+    }
+    throwOnRegistrationErrors("WindowTheme", errors, def);
+    const id = def.id.trim().toLowerCase();
+    registry$3.set(id, { ...def, id });
+    notify$8();
+  }
+  function unregisterWindowTheme(id) {
+    if (registry$3.delete(id.toLowerCase())) {
+      notify$8();
+    }
+  }
+  function unregisterWindowThemesByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, def] of Array.from(registry$3.entries())) {
+      if (def.owner === owner) {
+        registry$3.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$8();
+    }
+    return removed;
+  }
+  function listWindowThemes() {
+    return Array.from(registry$3.values()).sort(
+      (a, b) => (a.priority ?? 100) - (b.priority ?? 100)
+    );
+  }
+  function notify$8() {
+    const snapshot = Array.from(listeners$6);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] window-theme registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function createWindowThemeRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    let prevIdsByHandle = /* @__PURE__ */ new Map();
+    const shellRegistered = /* @__PURE__ */ new Set();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "window-theme-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    const idsByHandleFrom = (themes) => {
+      const map = /* @__PURE__ */ new Map();
+      if (!themes) {
+        return map;
+      }
+      for (const entry of themes) {
+        if (!entry.scriptHandle || !entry.id) {
+          continue;
+        }
+        let set = map.get(entry.scriptHandle);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          map.set(entry.scriptHandle, set);
+        }
+        set.add(entry.id);
+      }
+      return map;
+    };
+    const collectIdsToRemove = (handle) => {
+      const ids = /* @__PURE__ */ new Set();
+      for (const def of listWindowThemes()) {
+        if (def.owner === handle) {
+          ids.add(def.id);
+        }
+      }
+      const declared = prevIdsByHandle.get(handle);
+      if (declared) {
+        for (const id of declared) {
+          ids.add(id);
+        }
+      }
+      return ids;
+    };
+    const applyMetadata = (themes) => {
+      if (!themes) {
+        return;
+      }
+      for (const entry of themes) {
+        if (!entry.id || !entry.tokens) {
+          continue;
+        }
+        try {
+          registerWindowTheme({
+            id: entry.id,
+            label: entry.label,
+            tokens: entry.tokens,
+            priority: entry.priority,
+            match: () => true,
+            owner: entry.scriptHandle || void 0
+          });
+          shellRegistered.add(entry.id);
+        } catch (err) {
+          doAction(HOOKS.SHELL_ERROR, {
+            scope: "window-theme-shell-register",
+            id: entry.id,
+            error: err
+          });
+        }
+      }
+    };
+    return async (scripts, themes) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        const ids = collectIdsToRemove(handle);
+        for (const id of ids) {
+          unregisterWindowTheme(id);
+          shellRegistered.delete(id);
+        }
+        unregisterWindowThemesByOwner(handle);
+        loadedHandles.delete(handle);
+      }
+      applyMetadata(themes);
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+      prevIdsByHandle = idsByHandleFrom(themes);
+    };
+  }
+  const store$7 = createSharedStore(
+    "desktop-mode/window-controls-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry$2 = store$7.state.registry;
+  const listeners$5 = store$7.state.listeners;
+  const WINDOW_CONTROL_ID = /^[a-z0-9_/-]+$/;
+  function registerWindowControl(def) {
+    const errors = [];
+    if (!def || typeof def !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof def.id !== "string" || def.id.trim() === "") {
+        errors.push("id (missing)");
+      } else if (!WINDOW_CONTROL_ID.test(def.id.trim().toLowerCase())) {
+        errors.push(
+          `id (must match ${WINDOW_CONTROL_ID} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      }
+      if (typeof def.label !== "string" || def.label.trim() === "") {
+        errors.push("label (missing)");
+      }
+      if (typeof def.onClick !== "function" && typeof def.render !== "function") {
+        errors.push("onClick|render (at least one must be a function)");
+      }
+      if (typeof def.render !== "function") {
+        if (typeof def.icon !== "string" || def.icon.trim() === "") {
+          errors.push("icon (required when render is omitted)");
+        }
+      }
+      if (typeof def.match !== "function") {
+        errors.push("match (must be a function)");
+      }
+      if (def.placement !== void 0 && def.placement !== "left" && def.placement !== "right" && def.placement !== "controls") {
+        errors.push('placement (must be "left", "right", or "controls")');
+      }
+    }
+    throwOnRegistrationErrors("WindowControl", errors, def);
+    const id = def.id.trim().toLowerCase();
+    registry$2.set(id, { ...def, id });
+    notify$7();
+  }
+  function unregisterWindowControl(id) {
+    if (registry$2.delete(id.toLowerCase())) {
+      notify$7();
+    }
+  }
+  function unregisterWindowControlsByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, def] of Array.from(registry$2.entries())) {
+      if (def.owner === owner) {
+        registry$2.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$7();
+    }
+    return removed;
+  }
+  function listWindowControls() {
+    return Array.from(registry$2.values()).sort((a, b) => {
+      const oa = a.order ?? 100;
+      const ob = b.order ?? 100;
+      if (oa !== ob) {
+        return oa - ob;
+      }
+      return a.id.localeCompare(b.id);
+    });
+  }
+  function notify$7() {
+    const snapshot = Array.from(listeners$5);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] window-control registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function registerBuiltInControls() {
+    registerWindowControl({
+      id: "core/minimize",
+      label: __("Minimize"),
+      icon: "minimize",
+      placement: "controls",
+      order: 10,
+      core: true,
+      match: () => true,
+      onClick: (win) => {
+        win.minimize();
+      }
+    });
+    registerWindowControl({
+      id: "core/maximize",
+      label: __("Maximize"),
+      icon: "maximize",
+      placement: "controls",
+      order: 20,
+      core: true,
+      match: () => true,
+      onClick: (win) => {
+        win.toggleMaximize();
+      }
+    });
+    registerWindowControl({
+      id: "core/focus-tab",
+      label: __("Enter fullscreen"),
+      icon: "fullscreen",
+      placement: "controls",
+      order: 30,
+      core: true,
+      match: () => true,
+      onClick: (win) => {
+        win.toggleFullscreen();
+      }
+    });
+    registerWindowControl({
+      id: "core/close",
+      label: __("Close"),
+      icon: "close",
+      placement: "controls",
+      order: 50,
+      core: true,
+      match: () => true,
+      onClick: (win) => {
+        win.close();
+      }
+    });
+  }
+  function createWindowControlRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    let prevIdsByHandle = /* @__PURE__ */ new Map();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "window-control-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    const idsByHandleFrom = (controls) => {
+      const map = /* @__PURE__ */ new Map();
+      if (!controls) {
+        return map;
+      }
+      for (const entry of controls) {
+        if (!entry.scriptHandle || !entry.id) {
+          continue;
+        }
+        let set = map.get(entry.scriptHandle);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          map.set(entry.scriptHandle, set);
+        }
+        set.add(entry.id);
+      }
+      return map;
+    };
+    const collectIdsToRemove = (handle) => {
+      const ids = /* @__PURE__ */ new Set();
+      for (const def of listWindowControls()) {
+        if (def.owner === handle) {
+          ids.add(def.id);
+        }
+      }
+      const declared = prevIdsByHandle.get(handle);
+      if (declared) {
+        for (const id of declared) {
+          ids.add(id);
+        }
+      }
+      return ids;
+    };
+    return async (scripts, controls) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        for (const id of collectIdsToRemove(handle)) {
+          unregisterWindowControl(id);
+        }
+        unregisterWindowControlsByOwner(handle);
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+      prevIdsByHandle = idsByHandleFrom(controls);
+    };
+  }
+  const store$6 = createSharedStore(
+    "desktop-mode/window-slots-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry$1 = store$6.state.registry;
+  const listeners$4 = store$6.state.listeners;
+  const WINDOW_SLOT_ID = /^[a-z0-9_/-]+$/;
+  const KNOWN_SLOTS = /* @__PURE__ */ new Set([
+    "before-titlebar",
+    "before-icon",
+    "icon",
+    "title",
+    "after-title",
+    "before-controls",
+    "controls",
+    "after-controls",
+    "after-titlebar"
+  ]);
+  function registerWindowSlot(def) {
+    const errors = [];
+    if (!def || typeof def !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof def.id !== "string" || def.id.trim() === "") {
+        errors.push("id (missing)");
+      } else if (!WINDOW_SLOT_ID.test(def.id.trim().toLowerCase())) {
+        errors.push(
+          `id (must match ${WINDOW_SLOT_ID} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      }
+      if (typeof def.slot !== "string" || def.slot.trim() === "") {
+        errors.push("slot (missing)");
+      } else if (!KNOWN_SLOTS.has(def.slot)) {
+        errors.push(
+          `slot (must be one of ${Array.from(KNOWN_SLOTS).join(", ")})`
+        );
+      }
+      if (typeof def.match !== "function") {
+        errors.push("match (must be a function)");
+      }
+      if (typeof def.render !== "function") {
+        errors.push("render (must be a function)");
+      }
+    }
+    throwOnRegistrationErrors("WindowSlot", errors, def);
+    const id = def.id.trim().toLowerCase();
+    registry$1.set(id, { ...def, id });
+    notify$6();
+  }
+  function unregisterWindowSlot(id) {
+    if (registry$1.delete(id.toLowerCase())) {
+      notify$6();
+    }
+  }
+  function unregisterWindowSlotsByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, def] of Array.from(registry$1.entries())) {
+      if (def.owner === owner) {
+        registry$1.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$6();
+    }
+    return removed;
+  }
+  function listWindowSlots() {
+    return Array.from(registry$1.values()).sort((a, b) => {
+      const oa = a.order ?? 100;
+      const ob = b.order ?? 100;
+      if (oa !== ob) {
+        return oa - ob;
+      }
+      return a.id.localeCompare(b.id);
+    });
+  }
+  function notify$6() {
+    const snapshot = Array.from(listeners$4);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] window-slot registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function createWindowSlotRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    let prevIdsByHandle = /* @__PURE__ */ new Map();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "window-slot-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    const idsByHandleFrom = (slots) => {
+      const map = /* @__PURE__ */ new Map();
+      if (!slots) {
+        return map;
+      }
+      for (const entry of slots) {
+        if (!entry.scriptHandle || !entry.id) {
+          continue;
+        }
+        let set = map.get(entry.scriptHandle);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          map.set(entry.scriptHandle, set);
+        }
+        set.add(entry.id);
+      }
+      return map;
+    };
+    const collectIdsToRemove = (handle) => {
+      const ids = /* @__PURE__ */ new Set();
+      for (const def of listWindowSlots()) {
+        if (def.owner === handle) {
+          ids.add(def.id);
+        }
+      }
+      const declared = prevIdsByHandle.get(handle);
+      if (declared) {
+        for (const id of declared) {
+          ids.add(id);
+        }
+      }
+      return ids;
+    };
+    return async (scripts, slots) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        for (const id of collectIdsToRemove(handle)) {
+          unregisterWindowSlot(id);
+        }
+        unregisterWindowSlotsByOwner(handle);
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+      prevIdsByHandle = idsByHandleFrom(slots);
+    };
+  }
+  const KEY_PREFIX = "desktop-mode-notice-dismissed";
+  function currentUserSuffix() {
+    const w = window.wp;
+    const uid = w?.desktop?.config?.currentUserId;
+    if (typeof uid === "number" && uid > 0) {
+      return String(uid);
+    }
+    return "anon";
+  }
+  function storageKey() {
+    return `${KEY_PREFIX}:${currentUserSuffix()}`;
+  }
+  function readMap() {
+    try {
+      const raw = window.localStorage.getItem(storageKey());
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+    }
+    return {};
+  }
+  function writeMap(map) {
+    try {
+      window.localStorage.setItem(storageKey(), JSON.stringify(map));
+    } catch {
+    }
+  }
+  function isNoticeDismissed(id) {
+    if (!id) {
+      return false;
+    }
+    return readMap()[id] === true;
+  }
+  function markNoticeDismissed(id) {
+    if (!id) {
+      return;
+    }
+    const map = readMap();
+    map[id] = true;
+    writeMap(map);
+  }
+  function clearNoticeDismissed(id) {
+    if (!id) {
+      return;
+    }
+    const map = readMap();
+    if (map[id]) {
+      delete map[id];
+      writeMap(map);
+    }
+  }
+  const styles$4 = css`:host{display:flex;align-items:flex-start;gap:10px;width:100%;box-sizing:border-box;padding:10px 14px;font:var( --wpd-notice-font,13px/1.5 var( --desktop-mode-font,system-ui ) );color:var( --wpd-notice-color,var( --desktop-mode-text,#1d2327 ) );background:var( --wpd-notice-bg,rgba( 0,0,0,0.04 ) );border-block-end:1px solid var( --wpd-notice-border,rgba( 0,0,0,0.08 ) );border-inline-start:4px solid var( --wpd-notice-accent,#646970 )}:host( [ hidden ] ){display:none}.wpd-notice__icon{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var( --wpd-notice-accent,#646970 )}.wpd-notice__icon[ hidden ]{display:none}.wpd-notice__label{flex:1;min-width:0;word-wrap:break-word}::slotted( a ){color:var( --wpd-notice-link,var( --wp-admin-theme-color,#2271b1 ) )}::slotted( p:first-child ){margin-block-start:0}::slotted( p:last-child ){margin-block-end:0}.wpd-notice__close{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;background:transparent;color:inherit;opacity:0.6;cursor:pointer;border-radius:4px;transition:opacity 0.12s ease,background-color 0.12s ease}.wpd-notice__close:hover{opacity:1;background:rgba( 0,0,0,0.06 )}.wpd-notice__close:focus-visible{opacity:1;outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:1px}.wpd-notice__close[ hidden ]{display:none}.wpd-notice__close svg{width:14px;height:14px}:host( [ tone='info' ] ){--wpd-notice-accent:var( --wpd-notice-info,#0969da );--wpd-notice-bg:var( --wpd-notice-info-bg,rgba( 9,105,218,0.08 ) );--wpd-notice-border:var( --wpd-notice-info-border,rgba( 9,105,218,0.16 ) )}:host( [ tone='success' ] ){--wpd-notice-accent:var( --wpd-notice-success,#1a7f37 );--wpd-notice-bg:var( --wpd-notice-success-bg,rgba( 26,127,55,0.08 ) );--wpd-notice-border:var( --wpd-notice-success-border,rgba( 26,127,55,0.16 ) )}:host( [ tone='warning' ] ){--wpd-notice-accent:var( --wpd-notice-warning,#9a6700 );--wpd-notice-bg:var( --wpd-notice-warning-bg,rgba( 154,103,0,0.08 ) );--wpd-notice-border:var( --wpd-notice-warning-border,rgba( 154,103,0,0.16 ) )}:host( [ tone='error' ] ),:host( [ tone='danger' ] ){--wpd-notice-accent:var( --wpd-notice-error,#cf222e );--wpd-notice-bg:var( --wpd-notice-error-bg,rgba( 207,34,46,0.08 ) );--wpd-notice-border:var( --wpd-notice-error-border,rgba( 207,34,46,0.16 ) )}:host( [ tone='neutral' ] ){--wpd-notice-accent:var( --wpd-notice-neutral,#57606a );--wpd-notice-bg:var( --wpd-notice-neutral-bg,rgba( 87,96,106,0.08 ) );--wpd-notice-border:var( --wpd-notice-neutral-border,rgba( 87,96,106,0.16 ) )}`;
+  const _WpdNotice = class _WpdNotice extends Component {
+    connectedCallback() {
+      super.connectedCallback();
+      if (!this.hasAttribute("role")) {
+        this.setAttribute("role", "status");
+      }
+      if (!this.hasAttribute("tone")) {
+        this.setAttribute("tone", "info");
+      }
+      const id = this.getAttribute("notice-id");
+      if (id && isNoticeDismissed(id)) {
+        this.hidden = true;
+      }
+    }
+    /**
+     * Imperatively dismiss the notice — hides the host and records
+     * the dismissal in localStorage when `notice-id` is set.
+     */
+    dismiss() {
+      this.hidden = true;
+      const id = this.getAttribute("notice-id");
+      if (id) {
+        markNoticeDismissed(id);
+      }
+      this.emit("wpd-notice-dismiss", { noticeId: id ?? void 0 });
+    }
+    /**
+     * Clear a previously recorded dismissal and re-show the notice.
+     * Useful in tests and for "Show again" affordances.
+     */
+    undismiss() {
+      const id = this.getAttribute("notice-id");
+      if (id) {
+        clearNoticeDismissed(id);
+      }
+      this.hidden = false;
+    }
+    render() {
+      const icon = this.getAttribute("icon");
+      const dismissible = !this.hasAttribute("not-dismissible");
+      return html`
+			<span
+				class="wpd-notice__icon dashicons ${icon ?? ""}"
+				?hidden=${!icon}
+				aria-hidden="true"
+			></span>
+			<span class="wpd-notice__label"><slot></slot></span>
+			<button
+				type="button"
+				class="wpd-notice__close"
+				?hidden=${!dismissible}
+				aria-label=${__("Dismiss notice")}
+				@click=${(e) => this._onDismiss(e)}
+			>
+				<svg viewBox="0 0 14 14" aria-hidden="true">
+					<path
+						d="M3 3 L11 11 M11 3 L3 11"
+						stroke="currentColor"
+						stroke-width="1.6"
+						stroke-linecap="round"
+						fill="none"
+					></path>
+				</svg>
+			</button>
+		`;
+    }
+    _onDismiss(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.dismiss();
+    }
+  };
+  _WpdNotice.props = ["tone", "notDismissible", "icon", "noticeId"];
+  _WpdNotice.styles = [styles$4];
+  _WpdNotice.help = {
+    title: "Notice",
+    summary: "Full-width banner placed inside a window (typically the after-titlebar slot). Tone-coded background + accent stripe, optional close button, optional dashicons leading glyph. Slotted content is HTML — links and basic formatting are supported.",
+    status: "experimental",
+    since: "0.22.0",
+    props: [
+      {
+        name: "tone",
+        type: '"info" | "success" | "warning" | "error" | "danger" | "neutral"',
+        description: "Color palette. Defaults to `info`. `error` and `danger` are aliases."
+      },
+      {
+        name: "not-dismissible",
+        type: "boolean",
+        description: "Suppress the trailing close button. Defaults to dismissible."
+      },
+      {
+        name: "icon",
+        type: "string",
+        description: "Optional Dashicons class for a leading glyph (e.g. `dashicons-info`)."
+      },
+      {
+        name: "notice-id",
+        type: "string",
+        description: "Persistence key. When set, the notice records its dismissed state in localStorage so it stays closed across reloads for the same user."
+      }
+    ],
+    slots: [
+      {
+        name: "(default)",
+        description: "Message HTML. Links, `<strong>`, `<em>`, and other inline formatting are allowed."
+      }
+    ],
+    events: [
+      {
+        name: "wpd-notice-dismiss",
+        description: "Fires after the user clicks the close button.",
+        detail: "{ noticeId?: string }"
+      }
+    ],
+    cssProps: [
+      { name: "--wpd-notice-bg", description: "Background color." },
+      { name: "--wpd-notice-accent", description: "Left-edge stripe + icon color." },
+      { name: "--wpd-notice-color", description: "Text color." },
+      { name: "--wpd-notice-border", description: "Bottom border color." },
+      { name: "--wpd-notice-link", description: "Color for slotted <a> elements." }
+    ],
+    example: html`
+			<wpd-notice tone="warning" notice-id="docs/example">
+				Heads up — this is a demo notice.
+				<a href="#">Learn more</a>.
+			</wpd-notice>
+		`
+  };
+  let WpdNotice = _WpdNotice;
+  defineComponent("wpd-notice", WpdNotice);
+  const store$5 = createSharedStore(
+    "desktop-mode/window-notices",
+    () => ({ entries: /* @__PURE__ */ new Map() })
+  );
+  const ID_PATTERN = /^[a-z0-9_/-]+$/;
+  function slotIdFor(id) {
+    return `desktop-mode-notice/${id.toLowerCase()}`;
+  }
+  function buildNoticeElement(entry) {
+    const el = document.createElement("wpd-notice");
+    el.setAttribute("tone", entry.tone ?? "info");
+    el.setAttribute("notice-id", entry.id);
+    if (entry.dismissible === false) {
+      el.setAttribute("not-dismissible", "");
+    }
+    if (entry.icon) {
+      el.setAttribute("icon", entry.icon);
+    }
+    el.innerHTML = entry.message;
+    return el;
+  }
+  function registerWindowNotice(entry) {
+    if (!entry || typeof entry !== "object") {
+      return () => {
+      };
+    }
+    const id = String(entry.id ?? "").trim().toLowerCase();
+    if (!id || !ID_PATTERN.test(id)) {
+      return () => {
+      };
+    }
+    if (typeof entry.message !== "string" || entry.message === "") {
+      return () => {
+      };
+    }
+    const normalised = { ...entry, id };
+    store$5.state.entries.set(id, normalised);
+    const slotId = slotIdFor(id);
+    registerWindowSlot({
+      id: slotId,
+      slot: "after-titlebar",
+      order: normalised.order ?? 100,
+      // Append rather than clear — every notice slot entry appends
+      // its own `<wpd-notice>` so multiple notices stack.
+      replace: false,
+      owner: normalised.owner,
+      match: (win) => {
+        const def = store$5.state.entries.get(id);
+        if (!def) {
+          return false;
+        }
+        if (typeof def.match !== "function") {
+          return true;
+        }
+        try {
+          return def.match(win) === true;
+        } catch {
+          return false;
+        }
+      },
+      render: (host) => {
+        const def = store$5.state.entries.get(id);
+        if (!def) {
+          return;
+        }
+        host.appendChild(buildNoticeElement(def));
+      }
+    });
+    return () => unregisterWindowNotice(id);
+  }
+  function unregisterWindowNotice(id) {
+    const key = String(id ?? "").trim().toLowerCase();
+    if (!key) {
+      return;
+    }
+    if (store$5.state.entries.delete(key)) {
+      unregisterWindowSlot(slotIdFor(key));
+    }
+  }
+  function listWindowNotices() {
+    return Array.from(store$5.state.entries.values()).sort((a, b) => {
+      const oa = a.order ?? 100;
+      const ob = b.order ?? 100;
+      if (oa !== ob) {
+        return oa - ob;
+      }
+      return a.id.localeCompare(b.id);
+    });
+  }
+  function dismissWindowNotice(id) {
+    const key = String(id ?? "").trim().toLowerCase();
+    if (!key) {
+      return;
+    }
+    markNoticeDismissed(key);
+  }
+  function undismissWindowNotice(id) {
+    const key = String(id ?? "").trim().toLowerCase();
+    if (!key) {
+      return;
+    }
+    clearNoticeDismissed(key);
+  }
+  function buildMatcher(match) {
+    if (!match) {
+      return void 0;
+    }
+    const ids = /* @__PURE__ */ new Set();
+    if (typeof match.window === "string" && match.window !== "") {
+      ids.add(match.window);
+    }
+    if (Array.isArray(match.windows)) {
+      for (const id of match.windows) {
+        if (typeof id === "string" && id !== "") {
+          ids.add(id);
+        }
+      }
+    }
+    const needle = typeof match.urlContains === "string" && match.urlContains !== "" ? match.urlContains.toLowerCase() : null;
+    if (ids.size === 0 && needle === null) {
+      return void 0;
+    }
+    return (w) => {
+      if (ids.size > 0 && !ids.has(w.id)) {
+        return false;
+      }
+      if (needle !== null) {
+        const url = typeof w.config.url === "string" ? w.config.url.toLowerCase() : "";
+        if (!url.includes(needle)) {
+          return false;
+        }
+      }
+      return true;
+    };
+  }
+  function applyServerWindowNotices(entries) {
+    const wanted = /* @__PURE__ */ new Set();
+    for (const entry of entries) {
+      if (!entry || typeof entry.id !== "string" || !entry.id) {
+        continue;
+      }
+      wanted.add(entry.id.toLowerCase());
+      registerWindowNotice({
+        id: entry.id,
+        message: entry.message,
+        tone: entry.tone,
+        dismissible: entry.dismissible !== false,
+        icon: entry.icon,
+        match: buildMatcher(entry.match),
+        order: typeof entry.order === "number" ? entry.order : void 0,
+        // `owner` tag marks every server-shipped notice so a
+        // targeted cleanup is trivial if/when we surface a sweep
+        // helper later. Matches the convention used by the
+        // command / settings-tab sync modules.
+        owner: "__server__"
+      });
+    }
+    for (const existing of listWindowNotices()) {
+      if (existing.owner !== "__server__") {
+        continue;
+      }
+      if (!wanted.has(existing.id)) {
+        unregisterWindowNotice(existing.id);
+      }
+    }
+  }
+  const store$4 = createSharedStore(
+    "desktop-mode/window-chrome-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry = store$4.state.registry;
+  const listeners$3 = store$4.state.listeners;
+  const WINDOW_CHROME_ID = /^[a-z0-9_/-]+$/;
+  function registerWindowChrome(def) {
+    const errors = [];
+    if (!def || typeof def !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof def.id !== "string" || def.id.trim() === "") {
+        errors.push("id (missing)");
+      } else if (!WINDOW_CHROME_ID.test(def.id.trim().toLowerCase())) {
+        errors.push(
+          `id (must match ${WINDOW_CHROME_ID} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      }
+      if (typeof def.match !== "function") {
+        errors.push("match (must be a function)");
+      }
+      if (typeof def.render !== "function") {
+        errors.push("render (must be a function)");
+      }
+    }
+    throwOnRegistrationErrors("WindowChrome", errors, def);
+    const id = def.id.trim().toLowerCase();
+    registry.set(id, { ...def, id });
+    notify$5();
+  }
+  function unregisterWindowChrome(id) {
+    if (registry.delete(id.toLowerCase())) {
+      notify$5();
+    }
+  }
+  function unregisterWindowChromesByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, def] of Array.from(registry.entries())) {
+      if (def.owner === owner) {
+        registry.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$5();
+    }
+    return removed;
+  }
+  function listWindowChromes() {
+    return Array.from(registry.values()).sort(
+      (a, b) => a.id.localeCompare(b.id)
+    );
+  }
+  function notify$5() {
+    const snapshot = Array.from(listeners$3);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] window-chrome registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function createWindowChromeRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    let prevIdsByHandle = /* @__PURE__ */ new Map();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "window-chrome-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    const idsByHandleFrom = (chromes) => {
+      const map = /* @__PURE__ */ new Map();
+      if (!chromes) {
+        return map;
+      }
+      for (const entry of chromes) {
+        if (!entry.scriptHandle || !entry.id) {
+          continue;
+        }
+        let set = map.get(entry.scriptHandle);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          map.set(entry.scriptHandle, set);
+        }
+        set.add(entry.id);
+      }
+      return map;
+    };
+    const collectIdsToRemove = (handle) => {
+      const ids = /* @__PURE__ */ new Set();
+      for (const def of listWindowChromes()) {
+        if (def.owner === handle) {
+          ids.add(def.id);
+        }
+      }
+      const declared = prevIdsByHandle.get(handle);
+      if (declared) {
+        for (const id of declared) {
+          ids.add(id);
+        }
+      }
+      return ids;
+    };
+    return async (scripts, chromes) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        for (const id of collectIdsToRemove(handle)) {
+          unregisterWindowChrome(id);
+        }
+        unregisterWindowChromesByOwner(handle);
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+      prevIdsByHandle = idsByHandleFrom(chromes);
+    };
+  }
+  const INITIAL_ORIGIN$2 = window.location.origin;
+  let _connSeq = 0;
+  const _connections = /* @__PURE__ */ new Map();
+  const _connectionsByTarget = /* @__PURE__ */ new Map();
+  const _syntheticIframes = /* @__PURE__ */ new Map();
+  function registerSyntheticIframe(windowId, iframe) {
+    _syntheticIframes.set(windowId, iframe);
+    return () => {
+      if (_syntheticIframes.get(windowId) === iframe) {
+        _syntheticIframes.delete(windowId);
+      }
+    };
+  }
+  function nextId() {
+    return `desktop-mode-conn-${++_connSeq}`;
+  }
+  function createConnectionBridge(manager) {
+    const sendToIframe = (win, message) => {
+      try {
+        win.contentWindow?.postMessage(message, INITIAL_ORIGIN$2);
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] connection: postMessage failed",
+            err
+          );
+        }
+      }
+    };
+    const connect = (targetWindowId, opts = {}) => {
+      const id = nextId();
+      const topics = Array.isArray(opts.topics) ? [...opts.topics] : [];
+      const subs = /* @__PURE__ */ new Map();
+      const queue = [];
+      let isOpen = false;
+      let destroyed = false;
+      const targetIframe = () => {
+        const synth = _syntheticIframes.get(targetWindowId);
+        if (synth) {
+          return synth;
+        }
+        const w = manager.getById(targetWindowId);
+        return w?.iframe ?? null;
+      };
+      const isNativeTarget = () => {
+        if (targetIframe()) {
+          return false;
+        }
+        const w = manager.getById(targetWindowId);
+        return !!w && w.config?.native === true;
+      };
+      const nativeSubUnsubs = [];
+      const flushQueue = () => {
+        const iframe2 = targetIframe();
+        if (!iframe2) {
+          return;
+        }
+        while (queue.length) {
+          const msg = queue.shift();
+          sendToIframe(iframe2, {
+            type: "desktop-mode-bridge-publish",
+            connectionId: id,
+            topic: msg.topic,
+            payload: msg.payload
+          });
+        }
+      };
+      const conn = {
+        id,
+        target: targetWindowId,
+        isOpen: () => isOpen,
+        subscribe(topic, cb) {
+          const wrapped = cb;
+          if (isNativeTarget()) {
+            const off = addParentSubscriber(
+              targetWindowId,
+              topic,
+              (payload, meta) => {
+                doAction(HOOKS.CONNECTION_MESSAGE, {
+                  connectionId: id,
+                  topic: meta.channel,
+                  direction: "in"
+                });
+                try {
+                  wrapped(payload, { topic: meta.channel });
+                } catch (err) {
+                  if (typeof console !== "undefined") {
+                    console.error(
+                      "[desktop-mode] connection subscriber threw:",
+                      err
+                    );
+                  }
+                }
+              }
+            );
+            nativeSubUnsubs.push(off);
+            return off;
+          }
+          let bucket22 = subs.get(topic);
+          if (!bucket22) {
+            bucket22 = /* @__PURE__ */ new Set();
+            subs.set(topic, bucket22);
+          }
+          bucket22.add(wrapped);
+          return () => {
+            bucket22?.delete(wrapped);
+          };
+        },
+        send(topic, payload) {
+          if (destroyed) {
+            return;
+          }
+          doAction(HOOKS.CONNECTION_MESSAGE, {
+            connectionId: id,
+            topic,
+            direction: "out"
+          });
+          if (isNativeTarget()) {
+            dispatchToNative(targetWindowId, topic, payload);
+            return;
+          }
+          if (!isOpen) {
+            queue.push({ topic, payload });
+            return;
+          }
+          const iframe2 = targetIframe();
+          if (!iframe2) {
+            return;
+          }
+          sendToIframe(iframe2, {
+            type: "desktop-mode-bridge-publish",
+            connectionId: id,
+            topic,
+            payload
+          });
+        },
+        disconnect() {
+          conn._destroy("disconnect");
+        },
+        _targetWindow: targetIframe,
+        _handleIframeMessage(data) {
+          if (!data || typeof data !== "object") {
+            return;
+          }
+          const msg = data;
+          if (msg.type === "desktop-mode-bridge-handshake-ack") {
+            if (isOpen) {
+              return;
+            }
+            isOpen = true;
+            doAction(HOOKS.CONNECTION_OPENED, {
+              connectionId: id,
+              targetWindowId,
+              topics
+            });
+            try {
+              opts.onOpen?.();
+            } catch (err) {
+              if (typeof console !== "undefined") {
+                console.error(
+                  "[desktop-mode] connection.onOpen threw:",
+                  err
+                );
+              }
+            }
+            flushQueue();
+            return;
+          }
+          if (msg.type === "desktop-mode-bridge-publish") {
+            const m = data;
+            const topic = typeof m.topic === "string" ? m.topic : "";
+            if (!topic) {
+              return;
+            }
+            doAction(HOOKS.CONNECTION_MESSAGE, {
+              connectionId: id,
+              topic,
+              direction: "in"
+            });
+            const exact = subs.get(topic);
+            if (exact) {
+              for (const cb of Array.from(exact)) {
+                try {
+                  cb(m.payload, { topic });
+                } catch (err) {
+                  if (typeof console !== "undefined") {
+                    console.error(
+                      "[desktop-mode] connection subscriber threw:",
+                      err
+                    );
+                  }
+                }
+              }
+            }
+            const wildcard = subs.get("*");
+            if (wildcard) {
+              for (const cb of Array.from(wildcard)) {
+                try {
+                  cb(m.payload, { topic });
+                } catch (err) {
+                  if (typeof console !== "undefined") {
+                    console.error(
+                      "[desktop-mode] connection wildcard subscriber threw:",
+                      err
+                    );
+                  }
+                }
+              }
+            }
+            return;
+          }
+          if (msg.type === "desktop-mode-bridge-disconnect") {
+            conn._destroy("disconnect");
+          }
+        },
+        _destroy(reason) {
+          if (destroyed) {
+            return;
+          }
+          destroyed = true;
+          const wasOpen = isOpen;
+          isOpen = false;
+          _connections.delete(id);
+          const targetSet = _connectionsByTarget.get(targetWindowId);
+          if (targetSet) {
+            targetSet.delete(id);
+            if (targetSet.size === 0) {
+              _connectionsByTarget.delete(targetWindowId);
+            }
+          }
+          for (const off of nativeSubUnsubs.splice(0)) {
+            try {
+              off();
+            } catch {
+            }
+          }
+          if (wasOpen) {
+            const iframe2 = targetIframe();
+            if (iframe2) {
+              sendToIframe(iframe2, {
+                type: "desktop-mode-bridge-disconnect",
+                connectionId: id
+              });
+            }
+          }
+          doAction(HOOKS.CONNECTION_CLOSED, {
+            connectionId: id,
+            reason
+          });
+          try {
+            opts.onClose?.(reason);
+          } catch (err) {
+            if (typeof console !== "undefined") {
+              console.error(
+                "[desktop-mode] connection.onClose threw:",
+                err
+              );
+            }
+          }
+        }
+      };
+      _connections.set(id, conn);
+      let bucket2 = _connectionsByTarget.get(targetWindowId);
+      if (!bucket2) {
+        bucket2 = /* @__PURE__ */ new Set();
+        _connectionsByTarget.set(targetWindowId, bucket2);
+      }
+      bucket2.add(id);
+      if (isNativeTarget()) {
+        Promise.resolve().then(() => {
+          if (destroyed || isOpen) {
+            return;
+          }
+          isOpen = true;
+          doAction(HOOKS.CONNECTION_OPENED, {
+            connectionId: id,
+            targetWindowId,
+            topics
+          });
+          try {
+            opts.onOpen?.();
+          } catch (err) {
+            if (typeof console !== "undefined") {
+              console.error(
+                "[desktop-mode] connection.onOpen threw:",
+                err
+              );
+            }
+          }
+        });
+        return conn;
+      }
+      const iframe = targetIframe();
+      if (iframe) {
+        sendToIframe(iframe, {
+          type: "desktop-mode-bridge-handshake",
+          connectionId: id,
+          topics
+        });
+      }
+      return conn;
+    };
+    const routeIncomingFromIframe = (data, windowId) => {
+      if (!data || typeof data !== "object") {
+        return;
+      }
+      const msg = data;
+      if (typeof msg.type !== "string" || !msg.type.startsWith("desktop-mode-bridge-")) {
+        return;
+      }
+      if (msg.type === "desktop-mode-bridge-connection-request" && typeof msg.requestId === "string" && typeof windowId === "string" && windowId !== "") {
+        handleConnectionRequest(windowId, msg.requestId, Array.isArray(msg.topics) ? msg.topics : []);
+        return;
+      }
+      if (typeof msg.connectionId !== "string") {
+        return;
+      }
+      const conn = _connections.get(msg.connectionId);
+      conn?._handleIframeMessage(data);
+    };
+    const handleConnectionRequest = (windowId, requestId, topics) => {
+      const synth = _syntheticIframes.get(windowId);
+      const iframe = synth ?? manager.getById(windowId)?.iframe ?? null;
+      if (!iframe) {
+        return;
+      }
+      const decision = applyFilters(
+        HOOKS.IFRAME_CONNECTION_REQUEST,
+        true,
+        { windowId, requestId, topics: topics.slice() }
+      );
+      if (decision === false) {
+        try {
+          iframe.contentWindow?.postMessage({
+            type: "desktop-mode-bridge-connection-ack",
+            requestId,
+            accepted: false,
+            reason: "rejected"
+          }, INITIAL_ORIGIN$2);
+        } catch {
+        }
+        return;
+      }
+      const finalTopics = decision && typeof decision === "object" && Array.isArray(decision.topics) ? decision.topics : topics;
+      const conn = connect(windowId, { topics: finalTopics });
+      try {
+        iframe.contentWindow?.postMessage({
+          type: "desktop-mode-bridge-connection-ack",
+          requestId,
+          accepted: true,
+          connectionId: conn.id
+        }, INITIAL_ORIGIN$2);
+      } catch {
+      }
+    };
+    const onIframeReady = (windowId) => {
+      const bucket2 = _connectionsByTarget.get(windowId);
+      if (!bucket2) {
+        return;
+      }
+      for (const connId of Array.from(bucket2)) {
+        const conn = _connections.get(connId);
+        if (!conn || conn.isOpen()) {
+          continue;
+        }
+        const iframe = conn._targetWindow();
+        if (!iframe) {
+          continue;
+        }
+        sendToIframe(iframe, {
+          type: "desktop-mode-bridge-handshake",
+          connectionId: conn.id,
+          topics: []
+          // already negotiated client-side; iframe re-uses
+        });
+      }
+    };
+    const onWindowClosed = (windowId) => {
+      const bucket2 = _connectionsByTarget.get(windowId);
+      if (!bucket2) {
+        return;
+      }
+      for (const connId of Array.from(bucket2)) {
+        const conn = _connections.get(connId);
+        conn?._destroy("window-closed");
+      }
+    };
+    return { connect, routeIncomingFromIframe, onIframeReady, onWindowClosed };
+  }
+  const __vite_import_meta_env__ = {};
+  function devLog(...args) {
+    const mode = typeof { url: _documentCurrentScript && _documentCurrentScript.tagName.toUpperCase() === "SCRIPT" && _documentCurrentScript.src || new URL("desktop.js", document.baseURI).href } !== "undefined" && __vite_import_meta_env__ ? "development" : void 0;
+    if (mode !== "production") {
+      console.log(...args);
+    }
+  }
+  const OWNER_PREFIX = "iframe:";
+  function ownerFor(windowId) {
+    return OWNER_PREFIX + windowId;
+  }
+  function iconFor(harvested) {
+    if (harvested.icon && typeof harvested.icon === "string" && harvested.icon.startsWith("dashicons-")) {
+      return harvested.icon;
+    }
+    return harvested.kind === "navigate" ? "dashicons-external" : "dashicons-arrow-right-alt";
+  }
+  function slugFor(windowId, name) {
+    const safeName = name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+    const safeWin = windowId.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+    return `win-${safeWin}-${safeName}`;
+  }
+  class IframeCommandBridge {
+    constructor(opts) {
+      this.subscribedWindowId = null;
+      this.manager = opts.manager;
+      this.adminUrl = opts.adminUrl;
+    }
+    /** Wire up the focus / close / message listeners. Idempotent. */
+    install() {
+      document.addEventListener("desktop-mode-window-focused", (e) => {
+        const detail = e.detail;
+        if (detail && typeof detail.windowId === "string") {
+          this.onFocused(detail.windowId);
+        }
+      });
+      document.addEventListener("desktop-mode-window-closed", (e) => {
+        const detail = e.detail;
+        if (detail && typeof detail.windowId === "string") {
+          unregisterByOwner(ownerFor(detail.windowId));
+          if (this.subscribedWindowId === detail.windowId) {
+            this.subscribedWindowId = null;
+          }
+        }
+      });
+      document.addEventListener("desktop-mode-window-changed", (e) => {
+        const detail = e.detail;
+        if (!detail || typeof detail.windowId !== "string") {
+          return;
+        }
+        if (detail.reason !== "state") {
+          return;
+        }
+        if (detail.state !== "minimized") {
+          return;
+        }
+        if (this.subscribedWindowId === detail.windowId) {
+          this.subscribedWindowId = null;
+        }
+      });
+      window.addEventListener("message", (e) => {
+        if (e.origin !== window.location.origin) {
+          return;
+        }
+        const data = e.data;
+        if (!data || typeof data.type !== "string") {
+          return;
+        }
+        if (data.type === "desktop-mode-bridge-ready") {
+          const win2 = this.manager.findByIframeSource(e.source);
+          if (win2 && win2.id === this.subscribedWindowId) {
+            this.sendSubscribe(win2.id);
+          }
+          return;
+        }
+        if (data.type !== "desktop-mode-commands-list") {
+          return;
+        }
+        if (!Array.isArray(data.commands)) {
+          return;
+        }
+        const win = this.manager.findByIframeSource(e.source);
+        if (!win) {
+          return;
+        }
+        if (win.id !== this.subscribedWindowId) {
+          return;
+        }
+        this.applyList(win.id, data.commands);
+      });
+      const focused = this.manager.getFocused();
+      if (focused) {
+        this.onFocused(focused.id);
+      }
+    }
+    onFocused(windowId) {
+      if (this.subscribedWindowId === windowId) {
+        return;
+      }
+      if (this.subscribedWindowId) {
+        const prev = this.manager.getById(this.subscribedWindowId);
+        if (prev && prev.iframe && prev.iframe.contentWindow) {
+          try {
+            prev.iframe.contentWindow.postMessage(
+              { type: "desktop-mode-commands-unsubscribe" },
+              window.location.origin
+            );
+          } catch {
+          }
+        }
+        unregisterByOwner(ownerFor(this.subscribedWindowId));
+      }
+      this.subscribedWindowId = windowId;
+      this.sendSubscribe(windowId);
+    }
+    sendSubscribe(windowId) {
+      const win = this.manager.getById(windowId);
+      if (!win) {
+        return;
+      }
+      if (!win.iframe) {
+        return;
+      }
+      if (!win.iframe.contentWindow) {
+        return;
+      }
+      try {
+        win.iframe.contentWindow.postMessage(
+          { type: "desktop-mode-commands-subscribe" },
+          window.location.origin
+        );
+      } catch (err) {
+        devLog("[wpd-cmd:parent] sendSubscribe: postMessage threw", err);
+      }
+    }
+    applyList(windowId, commands) {
+      const owner = ownerFor(windowId);
+      unregisterByOwner(owner);
+      for (const cmd of commands) {
+        if (!cmd || !cmd.name || !cmd.label) {
+          continue;
+        }
+        const slug = slugFor(windowId, cmd.name);
+        const safeSvg = typeof cmd.iconSvg === "string" && cmd.iconSvg !== "" ? sanitizeIconSvg(cmd.iconSvg) : "";
+        const def = {
+          slug,
+          label: cmd.label,
+          icon: iconFor(cmd),
+          iconSvg: safeSvg !== "" ? safeSvg : void 0,
+          owner,
+          // Harvested commands are contextual by construction —
+          // they come from whichever window has focus. Surface
+          // them eagerly so the user sees "Duplicate block" /
+          // "Toggle distraction free" without having to type `/`
+          // first.
+          eager: true,
+          run: cmd.kind === "navigate" && cmd.url ? this.runNavigate(cmd.url, cmd.label, iconFor(cmd)) : this.runProxy(windowId, cmd.name)
+        };
+        try {
+          registerCommand(def);
+        } catch (err) {
+          console.error(
+            "[desktop-mode] iframe-bridge: dropping bad command",
+            def,
+            err
+          );
+        }
+      }
+    }
+    runNavigate(url, title, icon) {
+      return (_args, ctx) => {
+        ctx.close();
+        if (tryNativeUrlRemap(url)) {
+          return;
+        }
+        const id = deriveWindowId(url, this.adminUrl);
+        this.manager.open({ id, baseId: id, url, title, icon });
+      };
+    }
+    runProxy(windowId, name) {
+      return (_args, ctx) => {
+        ctx.close();
+        const win = this.manager.getById(windowId);
+        if (!win || !win.iframe || !win.iframe.contentWindow) {
+          return;
+        }
+        try {
+          win.iframe.contentWindow.postMessage(
+            { type: "desktop-mode-commands-invoke", name },
+            window.location.origin
+          );
+        } catch {
+        }
+        this.manager.focus(win);
+      };
+    }
+  }
+  const OWNER = "global";
+  const NAV_HREF_LITERAL_RE = /(?:document\.location\.href|window\.location\.href|location\.href)\s*=\s*['"]([^'"$]+?)['"]/;
+  const NAV_ASSIGN_LITERAL_RE = /(?:document\.location|window\.location|location)\s*=\s*['"]([^'"$]+?)['"]/;
+  const NAV_CALL_LITERAL_RE = /location\.(?:assign|replace)\s*\(\s*['"]([^'"$]+?)['"]\s*\)/;
+  const NAV_INTENT_RE = /(?:document\.location|window\.location|location)\s*(?:\.href\s*)?=|location\.(?:assign|replace)\s*\(/;
+  const SITE_EDITOR_INTENT_RE = /getSiteEditorPage\s*\(|site-editor\.php/;
+  const SITE_EDITOR_NAME_RE = /^(wp_template_part|wp_template|wp_navigation|wp_block)-(.+)$/;
+  function lookupMenuCommand(name) {
+    const list2 = window.__desktopModeMenuCommands;
+    if (!Array.isArray(list2)) {
+      return null;
+    }
+    for (const entry of list2) {
+      if (entry && typeof entry === "object" && entry.name === name && typeof entry.url === "string" && entry.url !== "") {
+        return {
+          label: typeof entry.label === "string" ? entry.label : "",
+          url: entry.url
+        };
+      }
+    }
+    return null;
+  }
+  class ShellCommandHarvester {
+    constructor(opts) {
+      this.mounted = false;
+      this.host = null;
+      this.root = null;
+      this.kindCache = /* @__PURE__ */ Object.create(null);
+      this.callbackCache = /* @__PURE__ */ Object.create(null);
+      this.lastFingerprint = "";
+      this.manager = opts.manager;
+      this.adminUrl = opts.adminUrl;
+    }
+    /** Mount the harvester. Idempotent. Safe to call before `wp.data` loads. */
+    install() {
+      this.tryMount(0);
+    }
+    tryMount(attempt) {
+      if (this.mounted) {
+        return;
+      }
+      const wp = window.wp;
+      if (!wp || !wp.data || !wp.element || typeof wp.data.subscribe !== "function") {
+        if (attempt < 40) {
+          window.setTimeout(() => this.tryMount(attempt + 1), 150);
+        }
+        return;
+      }
+      this.mount();
+    }
+    mount() {
+      const wp = window.wp;
+      const el = wp.element;
+      const data = wp.data;
+      const createEl = el.createElement;
+      const useEffect = el.useEffect;
+      const useRef = el.useRef;
+      const useMemo = el.useMemo;
+      const useSelect = data.useSelect;
+      if (typeof createEl !== "function" || typeof useEffect !== "function" || typeof useRef !== "function" || typeof useMemo !== "function" || typeof useSelect !== "function" || typeof el.createRoot !== "function") {
+        return;
+      }
+      this.mounted = true;
+      const host = document.createElement("div");
+      host.setAttribute("aria-hidden", "true");
+      host.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;left:-9999px;top:-9999px;";
+      (document.body || document.documentElement).appendChild(host);
+      this.host = host;
+      const bucket2 = {
+        perLoader: {},
+        statics: [],
+        loadersList: []
+      };
+      const fingerprint2 = (cmds) => {
+        if (!Array.isArray(cmds) || cmds.length === 0) {
+          return "";
+        }
+        const keys = new Array(cmds.length);
+        for (let i = 0; i < cmds.length; i++) {
+          const c = cmds[i];
+          keys[i] = c && c.name ? c.name : "";
+        }
+        return keys.join("|");
+      };
+      const mergeAndPublish = () => {
+        let merged = [];
+        for (const name of bucket2.loadersList) {
+          const slice = bucket2.perLoader[name];
+          if (Array.isArray(slice)) {
+            merged = merged.concat(slice);
+          }
+        }
+        if (Array.isArray(bucket2.statics)) {
+          merged = merged.concat(bucket2.statics);
+        }
+        this.callbackCache = /* @__PURE__ */ Object.create(null);
+        for (const cc of merged) {
+          if (cc && cc.name && typeof cc.callback === "function") {
+            this.callbackCache[cc.name] = cc.callback;
+          }
+        }
+        this.publish(merged);
+      };
+      const LoaderSlot = (props) => {
+        const loader = props.loader;
+        let result = null;
+        try {
+          result = loader.hook({ search: "" });
+        } catch {
+        }
+        const cmds = result && Array.isArray(result.commands) ? result.commands : [];
+        const key = useMemo(() => fingerprint2(cmds), [cmds]);
+        useEffect(() => {
+          bucket2.perLoader[loader.name] = cmds;
+          mergeAndPublish();
+        }, [key]);
+        useEffect(() => {
+          return () => {
+            delete bucket2.perLoader[loader.name];
+            mergeAndPublish();
+          };
+        }, []);
+        return null;
+      };
+      const Harvester = () => {
+        const loaders = useSelect((s) => {
+          const ss = s("core/commands");
+          if (!ss || typeof ss.getCommandLoaders !== "function") {
+            return [];
+          }
+          return [
+            ...ss.getCommandLoaders(false) || [],
+            ...ss.getCommandLoaders(true) || []
+          ];
+        }, []);
+        const staticCmds = useSelect((s) => {
+          const ss = s("core/commands");
+          if (!ss || typeof ss.getCommands !== "function") {
+            return [];
+          }
+          return [
+            ...ss.getCommands(false) || [],
+            ...ss.getCommands(true) || []
+          ];
+        }, []);
+        const loadersNames = useMemo(() => {
+          return Array.isArray(loaders) ? loaders.map((l) => l ? l.name || "" : "") : [];
+        }, [loaders]);
+        const loadersKey = loadersNames.join("|");
+        useEffect(() => {
+          bucket2.loadersList = loadersNames;
+          mergeAndPublish();
+        }, [loadersKey]);
+        const staticKey = useMemo(
+          () => fingerprint2(Array.isArray(staticCmds) ? staticCmds : []),
+          [staticCmds]
+        );
+        useEffect(() => {
+          bucket2.statics = Array.isArray(staticCmds) ? staticCmds : [];
+          mergeAndPublish();
+        }, [staticKey]);
+        if (!Array.isArray(loaders) || loaders.length === 0) {
+          return null;
+        }
+        const children = [];
+        for (const loader of loaders) {
+          if (!loader || typeof loader.hook !== "function") {
+            continue;
+          }
+          children.push(
+            createEl(LoaderSlot, { key: loader.name, loader })
+          );
+        }
+        return createEl(el.Fragment || "div", null, children);
+      };
+      try {
+        this.root = el.createRoot(host);
+        this.root.render(createEl(Harvester));
+      } catch {
+        this.mounted = false;
+        this.root = null;
+        if (this.host && this.host.parentNode) {
+          this.host.parentNode.removeChild(this.host);
+        }
+        this.host = null;
+      }
+    }
+    publish(raw) {
+      const seen = /* @__PURE__ */ Object.create(null);
+      const classified = [];
+      for (const cmd of raw) {
+        if (!cmd || !cmd.name || !cmd.label) {
+          continue;
+        }
+        if (cmd.disabled) {
+          continue;
+        }
+        if (seen[cmd.name]) {
+          continue;
+        }
+        seen[cmd.name] = true;
+        classified.push(this.classify(cmd));
+      }
+      let key = "";
+      for (const c of classified) {
+        key += `${c.name}|${c.kind}|${c.url || ""}
+`;
+      }
+      if (key === this.lastFingerprint) {
+        return;
+      }
+      this.lastFingerprint = key;
+      unregisterByOwner(OWNER);
+      for (const c of classified) {
+        if (c.kind === "skip") {
+          continue;
+        }
+        const slug = `global-${c.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}`;
+        const icon = this.iconFor(c);
+        const def = {
+          slug,
+          label: c.label,
+          icon,
+          iconSvg: c.iconSvg && c.iconSvg !== "" ? sanitizeIconSvg(c.iconSvg) : void 0,
+          owner: OWNER,
+          // NOT eager. The palette splits the registry into two
+          // disjoint surfaces: `eager` commands show on empty
+          // input (and are excluded from slash search at
+          // `src/ai-assistant/impl.ts:494`); non-eager commands
+          // show when the user types `/<query>`. The WP baseline
+          // is large (~150 entries) and meant to be searched —
+          // surfacing it eagerly would drown the iframe-harvested
+          // contextual shortcuts on every open. Slash-search is
+          // the right surface for it, matching the native WP
+          // palette UX (open, type, find).
+          run: c.kind === "navigate" && c.url ? this.runNavigate(c.url, c.windowTitle || c.label, icon) : this.runInvoke(c.name, c.label, icon)
+        };
+        try {
+          registerCommand(def);
+        } catch (err) {
+          console.error(
+            "[desktop-mode] shell-harvester: dropping bad command",
+            def,
+            err
+          );
+        }
+      }
+    }
+    classify(cmd) {
+      const out = {
+        name: String(cmd.name),
+        label: String(cmd.label),
+        icon: typeof cmd.icon === "string" ? cmd.icon : void 0,
+        iconSvg: void 0,
+        kind: "action",
+        url: void 0,
+        callback: typeof cmd.callback === "function" ? cmd.callback : void 0
+      };
+      const cached = this.kindCache[out.name];
+      if (cached) {
+        out.kind = cached.kind;
+        out.url = cached.url;
+        out.iconSvg = cached.iconSvg;
+        return out;
+      }
+      if (cmd.icon && typeof cmd.icon !== "string") {
+        out.iconSvg = this.renderIcon(cmd.icon);
+      }
+      const menuEntry = lookupMenuCommand(out.name);
+      if (menuEntry) {
+        try {
+          out.url = new URL(menuEntry.url, this.adminUrl).toString();
+          out.kind = "navigate";
+          if (menuEntry.label !== "") {
+            out.windowTitle = menuEntry.label;
+          }
+        } catch {
+          out.kind = "skip";
+        }
+        this.kindCache[out.name] = {
+          kind: out.kind,
+          url: out.url,
+          iconSvg: out.iconSvg
+        };
+        return out;
+      }
+      if (typeof cmd.callback === "function") {
+        let src = "";
+        try {
+          src = Function.prototype.toString.call(cmd.callback);
+        } catch {
+          src = "";
+        }
+        const literal = src.match(NAV_HREF_LITERAL_RE) || src.match(NAV_ASSIGN_LITERAL_RE) || src.match(NAV_CALL_LITERAL_RE);
+        if (literal && literal[1]) {
+          try {
+            out.url = new URL(literal[1], window.location.href).toString();
+            out.kind = "navigate";
+          } catch {
+            out.kind = "action";
+          }
+        } else if (NAV_INTENT_RE.test(src)) {
+          const isSiteEditorIntent = SITE_EDITOR_INTENT_RE.test(src);
+          const nameMatch = isSiteEditorIntent ? out.name.match(SITE_EDITOR_NAME_RE) : null;
+          if (nameMatch) {
+            const entityType = nameMatch[1];
+            const entityId = nameMatch[2];
+            const p = `/${entityType}/${entityId}`;
+            try {
+              const siteEditor = new URL("site-editor.php", this.adminUrl);
+              siteEditor.searchParams.set("p", p);
+              siteEditor.searchParams.set("canvas", "edit");
+              out.url = siteEditor.toString();
+              out.kind = "navigate";
+            } catch {
+              out.kind = "skip";
+            }
+          } else {
+            out.kind = "skip";
+          }
+        }
+      }
+      this.kindCache[out.name] = {
+        kind: out.kind,
+        url: out.url,
+        iconSvg: out.iconSvg
+      };
+      return out;
+    }
+    renderIcon(icon) {
+      const wp = window.wp;
+      if (!wp || !wp.element || typeof wp.element.renderToString !== "function") {
+        return "";
+      }
+      try {
+        const rendered = wp.element.renderToString(icon);
+        if (typeof rendered === "string" && rendered.toLowerCase().startsWith("<svg")) {
+          return rendered;
+        }
+      } catch {
+      }
+      return "";
+    }
+    iconFor(c) {
+      if (c.icon && c.icon.startsWith("dashicons-")) {
+        return c.icon;
+      }
+      return c.kind === "navigate" ? "dashicons-external" : "dashicons-arrow-right-alt";
+    }
+    runNavigate(url, title, icon) {
+      return (_args, ctx) => {
+        ctx.close();
+        if (tryNativeUrlRemap(url)) {
+          return;
+        }
+        const id = deriveWindowId(url, this.adminUrl);
+        this.manager.open({ id, baseId: id, url, title, icon });
+      };
+    }
+    runInvoke(name, title, icon) {
+      return (_args, ctx) => {
+        ctx.close();
+        const cb = this.callbackCache[name];
+        if (typeof cb !== "function") {
+          return;
+        }
+        const captured = this.runWithNavCapture(cb);
+        if (captured) {
+          const id = deriveWindowId(captured, this.adminUrl);
+          this.manager.open({ id, baseId: id, url: captured, title, icon });
+        }
+      };
+    }
+    /**
+     * Invoke `cb` with navigation sinks (`document.location`,
+     * `window.location`, `location.assign`, `location.replace`)
+     * shadowed so any assignment is captured instead of navigating
+     * the shell. Returns the captured URL or `null` if the callback
+     * was a pure JS action.
+     *
+     * The shadow uses `Object.defineProperty` on the document /
+     * window instance to override the prototype's accessor for the
+     * duration of the call. `delete` afterwards unshadows so the
+     * native setter is restored.
+     */
+    runWithNavCapture(cb) {
+      let captured = null;
+      const setCaptured = (v) => {
+        if (captured === null && typeof v === "string" && v !== "") {
+          captured = v;
+        }
+      };
+      const realLocation = window.location;
+      const locationProxy = new Proxy(realLocation, {
+        get(target, prop) {
+          const value = target[prop];
+          if (prop === "assign" || prop === "replace") {
+            return (url) => setCaptured(url);
+          }
+          if (typeof value === "function") {
+            return value.bind(target);
+          }
+          return value;
+        },
+        set(_target, prop, value) {
+          if (prop === "href") {
+            setCaptured(value);
+            return true;
+          }
+          return true;
+        }
+      });
+      const shadowed = [];
+      const installShadow = (obj) => {
+        try {
+          Object.defineProperty(obj, "location", {
+            configurable: true,
+            get: () => locationProxy,
+            set: (v) => setCaptured(v)
+          });
+          shadowed.push({ obj, key: "location" });
+        } catch {
+        }
+      };
+      installShadow(document);
+      installShadow(window);
+      try {
+        cb({ close: () => {
+        } });
+      } catch {
+      } finally {
+        for (const s of shadowed) {
+          try {
+            delete s.obj[s.key];
+          } catch {
+          }
+        }
+      }
+      return captured;
+    }
+  }
+  const seed$2 = [];
+  function register(def) {
+    throwOnRegistrationErrors(
+      "Widget",
+      collectRegistrationErrors(def, WIDGET_CHECKS),
+      def
+    );
+    const idx = seed$2.findIndex((w) => w.id === def.id);
+    if (idx >= 0) {
+      seed$2[idx] = def;
+    } else {
+      seed$2.push(def);
+    }
+  }
+  function unregister(id) {
+    const idx = seed$2.findIndex((w) => w.id === id);
+    if (idx >= 0) {
+      seed$2.splice(idx, 1);
+    }
+  }
+  function all() {
+    const copy = seed$2.slice();
+    const filtered = applyFilters(HOOKS.WIDGETS, copy);
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.widgets` filter returned a non-array; falling back to seed list."
+        );
+      }
+      return copy;
+    }
+    return filtered.filter(isValidDef);
+  }
+  function get(id) {
+    return all().find((w) => w.id === id);
+  }
+  const WIDGET_CHECKS = [
+    {
+      field: "id",
+      message: "missing or not a non-empty string",
+      valid: (d) => typeof d.id === "string" && d.id !== ""
+    },
+    {
+      field: "label",
+      message: "missing or not a non-empty string",
+      valid: (d) => typeof d.label === "string" && d.label !== ""
+    },
+    {
+      field: "description",
+      message: "not a string",
+      valid: (d) => typeof d.description === "string"
+    },
+    {
+      field: "icon",
+      message: "missing or not a non-empty string",
+      valid: (d) => typeof d.icon === "string" && d.icon !== ""
+    },
+    {
+      field: "mount",
+      message: "not a function",
+      valid: (d) => typeof d.mount === "function"
+    }
+  ];
+  function isValidDef(def) {
+    return collectRegistrationErrors(def, WIDGET_CHECKS).length === 0;
+  }
+  let active$2 = null;
+  function openWidgetPicker(options) {
+    if (active$2) {
+      return;
+    }
+    const panel2 = document.createElement("div");
+    panel2.className = "desktop-mode-widget-picker";
+    panel2.setAttribute("role", "menu");
+    panel2.setAttribute("aria-label", __("Add widget"));
+    const title = document.createElement("div");
+    title.className = "desktop-mode-widget-picker__title";
+    title.textContent = __("Add widget");
+    panel2.appendChild(title);
+    const list2 = document.createElement("div");
+    list2.className = "desktop-mode-widget-picker__list";
+    panel2.appendChild(list2);
+    paintList(list2, options);
+    document.body.appendChild(panel2);
+    positionPanel(panel2, options.anchor);
+    const onOutsidePointerDown = (e) => {
+      const target = e.target;
+      if (!target) {
+        return;
+      }
+      if (panel2.contains(target) || options.anchor.contains(target)) {
+        return;
+      }
+      closeWidgetPicker();
+    };
+    window.setTimeout(() => {
+      document.addEventListener("pointerdown", onOutsidePointerDown, true);
+    }, 0);
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        closeWidgetPicker();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    active$2 = { panel: panel2, options, onOutsidePointerDown, onKeyDown };
+    const first = list2.querySelector(
+      "button:not([disabled])"
+    );
+    first?.focus();
+  }
+  function refreshWidgetPicker() {
+    if (!active$2) {
+      return;
+    }
+    const list2 = active$2.panel.querySelector(
+      ".desktop-mode-widget-picker__list"
+    );
+    if (list2) {
+      paintList(list2, active$2.options);
+    }
+  }
+  function closeWidgetPicker() {
+    if (!active$2) {
+      return;
+    }
+    document.removeEventListener(
+      "pointerdown",
+      active$2.onOutsidePointerDown,
+      true
+    );
+    document.removeEventListener("keydown", active$2.onKeyDown);
+    active$2.panel.remove();
+    active$2 = null;
+  }
+  function paintList(list2, options) {
+    list2.innerHTML = "";
+    const enabled = new Set(options.enabledIds());
+    const defs = options.registry();
+    if (defs.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "desktop-mode-widget-picker__empty";
+      empty.textContent = __(
+        "No widgets available. Activate a plugin that registers one, or see the docs for the registerWidget API."
+      );
+      list2.appendChild(empty);
+      return;
+    }
+    for (const def of defs) {
+      const entry = document.createElement("button");
+      entry.type = "button";
+      entry.className = "desktop-mode-widget-picker__entry";
+      const isAdded = enabled.has(def.id);
+      if (isAdded) {
+        entry.classList.add(
+          "desktop-mode-widget-picker__entry--added"
+        );
+        entry.disabled = true;
+        entry.setAttribute("aria-disabled", "true");
+      }
+      entry.setAttribute("role", "menuitem");
+      let ariaLabel;
+      if (isAdded) {
+        ariaLabel = sprintf(__("%s (already added)"), def.label);
+      } else {
+        ariaLabel = sprintf(__("Add %s"), def.label);
+      }
+      entry.setAttribute("aria-label", ariaLabel);
+      const icon = document.createElement("span");
+      icon.className = `desktop-mode-widget-picker__entry-icon dashicons ${def.icon}`;
+      icon.setAttribute("aria-hidden", "true");
+      entry.appendChild(icon);
+      const textWrap = document.createElement("span");
+      textWrap.className = "desktop-mode-widget-picker__entry-text";
+      const label = document.createElement("span");
+      label.className = "desktop-mode-widget-picker__entry-label";
+      label.textContent = def.label;
+      textWrap.appendChild(label);
+      if (def.description) {
+        const desc = document.createElement("span");
+        desc.className = "desktop-mode-widget-picker__entry-description";
+        desc.textContent = def.description;
+        textWrap.appendChild(desc);
+      }
+      entry.appendChild(textWrap);
+      if (isAdded) {
+        const status = document.createElement("span");
+        status.className = "desktop-mode-widget-picker__entry-status";
+        status.textContent = __("Added");
+        entry.appendChild(status);
+      }
+      if (!isAdded) {
+        entry.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          options.onAdd(def.id);
+        });
+      }
+      list2.appendChild(entry);
+    }
+  }
+  function positionPanel(panel2, anchor) {
+    const rect = anchor.getBoundingClientRect();
+    panel2.style.position = "fixed";
+    panel2.style.left = "0px";
+    panel2.style.top = "0px";
+    panel2.style.visibility = "hidden";
+    const panelRect = panel2.getBoundingClientRect();
+    const width = panelRect.width || 320;
+    const height = panelRect.height || 200;
+    const gap = 6;
+    let left = rect.right - width;
+    let top = rect.top - height - gap;
+    if (left < 8) {
+      left = 8;
+    }
+    if (top < 8) {
+      top = rect.bottom + gap;
+    }
+    panel2.style.left = `${Math.round(left)}px`;
+    panel2.style.top = `${Math.round(top)}px`;
+    panel2.style.visibility = "";
+  }
+  const FLOATING_CLASS = "desktop-mode-widgets__card--floating";
+  const MOVABLE_CLASS = "desktop-mode-widgets__card--movable";
+  const RESIZABLE_CLASS = "desktop-mode-widgets__card--resizable";
+  const DRAGGING_CLASS = "desktop-mode-widgets__card--dragging";
+  const RESIZING_CLASS = "desktop-mode-widgets__card--resizing";
+  const DEFAULT_MIN_WIDTH = 160;
+  const DEFAULT_MIN_HEIGHT = 80;
+  const DEFAULT_WIDTH = 280;
+  const DEFAULT_HEIGHT = 180;
+  const VIEWPORT_MARGIN = 20;
+  const DRAG_THRESHOLD_PX$1 = 5;
+  const DRAG_THRESHOLD_SQUARED = DRAG_THRESHOLD_PX$1 * DRAG_THRESHOLD_PX$1;
+  const DRAG_EXCLUDED_SELECTORS = 'input, textarea, select, button, a, [contenteditable="true"]';
+  function buildFrame(def, ctx, handlers) {
+    const card = document.createElement("div");
+    card.className = "desktop-mode-widgets__card";
+    card.dataset.widgetId = def.id;
+    const movable = def.movable === true;
+    const resizable = def.resizable === true;
+    if (movable) {
+      card.classList.add(MOVABLE_CLASS);
+    }
+    if (resizable) {
+      card.classList.add(RESIZABLE_CLASS);
+    }
+    if (movable) {
+      card.appendChild(buildChrome(def, handlers.onRemove, handlers.onRedock));
+    } else {
+      card.appendChild(buildCornerClose(def, handlers.onRemove));
+    }
+    const body = document.createElement("div");
+    body.className = "desktop-mode-widgets__card-body";
+    card.appendChild(body);
+    let isFloating = false;
+    if (ctx.geometry) {
+      applyGeometry(card, ctx.geometry);
+      card.classList.add(FLOATING_CLASS);
+      isFloating = true;
+    }
+    const resizeCleanups = [];
+    if (resizable) {
+      for (const dir of allHandleDirs()) {
+        const handle = document.createElement("div");
+        handle.className = `desktop-mode-widgets__resize desktop-mode-widgets__resize--${dir}`;
+        handle.setAttribute("aria-hidden", "true");
+        handle.dataset.dir = dir;
+        card.appendChild(handle);
+        resizeCleanups.push(
+          attachResize(card, handle, dir, def, ctx, handlers, () => isFloating)
+        );
+      }
+    }
+    let dragCleanup = null;
+    if (movable) {
+      const chrome = card.querySelector(
+        ".desktop-mode-widgets__chrome"
+      );
+      if (chrome) {
+        dragCleanup = attachDrag(card, chrome, def, ctx, handlers, (next) => {
+          isFloating = next;
+        });
+      }
+    }
+    return {
+      card,
+      body,
+      dispose: () => {
+        for (const fn of resizeCleanups) {
+          try {
+            fn();
+          } catch {
+          }
+        }
+        if (dragCleanup) {
+          try {
+            dragCleanup();
+          } catch {
+          }
+        }
+        card.remove();
+      }
+    };
+  }
+  function buildChrome(def, onRemove, onRedock) {
+    const chrome = document.createElement("header");
+    chrome.className = "desktop-mode-widgets__chrome";
+    const grip = document.createElement("span");
+    grip.className = "desktop-mode-widgets__grip";
+    grip.setAttribute("aria-hidden", "true");
+    chrome.appendChild(grip);
+    const title = document.createElement("span");
+    title.className = "desktop-mode-widgets__title";
+    title.textContent = def.label;
+    chrome.appendChild(title);
+    chrome.appendChild(buildRedockButton(def, onRedock));
+    const close = buildCloseButton(def, onRemove);
+    chrome.appendChild(close);
+    return chrome;
+  }
+  function buildRedockButton(def, onRedock) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "desktop-mode-widgets__card-redock";
+    btn.setAttribute(
+      "aria-label",
+      // translators: %s is the widget label (e.g., "Clock")
+      sprintf(__("Dock %s back to widget column"), def.label)
+    );
+    btn.innerHTML = '<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2 6h6M5.5 3.5L8 6l-2.5 2.5M10 2.5v7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onRedock();
+    });
+    btn.dataset.noDrag = "true";
+    return btn;
+  }
+  function buildCornerClose(def, onRemove) {
+    const close = buildCloseButton(def, onRemove);
+    close.classList.add("desktop-mode-widgets__card-close--corner");
+    return close;
+  }
+  function buildCloseButton(def, onRemove) {
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "desktop-mode-widgets__card-close";
+    close.setAttribute("aria-label", sprintf(__("Remove %s"), def.label));
+    close.innerHTML = '<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    close.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onRemove();
+    });
+    return close;
+  }
+  function attachDrag(card, chrome, def, ctx, handlers, setFloating) {
+    let pointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let initialLeft = 0;
+    let initialTop = 0;
+    let committed = false;
+    const onDown = (e) => {
+      if (e.button !== 0) {
+        return;
+      }
+      const target = e.target;
+      if (target && target.closest(DRAG_EXCLUDED_SELECTORS)) {
+        return;
+      }
+      e.preventDefault();
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      committed = false;
+      initialLeft = parseFloat(card.style.left) || 0;
+      initialTop = parseFloat(card.style.top) || 0;
+      chrome.setPointerCapture(pointerId);
+    };
+    const commitDrag = () => {
+      if (!card.classList.contains(FLOATING_CLASS)) {
+        const parentRect = ctx.floatingParent.getBoundingClientRect();
+        const rect = card.getBoundingClientRect();
+        const initial = {
+          x: rect.left - parentRect.left,
+          y: rect.top - parentRect.top,
+          width: rect.width || def.defaultWidth || DEFAULT_WIDTH,
+          height: rect.height || def.defaultHeight || DEFAULT_HEIGHT
+        };
+        applyGeometry(card, initial);
+        card.classList.add(FLOATING_CLASS);
+        setFloating(true);
+        handlers.onLiberate(initial);
+        initialLeft = parseFloat(card.style.left) || 0;
+        initialTop = parseFloat(card.style.top) || 0;
+      }
+      card.classList.add(DRAGGING_CLASS);
+    };
+    const onMove = (e) => {
+      if (pointerId === null || e.pointerId !== pointerId) {
+        return;
+      }
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!committed) {
+        if (dx * dx + dy * dy < DRAG_THRESHOLD_SQUARED) {
+          return;
+        }
+        committed = true;
+        commitDrag();
+      }
+      const clamped = clampToParent(
+        initialLeft + dx,
+        initialTop + dy,
+        card.offsetWidth,
+        card.offsetHeight,
+        ctx.floatingParent
+      );
+      card.style.left = `${clamped.x}px`;
+      card.style.top = `${clamped.y}px`;
+    };
+    const onUp = (e) => {
+      if (pointerId === null || e.pointerId !== pointerId) {
+        return;
+      }
+      try {
+        chrome.releasePointerCapture(pointerId);
+      } catch {
+      }
+      pointerId = null;
+      if (!committed) {
+        return;
+      }
+      committed = false;
+      card.classList.remove(DRAGGING_CLASS);
+      handlers.onGeometryChanged(currentGeometry(card));
+    };
+    chrome.addEventListener("pointerdown", onDown);
+    chrome.addEventListener("pointermove", onMove);
+    chrome.addEventListener("pointerup", onUp);
+    chrome.addEventListener("pointercancel", onUp);
+    return () => {
+      chrome.removeEventListener("pointerdown", onDown);
+      chrome.removeEventListener("pointermove", onMove);
+      chrome.removeEventListener("pointerup", onUp);
+      chrome.removeEventListener("pointercancel", onUp);
+    };
+  }
+  function attachResize(card, handle, dir, def, ctx, handlers, isFloating) {
+    let pointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    let startW = 0;
+    let startH = 0;
+    const onDown = (e) => {
+      if (e.button !== 0) {
+        return;
+      }
+      if (!isFloating() && !isHeightOnlyDir(dir)) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = card.getBoundingClientRect();
+      const parentRect = ctx.floatingParent.getBoundingClientRect();
+      startLeft = rect.left - parentRect.left;
+      startTop = rect.top - parentRect.top;
+      startW = rect.width;
+      startH = rect.height;
+      handle.setPointerCapture(pointerId);
+      card.classList.add(RESIZING_CLASS);
+    };
+    const onMove = (e) => {
+      if (pointerId === null || e.pointerId !== pointerId) {
+        return;
+      }
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const next = computeResize(
+        dir,
+        dx,
+        dy,
+        startLeft,
+        startTop,
+        startW,
+        startH,
+        def,
+        ctx.floatingParent,
+        isFloating()
+      );
+      if (isFloating()) {
+        card.style.left = `${next.x}px`;
+        card.style.top = `${next.y}px`;
+        card.style.width = `${next.width}px`;
+      }
+      card.style.height = `${next.height}px`;
+    };
+    const onUp = (e) => {
+      if (pointerId === null || e.pointerId !== pointerId) {
+        return;
+      }
+      try {
+        handle.releasePointerCapture(pointerId);
+      } catch {
+      }
+      pointerId = null;
+      card.classList.remove(RESIZING_CLASS);
+      handlers.onGeometryChanged(currentGeometry(card));
+    };
+    handle.addEventListener("pointerdown", onDown);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+    return () => {
+      handle.removeEventListener("pointerdown", onDown);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+    };
+  }
+  function allHandleDirs() {
+    return ["n", "e", "s", "w", "ne", "nw", "se", "sw"];
+  }
+  function isHeightOnlyDir(dir) {
+    return dir === "s";
+  }
+  function applyGeometry(card, geometry) {
+    card.style.left = `${geometry.x}px`;
+    card.style.top = `${geometry.y}px`;
+    card.style.width = `${geometry.width}px`;
+    card.style.height = `${geometry.height}px`;
+  }
+  function currentGeometry(card) {
+    return {
+      x: parseFloat(card.style.left) || 0,
+      y: parseFloat(card.style.top) || 0,
+      width: card.offsetWidth,
+      height: card.offsetHeight
+    };
+  }
+  function clampToParent(x, y, width, height, parent) {
+    const parentWidth = parent.clientWidth || parent.getBoundingClientRect().width;
+    const parentHeight = parent.clientHeight || parent.getBoundingClientRect().height;
+    const maxX = Math.max(0, parentWidth - width - VIEWPORT_MARGIN);
+    const maxY = Math.max(0, parentHeight - height - VIEWPORT_MARGIN);
+    return {
+      x: Math.min(Math.max(VIEWPORT_MARGIN, x), maxX),
+      y: Math.min(Math.max(VIEWPORT_MARGIN, y), maxY)
+    };
+  }
+  function computeResize(dir, dx, dy, startLeft, startTop, startW, startH, def, parent, floating) {
+    const minW = def.minWidth ?? DEFAULT_MIN_WIDTH;
+    const minH = def.minHeight ?? DEFAULT_MIN_HEIGHT;
+    const maxW = def.maxWidth ?? Infinity;
+    const maxH = def.maxHeight ?? Infinity;
+    const parentWidth = parent.clientWidth || parent.getBoundingClientRect().width;
+    const parentHeight = parent.clientHeight || parent.getBoundingClientRect().height;
+    let x = startLeft;
+    let y = startTop;
+    let width = startW;
+    let height = startH;
+    if (dir === "e" || dir === "ne" || dir === "se") {
+      width = clamp(startW + dx, minW, Math.min(maxW, parentWidth - startLeft));
+    }
+    if (dir === "w" || dir === "nw" || dir === "sw") {
+      const nextWidth = clamp(startW - dx, minW, Math.min(maxW, startLeft + startW));
+      x = startLeft + (startW - nextWidth);
+      width = nextWidth;
+    }
+    if (dir === "s" || dir === "se" || dir === "sw") {
+      height = clamp(
+        startH + dy,
+        minH,
+        Math.min(maxH, parentHeight - startTop)
+      );
+    }
+    if (dir === "n" || dir === "ne" || dir === "nw") {
+      const nextHeight = clamp(startH - dy, minH, Math.min(maxH, startTop + startH));
+      y = startTop + (startH - nextHeight);
+      height = nextHeight;
+    }
+    if (!floating) {
+      width = startW;
+      x = startLeft;
+    }
+    return { x, y, width, height };
+  }
+  function clamp(value, min, max) {
+    if (max < min) {
+      return min;
+    }
+    return Math.min(Math.max(value, min), max);
+  }
+  const IDS_KEY = "desktop-mode-widgets";
+  const GEOMETRY_KEY = "desktop-mode-widgets-geometry";
+  function readRawEnabled() {
+    try {
+      return window.localStorage.getItem(IDS_KEY);
+    } catch {
+      return null;
+    }
+  }
+  function loadEnabledIds() {
+    const raw = readRawEnabled();
+    if (raw === null) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed.filter((x) => typeof x === "string");
+    } catch {
+      return [];
+    }
+  }
+  function saveEnabledIds(ids) {
+    try {
+      window.localStorage.setItem(IDS_KEY, JSON.stringify(ids));
+    } catch {
+    }
+  }
+  function loadGeometry() {
+    try {
+      const raw = window.localStorage.getItem(GEOMETRY_KEY);
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return {};
+      }
+      const out = {};
+      for (const [id, rawEntry] of Object.entries(parsed)) {
+        const entry = sanitizeGeometry(rawEntry);
+        if (entry) {
+          out[id] = entry;
+        }
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+  function saveGeometry(geometry) {
+    try {
+      window.localStorage.setItem(GEOMETRY_KEY, JSON.stringify(geometry));
+    } catch {
+    }
+  }
+  function sanitizeGeometry(raw) {
+    if (!raw || typeof raw !== "object") {
+      return null;
+    }
+    const { x, y, width, height } = raw;
+    if (typeof x !== "number" || !Number.isFinite(x) || typeof y !== "number" || !Number.isFinite(y) || typeof width !== "number" || !Number.isFinite(width) || width <= 0 || typeof height !== "number" || !Number.isFinite(height) || height <= 0) {
+      return null;
+    }
+    return { x, y, width, height };
+  }
+  function createWidgetStorage(widgetId) {
+    const prefix = `desktop-mode.widget.${widgetId}.`;
+    const safeGet = (key) => {
+      try {
+        return localStorage.getItem(prefix + key);
+      } catch {
+        return null;
+      }
+    };
+    return {
+      get(key) {
+        const raw = safeGet(key);
+        if (raw === null) {
+          return null;
+        }
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      },
+      set(key, value) {
+        try {
+          localStorage.setItem(prefix + key, JSON.stringify(value));
+        } catch {
+        }
+      },
+      remove(key) {
+        try {
+          localStorage.removeItem(prefix + key);
+        } catch {
+        }
+      },
+      clear() {
+        try {
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(prefix)) {
+              localStorage.removeItem(key);
+            }
+          }
+        } catch {
+        }
+      }
+    };
+  }
+  const DEFAULT_ENABLED_IDS = ["clock"];
+  class WidgetLayer {
+    /**
+     * @param root         The column element (`#desktop-mode-widgets`).
+     * @param pluginUrl    Absolute plugin URL — passed to widget ctx.
+     * @param floatingHost Parent for liberated (floating) widgets.
+     *                     Defaults to the column's parent (the desktop
+     *                     area) so floats are bounded by the visible
+     *                     desktop, not the 320 px-wide column.
+     */
+    constructor(root, pluginUrl, floatingHost) {
+      this.mounted = /* @__PURE__ */ new Map();
+      this.generation = 0;
+      this.root = root;
+      this.pluginUrl = pluginUrl;
+      this.enabledIds = loadEnabledIds();
+      this.geometry = loadGeometry();
+      this.floatingHost = floatingHost ?? root.parentElement ?? root;
+      this.listEl = document.createElement("div");
+      this.listEl.className = "desktop-mode-widgets__list";
+      this.root.appendChild(this.listEl);
+      this.addTile = this.buildAddTile();
+      this.root.appendChild(this.addTile);
+      this.paintEmptyState();
+    }
+    /**
+     * Mount every widget the user has enabled (per localStorage).
+     * Called once during shell boot, AFTER the registry seed has run
+     * so built-ins are available. Safe to call multiple times — the
+     * `mounted` map dedupes.
+     */
+    hydrate() {
+      if (readRawEnabled() === null) {
+        this.enabledIds = DEFAULT_ENABLED_IDS.filter(
+          (id) => !!get(id)
+        );
+        saveEnabledIds(this.enabledIds);
+      }
+      for (const id of this.enabledIds) {
+        if (this.mounted.has(id)) {
+          continue;
+        }
+        this.mountById(id);
+      }
+      this.paintEmptyState();
+    }
+    /**
+     * Add a widget by id — called by the picker after the user
+     * selects an available entry. Idempotent.
+     */
+    add(id) {
+      if (this.enabledIds.includes(id)) {
+        return;
+      }
+      if (!get(id)) {
+        return;
+      }
+      this.enabledIds.push(id);
+      saveEnabledIds(this.enabledIds);
+      this.mountById(id);
+      this.paintEmptyState();
+      doAction(HOOKS.WIDGET_ADDED, { id });
+      refreshWidgetPicker();
+    }
+    /**
+     * Remove a widget by id — called from the card's × button and
+     * from the picker. Idempotent.
+     */
+    remove(id) {
+      const before = this.enabledIds.length;
+      this.enabledIds = this.enabledIds.filter((e) => e !== id);
+      if (this.enabledIds.length === before) {
+        return;
+      }
+      saveEnabledIds(this.enabledIds);
+      if (this.geometry[id]) {
+        delete this.geometry[id];
+        saveGeometry(this.geometry);
+      }
+      this.unmountById(id);
+      this.paintEmptyState();
+      doAction(HOOKS.WIDGET_REMOVED, { id });
+      refreshWidgetPicker();
+    }
+    /** Public read for the picker / external callers. */
+    getEnabledIds() {
+      return [...this.enabledIds];
+    }
+    /**
+     * Mount a widget ONLY if it's already in the user's enabled
+     * list AND not currently mounted. No-op when the widget isn't
+     * enabled (user never opted in) and no-op when it's already on
+     * screen. Used by the server-driven sync: when a plugin
+     * activates mid-session, its widget def registers via the
+     * sync's path; if the user had previously enabled that widget
+     * (in a prior session or before the plugin was deactivated),
+     * we want to bring it back on screen without toggling the
+     * "enabled" state or firing a `WIDGET_ADDED` action.
+     *
+     * The net behaviour is "rehydrate this one widget now that
+     * its def is finally registered," which is subtly different
+     * from `ensureMounted` (which OPT-INs the user into enabling
+     * the widget for the first time).
+     */
+    mountIfEnabled(id) {
+      if (!get(id)) {
+        return;
+      }
+      if (!this.enabledIds.includes(id)) {
+        return;
+      }
+      if (this.mounted.has(id)) {
+        return;
+      }
+      this.mountById(id);
+      this.paintEmptyState();
+    }
+    /**
+     * Unmount a widget without touching the persisted enablement.
+     * Used by the server-driven widget-registry sync: when a plugin
+     * deactivates mid-session, its widget defs disappear from the
+     * registry and we need to pull any mounted instance off the
+     * screen — but we deliberately KEEP the id in the user's
+     * enabled list so re-activating the plugin re-mounts it
+     * automatically through `hydrate()`.
+     *
+     * Idempotent; a no-op when the widget isn't currently mounted.
+     */
+    unmount(id) {
+      if (!this.mounted.has(id)) {
+        return;
+      }
+      this.unmountById(id);
+      this.paintEmptyState();
+    }
+    /**
+     * Guarantee the widget identified by `id` is currently mounted,
+     * adding it to the enabled list if it isn't. No-op when the
+     * widget is already on screen. Intended for companion plugins
+     * that want to pin their widget programmatically — a monitor
+     * plugin that auto-pins itself on the first error burst, a
+     * first-run onboarding flow that ensures the quick-start widget
+     * is present, etc.
+     *
+     * Returns `true` when the widget is mounted (either newly added
+     * or already present), `false` when the id isn't registered —
+     * callers can branch on the failure without having to maintain
+     * their own registry snapshot.
+     */
+    ensureMounted(id) {
+      if (!get(id)) {
+        return false;
+      }
+      if (this.enabledIds.includes(id)) {
+        return true;
+      }
+      this.add(id);
+      return true;
+    }
+    /**
+     * Tear down every widget. Called on shell unload via `pagehide`
+     * so intervals / RAF loops stop before the beacon flush.
+     */
+    disposeAll() {
+      for (const id of Array.from(this.mounted.keys())) {
+        this.unmountById(id);
+      }
+    }
+    // --- Internal ---------------------------------------------------
+    mountById(id) {
+      const def = get(id);
+      if (!def) {
+        return;
+      }
+      const gen = ++this.generation;
+      const initialGeometry = def.movable === true ? this.geometry[id] : void 0;
+      const frame = buildFrame(
+        def,
+        { floatingParent: this.floatingHost, geometry: initialGeometry },
+        {
+          onRemove: () => this.remove(id),
+          onGeometryChanged: (geom) => this.persistGeometry(id, geom),
+          onLiberate: (geom) => this.liberate(id, geom),
+          onRedock: () => this.redock(id)
+        }
+      );
+      const floating = !!initialGeometry;
+      const record = {
+        id,
+        frame,
+        generation: gen,
+        teardown: null,
+        floating
+      };
+      this.mounted.set(id, record);
+      this.placeCard(frame.card, floating);
+      const ctx = {
+        id,
+        pluginUrl: this.pluginUrl,
+        storage: createWidgetStorage(id)
+      };
+      doAction(HOOKS.WIDGET_MOUNTING, { id, container: frame.body, ctx });
+      const onResolve = (teardown) => {
+        const current = this.mounted.get(id);
+        if (!current || current.generation !== gen) {
+          try {
+            teardown();
+          } catch {
+          }
+          return;
+        }
+        current.teardown = teardown;
+        doAction(HOOKS.WIDGET_MOUNTED, { id, container: frame.body, ctx });
+      };
+      let result;
+      try {
+        result = def.mount(frame.body, ctx);
+      } catch (err) {
+        this.handleMountFailure(id, err);
+        return;
+      }
+      if (isThenable(result)) {
+        result.then(onResolve, (err) => {
+          if (this.mounted.get(id)?.generation === gen) {
+            this.handleMountFailure(id, err);
+          }
+        });
+        return;
+      }
+      onResolve(result);
+    }
+    unmountById(id) {
+      const record = this.mounted.get(id);
+      if (!record) {
+        return;
+      }
+      doAction(HOOKS.WIDGET_UNMOUNTING, { id });
+      try {
+        record.teardown?.();
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, { scope: "widget-teardown", id, error: err });
+        if (typeof console !== "undefined") {
+          console.error(
+            `[desktop-mode] Widget "${id}" teardown threw:`,
+            err
+          );
+        }
+      }
+      this.generation++;
+      record.frame.dispose();
+      this.mounted.delete(id);
+    }
+    handleMountFailure(id, err) {
+      const record = this.mounted.get(id);
+      if (record) {
+        record.frame.dispose();
+        this.mounted.delete(id);
+      }
+      doAction(HOOKS.WIDGET_MOUNT_FAILED, { id, error: err });
+      doAction(HOOKS.SHELL_ERROR, { scope: "widget-mount", id, error: err });
+      if (typeof console !== "undefined") {
+        console.error(
+          `[desktop-mode] Widget "${id}" failed to mount:`,
+          err
+        );
+      }
+    }
+    buildAddTile() {
+      const tile2 = document.createElement("button");
+      tile2.type = "button";
+      tile2.className = "desktop-mode-widgets__add";
+      tile2.setAttribute("aria-label", __("Add widget"));
+      const plus = document.createElement("span");
+      plus.className = "desktop-mode-widgets__add-plus";
+      plus.setAttribute("aria-hidden", "true");
+      plus.textContent = "+";
+      const label = document.createElement("span");
+      label.className = "desktop-mode-widgets__add-label";
+      label.textContent = __("Add widget");
+      tile2.appendChild(plus);
+      tile2.appendChild(label);
+      tile2.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openWidgetPicker({
+          anchor: tile2,
+          registry: () => all(),
+          enabledIds: () => [...this.enabledIds],
+          onAdd: (id) => this.add(id)
+        });
+      });
+      return tile2;
+    }
+    /**
+     * Drop a card into the right parent based on its floating state.
+     * Docked cards append to the column list above the `+` tile;
+     * floating cards append to the desktop-area-level host so they
+     * sit above the wallpaper and can range across the viewport.
+     */
+    placeCard(card, floating) {
+      if (floating) {
+        this.floatingHost.appendChild(card);
+      } else {
+        this.listEl.appendChild(card);
+      }
+    }
+    /**
+     * Move a widget from the column into the floating host. Called by
+     * the frame on the user's first drag of a movable widget.
+     */
+    liberate(id, geometry) {
+      const record = this.mounted.get(id);
+      if (!record || record.floating) {
+        return;
+      }
+      record.floating = true;
+      this.floatingHost.appendChild(record.frame.card);
+      applyGeometry(record.frame.card, geometry);
+      this.persistGeometry(id, geometry);
+      this.paintEmptyState();
+    }
+    /**
+     * Inverse of {@link liberate}: move a floating card back into
+     * the column and drop its persisted geometry so a subsequent
+     * shell boot brings it up docked. Called when the user clicks
+     * the re-dock button in the card's chrome header, or
+     * programmatically by companion plugins via
+     * `wp.desktop.widgets.redock( id )` /
+     * `wp.desktop.widgetLayer.redock( id )`.
+     *
+     * Idempotent — a docked widget silently no-ops, an unknown id
+     * silently no-ops. The `--floating` class on the card is
+     * removed as part of the same write so CSS rules that depend
+     * on it (re-dock button visibility, absolute positioning) flip
+     * back in one paint.
+     *
+     * @since 0.7.0 (private)
+     * @since 0.25.0 (public)
+     */
+    redock(id) {
+      const record = this.mounted.get(id);
+      if (!record || !record.floating) {
+        return;
+      }
+      record.floating = false;
+      if (this.geometry[id]) {
+        delete this.geometry[id];
+        saveGeometry(this.geometry);
+      }
+      const card = record.frame.card;
+      card.classList.remove("desktop-mode-widgets__card--floating");
+      card.style.left = "";
+      card.style.top = "";
+      card.style.width = "";
+      card.style.height = "";
+      this.listEl.appendChild(card);
+      this.paintEmptyState();
+    }
+    persistGeometry(id, geometry) {
+      this.geometry[id] = geometry;
+      saveGeometry(this.geometry);
+    }
+    /**
+     * Toggle a `--has-widgets` modifier so CSS can hide the column's
+     * decorative backdrop when nothing's mounted (keeps the empty
+     * state clean — just the `+` tile floating in the corner).
+     *
+     * Floating widgets don't count toward "has widgets" in the column
+     * sense — if every enabled widget is floating, the column itself
+     * shows only the empty state + add tile.
+     */
+    paintEmptyState() {
+      let docked = 0;
+      for (const record of this.mounted.values()) {
+        if (!record.floating) {
+          docked++;
+        }
+      }
+      this.root.classList.toggle(
+        "desktop-mode-widgets--has-widgets",
+        docked > 0
+      );
+    }
+  }
+  function isThenable(x) {
+    return !!x && (typeof x === "object" || typeof x === "function") && typeof x.then === "function";
+  }
+  const DEFAULT_NATIVE_MIN_WIDTH = 280;
+  const DEFAULT_NATIVE_MIN_HEIGHT = 220;
+  const DEFAULT_NATIVE_WIDTH = 520;
+  const DEFAULT_NATIVE_HEIGHT = 400;
+  function buildIframeContentRender(cfg, cleanups, windowId) {
+    return (body) => {
+      const iframe = document.createElement("iframe");
+      iframe.style.width = "100%";
+      iframe.style.height = "100%";
+      iframe.style.border = "0";
+      iframe.setAttribute("src", cfg.url);
+      if (typeof cfg.sandbox === "string" && cfg.sandbox !== "") {
+        iframe.setAttribute("sandbox", cfg.sandbox);
+      }
+      body.style.padding = "0";
+      body.appendChild(iframe);
+      const unregisterSynth = registerSyntheticIframe(windowId, iframe);
+      cleanups.push(unregisterSynth);
+      let targetOrigin;
+      try {
+        targetOrigin = new URL(cfg.url, window.location.origin).origin;
+      } catch {
+        targetOrigin = window.location.origin;
+      }
+      let resolveReady = null;
+      const readyPromise = new Promise((resolve2) => {
+        resolveReady = resolve2;
+      });
+      const onLoad = () => {
+        if (cfg.bridge) {
+          try {
+            const doc = iframe.contentDocument;
+            if (doc && !doc.querySelector("script[data-desktop-mode-iframe-bridge]")) {
+              const bridgeUrl = window.desktopModeConfig?.iframeBridgeUrl;
+              if (bridgeUrl) {
+                const s = doc.createElement("script");
+                s.src = bridgeUrl;
+                s.setAttribute("data-desktop-mode-iframe-bridge", "1");
+                doc.head?.appendChild(s);
+              }
+            }
+          } catch {
+          }
+        }
+        markWindowContentReady(windowId);
+        resolveReady?.();
+      };
+      iframe.addEventListener("load", onLoad);
+      const onMessage = (e) => {
+        if (!iframe.contentWindow || e.source !== iframe.contentWindow) {
+          return;
+        }
+        if (e.origin !== targetOrigin && e.origin !== window.location.origin) {
+          return;
+        }
+        const data = e.data;
+        if (data && typeof data === "object" && typeof data.type === "string" && data.type.startsWith("desktop-mode-bridge-")) {
+          const bridgeRouter = window.__desktopModeConnectionBridge;
+          bridgeRouter?.routeIncomingFromIframe(data, windowId);
+        }
+        if (data && typeof data === "object" && data.type === "desktop-mode-window-publish" && typeof data.channel === "string" && data.channel !== "") {
+          dispatchFromWindow(
+            windowId,
+            data.channel,
+            data.payload
+          );
+        }
+        try {
+          cfg.onMessage?.(e.data);
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] iframeContent.onMessage threw:",
+              err
+            );
+          }
+        }
+      };
+      window.addEventListener("message", onMessage);
+      cleanups.push(() => {
+        window.removeEventListener("message", onMessage);
+        iframe.removeEventListener("load", onLoad);
+      });
+      return readyPromise;
+    };
+  }
+  function createRegisterWindow(manager) {
+    return async (def) => {
+      const userRender = def.render;
+      let render2 = userRender;
+      const cleanups = [];
+      if (def.iframeContent) {
+        if (userRender && typeof console !== "undefined") {
+          console.warn(
+            "[desktop-mode] registerWindow: both `render` and `iframeContent` provided — ignoring `render` and using the iframe shorthand. Drop one."
+          );
+        }
+        render2 = buildIframeContentRender(
+          def.iframeContent,
+          cleanups,
+          def.id
+        );
+      }
+      const userOnClose = def.onClose;
+      const onClose = cleanups.length ? () => {
+        for (const fn of cleanups) {
+          try {
+            fn();
+          } catch {
+          }
+        }
+        userOnClose?.();
+      } : userOnClose;
+      const win = await manager.open({
+        id: def.id,
+        baseId: def.baseId || def.id,
+        native: true,
+        url: def.url || `#${def.id}`,
+        title: def.title,
+        icon: def.icon,
+        x: def.x ?? 0,
+        y: def.y ?? 0,
+        width: def.width ?? DEFAULT_NATIVE_WIDTH,
+        height: def.height ?? DEFAULT_NATIVE_HEIGHT,
+        minWidth: def.minWidth ?? DEFAULT_NATIVE_MIN_WIDTH,
+        minHeight: def.minHeight ?? DEFAULT_NATIVE_MIN_HEIGHT,
+        render: render2,
+        onClose,
+        onResize: def.onResize,
+        autofocus: def.autofocus,
+        initialState: def.initialState,
+        ownerHandle: def.ownerHandle,
+        multi: def.multi,
+        desktopId: def.desktopId
+      });
+      return win;
+    };
+  }
+  let onWindowInstanceCounter = 0;
+  function onWindow(id, handlers, options = {}) {
+    const namespace = `desktop-mode/on-window/${id}/${++onWindowInstanceCounter}`;
+    const persistent = options.persistent === true;
+    const bindings = [
+      ["opened", HOOKS.WINDOW_OPENED],
+      ["reopened", HOOKS.WINDOW_REOPENED],
+      ["focused", HOOKS.WINDOW_FOCUSED],
+      ["blurred", HOOKS.WINDOW_BLURRED],
+      ["closing", HOOKS.WINDOW_CLOSING],
+      ["closed", HOOKS.WINDOW_CLOSED],
+      ["minimized", HOOKS.WINDOW_MINIMIZED],
+      ["restored", HOOKS.WINDOW_RESTORED],
+      ["maximized", HOOKS.WINDOW_MAXIMIZED],
+      ["unmaximized", HOOKS.WINDOW_UNMAXIMIZED],
+      ["fullscreenEntered", HOOKS.WINDOW_FULLSCREEN_ENTERED],
+      ["fullscreenExited", HOOKS.WINDOW_FULLSCREEN_EXITED],
+      ["resized", HOOKS.WINDOW_RESIZED],
+      ["bodyResized", HOOKS.WINDOW_BODY_RESIZED],
+      ["boundsChanged", HOOKS.WINDOW_BOUNDS_CHANGED]
+    ];
+    const registered = [];
+    let disposed = false;
+    const unsubscribe = () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      for (const hookName2 of registered) {
+        removeAction(hookName2, namespace);
+      }
+    };
+    for (const [key, hookName2] of bindings) {
+      const handler = handlers[key];
+      if (!handler) {
+        continue;
+      }
+      registered.push(hookName2);
+      addAction(hookName2, namespace, (payload) => {
+        const p = payload;
+        if (p.windowId !== id) {
+          return;
+        }
+        const { windowId: _w, ...rest } = p;
+        handler(rest);
+        if (key === "closed" && !persistent) {
+          unsubscribe();
+        }
+      });
+    }
+    return unsubscribe;
+  }
+  function createNativeWindowSync(deps2) {
+    const { manager, appendSystemTile, removeSystemTile } = deps2;
+    const registered = /* @__PURE__ */ new Set();
+    const injectedTemplates = /* @__PURE__ */ new Set();
+    const loadedScripts = /* @__PURE__ */ new Set();
+    const loadedStyles = /* @__PURE__ */ new Set();
+    const entriesById = /* @__PURE__ */ new Map();
+    const resolveSizeForEntry = (entry) => {
+      const saved = loadNativeWindowGeometry(entry.id);
+      if (!saved) {
+        return { width: entry.width, height: entry.height };
+      }
+      return {
+        width: Math.max(saved.width, entry.minWidth),
+        height: Math.max(saved.height, entry.minHeight)
+      };
+    };
+    const ensureTemplate = (entry) => {
+      if (injectedTemplates.has(entry.templateId)) {
+        return;
+      }
+      if (document.getElementById(entry.templateId)) {
+        injectedTemplates.add(entry.templateId);
+        return;
+      }
+      if (!entry.templateHtml) {
+        return;
+      }
+      const tpl = document.createElement("template");
+      tpl.id = entry.templateId;
+      tpl.innerHTML = entry.templateHtml;
+      document.body.appendChild(tpl);
+      injectedTemplates.add(entry.templateId);
+    };
+    const ensureStyle = (entry) => {
+      const url = entry.styleUrl;
+      if (!url || loadedStyles.has(url)) {
+        return;
+      }
+      const safeUrl = url.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const existing = document.head.querySelector(
+        `link[rel="stylesheet"][href="${safeUrl}"]`
+      );
+      if (!existing) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = url;
+        if (entry.styleHandle) {
+          link.dataset.desktopModeStyleHandle = entry.styleHandle;
+        }
+        document.head.appendChild(link);
+      }
+      if (Array.isArray(entry.styleInline)) {
+        for (const css2 of entry.styleInline) {
+          if (typeof css2 !== "string" || css2 === "") {
+            continue;
+          }
+          const style = document.createElement("style");
+          if (entry.styleHandle) {
+            style.dataset.desktopModeStyleHandle = entry.styleHandle;
+          }
+          style.textContent = css2;
+          document.head.appendChild(style);
+        }
+      }
+      loadedStyles.add(url);
+    };
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedScripts.has(entry.scriptUrl)) {
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "native-window-script-load",
+          id: entry.id,
+          error: err
+        });
+      }
+      loadedScripts.add(entry.scriptUrl);
+    };
+    const openFromEntry = (entry) => {
+      const globalRegistry = window.desktopModeNativeWindows || {};
+      const render2 = globalRegistry[entry.id];
+      const finalRender = (body, ctx) => {
+        body.appendChild(cloneTemplate(entry.templateId));
+        return render2?.(body, ctx);
+      };
+      const size = resolveSizeForEntry(entry);
+      void manager.open({
+        id: entry.id,
+        baseId: entry.id,
+        native: true,
+        url: `#${entry.id}`,
+        title: entry.title,
+        icon: entry.icon,
+        width: size.width,
+        height: size.height,
+        minWidth: entry.minWidth,
+        minHeight: entry.minHeight,
+        render: finalRender,
+        autofocus: entry.autofocus,
+        ownerHandle: entry.ownerHandle || entry.scriptHandle
+      });
+    };
+    const openNewFromEntry = (entry) => {
+      const globalRegistry = window.desktopModeNativeWindows || {};
+      const render2 = globalRegistry[entry.id];
+      const finalRender = (body, ctx) => {
+        body.appendChild(cloneTemplate(entry.templateId));
+        return render2?.(body, ctx);
+      };
+      const size = resolveSizeForEntry(entry);
+      void manager.openNew({
+        id: entry.id,
+        baseId: entry.id,
+        native: true,
+        url: `#${entry.id}`,
+        title: entry.title,
+        icon: entry.icon,
+        width: size.width,
+        height: size.height,
+        minWidth: entry.minWidth,
+        minHeight: entry.minHeight,
+        initialState: "normal",
+        render: finalRender,
+        autofocus: entry.autofocus,
+        ownerHandle: entry.ownerHandle || entry.scriptHandle
+      });
+    };
+    const registerTile = async (entry) => {
+      if (registered.has(entry.id)) {
+        return;
+      }
+      if ("none" === entry.placement) {
+        ensureTemplate(entry);
+        ensureStyle(entry);
+        await ensureScript(entry);
+        registered.add(entry.id);
+        return;
+      }
+      ensureTemplate(entry);
+      ensureStyle(entry);
+      await ensureScript(entry);
+      appendSystemTile({
+        id: entry.id,
+        title: entry.title,
+        icon: entry.icon,
+        isOpen: () => !!manager.getById(entry.id),
+        onOpen: () => openFromEntry(entry)
+      });
+      doAction(HOOKS.DOCK_ITEM_APPENDED, { id: entry.id });
+      registered.add(entry.id);
+    };
+    const unregisterTile = (id) => {
+      if (!registered.has(id)) {
+        return;
+      }
+      removeSystemTile(id);
+      registered.delete(id);
+      entriesById.delete(id);
+    };
+    const sync = async (list2) => {
+      const incoming = /* @__PURE__ */ new Set();
+      for (const entry of list2) {
+        incoming.add(entry.id);
+        entriesById.set(entry.id, entry);
+      }
+      for (const id of Array.from(registered)) {
+        if (!incoming.has(id)) {
+          unregisterTile(id);
+        }
+      }
+      for (const entry of list2) {
+        if (!registered.has(entry.id)) {
+          await registerTile(entry);
+        }
+      }
+    };
+    const openById = (id, opts = {}) => {
+      const entry = entriesById.get(id);
+      if (!entry) {
+        return false;
+      }
+      activity.publish("desktop-mode/open-requested", {
+        windowId: id,
+        source: opts.source ?? "api"
+      });
+      openFromEntry(entry);
+      return true;
+    };
+    const openNewById = (id, opts = {}) => {
+      const entry = entriesById.get(id);
+      if (!entry) {
+        return false;
+      }
+      activity.publish("desktop-mode/open-requested", {
+        windowId: id,
+        source: opts.source ?? "api"
+      });
+      openNewFromEntry(entry);
+      return true;
+    };
+    addAction(
+      HOOKS.WINDOW_RESIZE_END,
+      "desktop-mode-native-window-geometry",
+      (payload) => {
+        const p = payload;
+        const windowId = p?.windowId;
+        const width = p?.width;
+        const height = p?.height;
+        if (!windowId || typeof width !== "number" || typeof height !== "number") {
+          return;
+        }
+        const win = manager.getById(windowId);
+        if (!win) {
+          return;
+        }
+        if (win.state !== "normal") {
+          return;
+        }
+        const baseId = win.config.baseId || win.id;
+        saveNativeWindowGeometry(baseId, { width, height });
+        if (win.element) {
+          saveNativeWindowPosition(baseId, {
+            x: win.element.offsetLeft,
+            y: win.element.offsetTop
+          });
+        }
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_DRAG_END,
+      "desktop-mode-native-window-geometry",
+      (payload) => {
+        const windowId = payload?.windowId;
+        if (!windowId) {
+          return;
+        }
+        const win = manager.getById(windowId);
+        if (!win) {
+          return;
+        }
+        if (win.state !== "normal") {
+          return;
+        }
+        if (!win.element) {
+          return;
+        }
+        const baseId = win.config.baseId || win.id;
+        saveNativeWindowGeometry(baseId, {
+          width: win.element.offsetWidth,
+          height: win.element.offsetHeight
+        });
+        saveNativeWindowPosition(baseId, {
+          x: win.element.offsetLeft,
+          y: win.element.offsetTop
+        });
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_MAXIMIZED,
+      "desktop-mode-native-window-geometry",
+      (payload) => {
+        const windowId = payload?.windowId;
+        if (!windowId) {
+          return;
+        }
+        const win = manager.getById(windowId);
+        if (!win) {
+          return;
+        }
+        const baseId = win.config.baseId || win.id;
+        const entry = entriesById.get(baseId);
+        const defaults = entry ? { width: entry.width, height: entry.height } : { width: win.config.width, height: win.config.height };
+        setNativeWindowSavedState(baseId, "maximized", defaults);
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_UNMAXIMIZED,
+      "desktop-mode-native-window-geometry",
+      (payload) => {
+        const windowId = payload?.windowId;
+        if (!windowId) {
+          return;
+        }
+        const win = manager.getById(windowId);
+        if (!win) {
+          return;
+        }
+        const baseId = win.config.baseId || win.id;
+        setNativeWindowSavedState(baseId, null);
+      }
+    );
+    return { sync, openById, openNewById };
+  }
+  function cloneTemplate(template) {
+    let tpl = null;
+    if (typeof template === "string") {
+      const found = document.getElementById(template);
+      if (found instanceof HTMLTemplateElement) {
+        tpl = found;
+      }
+    } else {
+      tpl = template;
+    }
+    if (!tpl) {
+      throw new Error(
+        `[desktop-mode] cloneTemplate: no <template> found for ${typeof template === "string" ? `#${template}` : "<reference>"}`
+      );
+    }
+    return tpl.content.cloneNode(true);
+  }
+  function renderIcon(icon, opts) {
+    const className = opts.className ?? "";
+    const title = opts.title ?? "";
+    if (typeof icon === "string" && icon.startsWith("dashicons-")) {
+      const el = document.createElement("span");
+      el.className = `dashicons ${icon} ${className}`.trim();
+      el.setAttribute("aria-hidden", "true");
+      return el;
+    }
+    if (typeof icon === "string" && icon.startsWith("data:image/svg+xml;base64,")) {
+      const base64Part = icon.slice("data:image/svg+xml;base64,".length);
+      if (/^[A-Za-z0-9+/=]+$/.test(base64Part)) {
+        const el = document.createElement("span");
+        el.className = className;
+        el.setAttribute("aria-hidden", "true");
+        el.style.backgroundImage = `url("${icon}")`;
+        el.style.backgroundRepeat = "no-repeat";
+        el.style.backgroundPosition = "center";
+        el.style.backgroundSize = "contain";
+        el.style.display = "inline-block";
+        return el;
+      }
+    }
+    if (typeof icon === "string" && /^data:image\/(png|jpeg|jpg|gif|webp|x-icon|vnd\.microsoft\.icon);base64,/i.test(icon)) {
+      const commaIdx = icon.indexOf(",");
+      const payload = commaIdx >= 0 ? icon.slice(commaIdx + 1) : "";
+      if (/^[A-Za-z0-9+/=]+$/.test(payload)) {
+        return makeImgIcon(icon, className);
+      }
+    }
+    if (typeof icon === "string" && (icon.startsWith("http://") || icon.startsWith("https://"))) {
+      return makeImgIcon(icon, className);
+    }
+    const span = document.createElement("span");
+    span.className = `${className} desktop-mode-icon-letter`.trim();
+    span.setAttribute("aria-hidden", "true");
+    const letters = letterFromTitle(title);
+    span.textContent = letters;
+    const hue = hashTitleToHue(title);
+    span.style.backgroundColor = `hsl( ${hue}, 60%, 45% )`;
+    span.style.color = "#fff";
+    span.style.display = "inline-flex";
+    span.style.alignItems = "center";
+    span.style.justifyContent = "center";
+    span.style.fontWeight = "600";
+    span.style.borderRadius = "4px";
+    return span;
+  }
+  function makeImgIcon(src, className) {
+    const img = document.createElement("img");
+    img.className = className;
+    img.src = src;
+    img.alt = "";
+    img.setAttribute("aria-hidden", "true");
+    img.draggable = false;
+    return img;
+  }
+  function letterFromTitle(title) {
+    const trimmed = (title ?? "").trim();
+    if (trimmed === "") {
+      return "?";
+    }
+    const words = trimmed.split(/\s+/);
+    if (words.length >= 2) {
+      return (words[0][0] + words[1][0]).toUpperCase();
+    }
+    const first = words[0];
+    if (first.length >= 2) {
+      return first.slice(0, 2).toUpperCase();
+    }
+    return first.toUpperCase();
+  }
+  const BADGE_CLASS = "desktop-mode-icon__badge";
+  const _badges = /* @__PURE__ */ new Map();
+  function _safeBadge(count) {
+    return Math.max(0, Math.floor(Number(count) || 0));
+  }
+  function setIconBadge(iconId, count) {
+    if (!iconId) {
+      return;
+    }
+    const tile2 = _findIconTile(iconId);
+    if (!tile2) {
+      return;
+    }
+    const safe = _safeBadge(count);
+    const previous = _badges.get(iconId) ?? 0;
+    if (safe === previous) {
+      return;
+    }
+    if (safe === 0) {
+      _badges.delete(iconId);
+    } else {
+      _badges.set(iconId, safe);
+    }
+    _paintBadgeNode(tile2, safe);
+    activity.publish("desktop-mode/badge-changed", {
+      itemId: iconId,
+      count: safe,
+      rail: "icon"
+    });
+    doAction(HOOKS.ICON_BADGE_CHANGED, {
+      iconId,
+      count: safe,
+      previousCount: previous
+    });
+  }
+  function clearIconBadge(iconId) {
+    setIconBadge(iconId, 0);
+  }
+  function getIconBadge(iconId) {
+    return _badges.get(iconId) ?? 0;
+  }
+  const iconsApi = {
+    setBadge: setIconBadge,
+    clearBadge: clearIconBadge,
+    getBadge: getIconBadge
+  };
+  function fingerprintIcons(icons) {
+    if (!icons || icons.length === 0) {
+      return "";
+    }
+    return icons.map(
+      (i) => `${i.id}|${i.title}|${i.icon}|${i.window ?? ""}|${i.url ?? ""}|${i.position ?? 0}|${i.pinned ? 1 : 0}`
+    ).join(";");
+  }
+  let _lastFingerprint = "";
+  function renderDesktopIcons(host, icons, deps2) {
+    const fp = fingerprintIcons(icons);
+    if (fp === _lastFingerprint && host.querySelector(":scope > .desktop-mode-icons")) {
+      return;
+    }
+    _lastFingerprint = fp;
+    const existing = host.querySelector(":scope > .desktop-mode-icons");
+    if (existing) {
+      existing.remove();
+    }
+    if (!icons || icons.length === 0) {
+      return;
+    }
+    const container = document.createElement("div");
+    container.className = "desktop-mode-icons";
+    container.setAttribute("role", "list");
+    container.setAttribute("aria-label", __("Desktop icons"));
+    const ordered = [...icons].sort((a, b) => {
+      const ap = a.pinned ? 0 : 1;
+      const bp = b.pinned ? 0 : 1;
+      return ap - bp;
+    });
+    const tiles = /* @__PURE__ */ new Map();
+    for (const entry of ordered) {
+      const tile2 = buildIcon(entry, deps2);
+      const stored = _badges.get(entry.id) ?? 0;
+      if (stored > 0) {
+        _paintBadgeNode(tile2, stored);
+      }
+      container.appendChild(tile2);
+      tiles.set(entry.id, tile2);
+    }
+    host.appendChild(container);
+    doAction(HOOKS.DESKTOP_ICONS_RENDERED, {
+      ids: (icons ?? []).map((i) => i.id),
+      container,
+      tiles
+    });
+  }
+  function _findIconTile(iconId) {
+    if (!iconId) {
+      return null;
+    }
+    const container = document.querySelector(
+      ".desktop-mode-icons"
+    );
+    if (!container) {
+      return null;
+    }
+    return container.querySelector(
+      `[data-icon-id="${_cssEscape(iconId)}"]`
+    );
+  }
+  function _paintBadgeNode(host, count) {
+    const existing = host.querySelector(
+      `:scope > .${BADGE_CLASS}`
+    );
+    if (count <= 0) {
+      existing?.remove();
+      return;
+    }
+    const display = count > 99 ? "99+" : String(count);
+    const ariaLabel = sprintf(
+      // translators: %d is the number of pending items in a desktop-icon badge.
+      _n("%d notification", "%d notifications", count),
+      count
+    );
+    if (existing) {
+      if (existing.textContent !== display) {
+        existing.textContent = display;
+      }
+      existing.setAttribute("aria-label", ariaLabel);
+      return;
+    }
+    const badge = document.createElement("span");
+    badge.className = BADGE_CLASS;
+    badge.textContent = display;
+    badge.setAttribute("aria-label", ariaLabel);
+    host.appendChild(badge);
+  }
+  function _cssEscape(value) {
+    const c = window.CSS;
+    return c?.escape ? c.escape(value) : value;
+  }
+  function buildIcon(entry, deps2) {
+    const tile2 = document.createElement("button");
+    tile2.type = "button";
+    tile2.className = entry.pinned ? "desktop-mode-icon desktop-mode-icon--pinned" : "desktop-mode-icon";
+    tile2.dataset.iconId = entry.id;
+    if (entry.pinned) {
+      tile2.dataset.pinned = "1";
+    }
+    tile2.setAttribute("role", "listitem");
+    tile2.setAttribute("aria-label", entry.title);
+    const icon = renderIcon(entry.icon, {
+      title: entry.title,
+      className: "desktop-mode-icon__image"
+    });
+    tile2.appendChild(icon);
+    const label = document.createElement("span");
+    label.className = "desktop-mode-icon__label";
+    label.textContent = entry.title;
+    tile2.appendChild(label);
+    tile2.addEventListener("click", (e) => {
+      e.stopPropagation();
+      doAction(HOOKS.DESKTOP_ICON_CLICKED, {
+        id: entry.id,
+        target: entry.window ? "window" : "url"
+      });
+      openTarget(entry, deps2);
+    });
+    tile2.addEventListener("contextmenu", (e) => {
+      if (entry.pinned) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      openItemVisibilityMenu({
+        x: e.clientX,
+        y: e.clientY,
+        id: entry.id,
+        title: entry.title,
+        surface: "desktop"
+      });
+    });
+    return tile2;
+  }
+  function openTarget(entry, deps2) {
+    if (entry.window) {
+      const opened = deps2.openWindow(entry.window);
+      if (!opened) {
+        return;
+      }
+      return;
+    }
+    if (entry.url) {
+      if (tryOpenExternalUrl(entry.url)) {
+        return;
+      }
+      try {
+        const parsed = new URL(entry.url, window.location.origin);
+        void deps2.manager.open({
+          id: `desktop-icon-${entry.id}`,
+          url: parsed.toString(),
+          title: entry.title,
+          icon: entry.icon
+        });
+      } catch {
+      }
+    }
+  }
+  const SIDE_DOCK_ID = "desktop-mode-side-dock";
+  function coreItemToIconEntry(item, index2) {
+    return {
+      id: `dock-core:${item.id}`,
+      title: item.title,
+      icon: item.icon,
+      window: "",
+      url: item.url,
+      // Synthesized icons render after server-registered ones; the
+      // large offset leaves headroom for plugin authors who set
+      // explicit `position` values.
+      position: 1e3 + index2
+    };
+  }
+  function createLayoutDispatcher(deps2, initialLayout, initialDockItems, initialServerIcons) {
+    let layout = initialLayout;
+    let items = initialDockItems;
+    let serverIcons = initialServerIcons ?? [];
+    let primary = null;
+    let side = null;
+    let primaryDock = null;
+    let sideDock = null;
+    let sideDockEl = null;
+    const systemTiles = /* @__PURE__ */ new Map();
+    const railFor = (affinity) => {
+      if (affinity === "core" && side) {
+        return side;
+      }
+      return primary;
+    };
+    const ensureSideDockEl = () => {
+      const existing = document.getElementById(
+        SIDE_DOCK_ID
+      );
+      if (existing) {
+        return existing;
+      }
+      const el = document.createElement("nav");
+      el.id = SIDE_DOCK_ID;
+      el.className = "desktop-mode-dock";
+      el.setAttribute("role", "toolbar");
+      el.setAttribute("aria-label", "Core admin navigation");
+      deps2.shellBody.insertBefore(el, deps2.shellBody.firstChild);
+      return el;
+    };
+    const removeSideDockEl = () => {
+      if (sideDockEl && sideDockEl.parentNode) {
+        sideDockEl.parentNode.removeChild(sideDockEl);
+      }
+      sideDockEl = null;
+    };
+    const readSettings = () => deps2.getSettings?.() ?? { itemVisibility: {}, dockOrder: [] };
+    const effectiveDockItems = () => {
+      const dockedNativeWindows = /* @__PURE__ */ new Set();
+      for (const entry of systemTiles.values()) {
+        dockedNativeWindows.add(entry.item.id);
+      }
+      return applyDockPlacement(
+        items,
+        serverIcons,
+        readSettings(),
+        dockedNativeWindows
+      );
+    };
+    const partition = () => {
+      const effective = effectiveDockItems();
+      const core = [];
+      const plugin = [];
+      for (const item of effective) {
+        if (item.isCore) {
+          core.push(item);
+        } else {
+          plugin.push(item);
+        }
+      }
+      return { core, plugin };
+    };
+    const repaintIcons = () => {
+      const settings = readSettings();
+      if (layout !== "spatial") {
+        deps2.renderIcons(
+          applyDesktopPlacement(serverIcons, items, settings.itemVisibility)
+        );
+        return;
+      }
+      const { core } = partition();
+      const synthesized = core.map(coreItemToIconEntry);
+      const explicitlyPromoted = [];
+      let synthIndex = 0;
+      for (const item of items) {
+        const placement = settings.itemVisibility[item.id];
+        if (placement === "desktop" || placement === "both") {
+          explicitlyPromoted.push({
+            id: `dock:${item.id}`,
+            title: item.title,
+            icon: item.icon,
+            window: "",
+            url: item.url || "",
+            position: 2e3 + synthIndex++
+          });
+        }
+      }
+      deps2.renderIcons([...synthesized, ...explicitlyPromoted]);
+    };
+    const tearDownDocks = () => {
+      if (primary) {
+        try {
+          primary.destroy();
+        } catch (err) {
+          doAction(HOOKS.SHELL_ERROR, {
+            scope: "dock-rail-renderer/destroy",
+            error: err
+          });
+        }
+        primary = null;
+        primaryDock = null;
+      }
+      if (side) {
+        try {
+          side.destroy();
+        } catch (err) {
+          doAction(HOOKS.SHELL_ERROR, {
+            scope: "dock-rail-renderer/destroy",
+            error: err
+          });
+        }
+        side = null;
+        sideDock = null;
+      }
+    };
+    const mountRail = (mountDeps) => {
+      const renderer = resolveActive();
+      if (!renderer) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "dock-rail-renderer",
+          message: "No dock rail renderer is registered."
+        });
+        return null;
+      }
+      try {
+        return renderer.mount(mountDeps);
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "dock-rail-renderer/mount",
+          rendererId: renderer.id,
+          error: err
+        });
+        if (renderer === defaultDockRailRenderer) {
+          return null;
+        }
+        try {
+          return defaultDockRailRenderer.mount(mountDeps);
+        } catch {
+          return null;
+        }
+      }
+    };
+    const buildMountDeps = (container, railItems, orientation) => ({
+      container,
+      items: railItems,
+      // `fullMenu` is the complete admin-menu list. Renderers that
+      // want to ignore the layout's partitioning (e.g., paint
+      // every menu item in one ring regardless of `isCore`) read
+      // this instead of `items`. Snapshot per-mount so a renderer
+      // holding the array sees a stable list; live updates flow
+      // through `replaceItems`.
+      fullMenu: items.slice(),
+      // Same idea for system tiles — OS Settings, plugin-owned
+      // native-window launchers, etc. Lets a renderer apply
+      // uniform treatment across menu + system cohorts in one
+      // pass. Live updates flow through `appendSystemItem` /
+      // `removeSystemItem`.
+      fullSystemTiles: Array.from(systemTiles.values()).map(
+        (entry) => entry.item
+      ),
+      orientation,
+      windowManager: deps2.windowManager,
+      adminUrl: deps2.adminUrl,
+      // `openItem` / `openSubmenuPick` / `openSystemItem` /
+      // `requestSubmenu` are routing callbacks for custom
+      // renderers. They mirror exactly what the default renderer
+      // (`Dock.openPage` / `Dock.openSubmenuPick`) does internally
+      // — same `deriveWindowId(url, adminUrl)` call, same window-
+      // config shape — so a custom renderer addresses the same
+      // window with the same id at runtime. Switching renderer
+      // mid-session doesn't lose the user's open windows.
+      openItem: (item) => {
+        const baseId = deriveWindowId(item.url, deps2.adminUrl);
+        deps2.windowManager.open({
+          id: baseId,
+          baseId,
+          url: item.url,
+          parentUrl: item.url,
+          title: item.title,
+          icon: item.icon.startsWith("dashicons-") ? item.icon : "dashicons-admin-generic",
+          submenu: item.submenu,
+          multi: !!item.multi
+        });
+      },
+      openSubmenuPick: (item, sub) => {
+        deps2.windowManager.open({
+          id: deriveWindowId(sub.url, deps2.adminUrl),
+          baseId: deriveWindowId(item.url, deps2.adminUrl),
+          url: sub.url,
+          // Pin the synthetic parent tab to the dock landing
+          // page, not to the sub-page the user picked. Without
+          // this, a submenu-pick (e.g. clicking "Editor" inside
+          // Appearance's submenu popover) would open at
+          // site-editor.php with no way back to themes.php.
+          parentUrl: item.url,
+          title: item.title,
+          icon: item.icon.startsWith("dashicons-") ? item.icon : "dashicons-admin-generic",
+          submenu: item.submenu,
+          multi: !!item.multi
+        });
+      },
+      openSystemItem: (item) => item.onOpen()
+    });
+    const buildDocksForCurrentLayout = () => {
+      tearDownDocks();
+      const { core, plugin } = partition();
+      if (layout === "classic") {
+        sideDockEl = ensureSideDockEl();
+        side = mountRail(
+          buildMountDeps(sideDockEl, core, "left")
+        );
+        sideDock = unwrapDefaultDock(side);
+        primary = mountRail(
+          buildMountDeps(deps2.bottomDockEl, plugin, "bottom")
+        );
+        primaryDock = unwrapDefaultDock(primary);
+      } else if (layout === "unified") {
+        removeSideDockEl();
+        primary = mountRail(
+          buildMountDeps(deps2.bottomDockEl, effectiveDockItems(), "bottom")
+        );
+        primaryDock = unwrapDefaultDock(primary);
+      } else {
+        removeSideDockEl();
+        primary = mountRail(
+          buildMountDeps(deps2.bottomDockEl, plugin, "bottom")
+        );
+        primaryDock = unwrapDefaultDock(primary);
+      }
+      for (const entry of systemTiles.values()) {
+        railFor(entry.affinity)?.appendSystemItem(entry.item);
+      }
+    };
+    const dispatcher = {
+      getLayout: () => layout,
+      getPrimary: () => primaryDock,
+      getSide: () => sideDock,
+      setLayout: (next) => {
+        if (next === layout) {
+          return;
+        }
+        layout = next;
+        deps2.shellRoot.setAttribute("data-desktop-mode-layout", next);
+        buildDocksForCurrentLayout();
+        repaintIcons();
+        document.dispatchEvent(
+          new CustomEvent("desktop-mode-layout-changed", {
+            detail: {
+              layout: next,
+              primary: primaryDock,
+              side: sideDock
+            }
+          })
+        );
+      },
+      applyDockItems: (nextItems) => {
+        items = nextItems;
+        const { core, plugin } = partition();
+        if (layout === "classic") {
+          side?.replaceItems(core);
+          primary?.replaceItems(plugin);
+        } else if (layout === "unified") {
+          primary?.replaceItems(effectiveDockItems());
+        } else {
+          primary?.replaceItems(plugin);
+        }
+        repaintIcons();
+      },
+      applyDesktopIcons: (next) => {
+        serverIcons = next ?? [];
+        repaintIcons();
+      },
+      appendSystemTile: (item, affinity = "plugin") => {
+        systemTiles.set(item.id, { item, affinity });
+        railFor(affinity)?.appendSystemItem(item);
+      },
+      removeSystemTile: (id) => {
+        const entry = systemTiles.get(id);
+        if (!entry) {
+          return;
+        }
+        systemTiles.delete(id);
+        railFor(entry.affinity)?.removeSystemItem(id);
+      },
+      listSystemTiles: () => Array.from(systemTiles.values()).map((entry) => ({
+        id: entry.item.id,
+        title: entry.item.title,
+        icon: entry.item.icon,
+        affinity: entry.affinity
+      })),
+      getSystemTile: (id) => systemTiles.get(id)?.item ?? null,
+      getMenuItems: () => items.slice(),
+      refresh: () => {
+        const { core, plugin } = partition();
+        if (layout === "classic") {
+          side?.replaceItems(core);
+          primary?.replaceItems(plugin);
+        } else if (layout === "unified") {
+          primary?.replaceItems(effectiveDockItems());
+        } else {
+          primary?.replaceItems(plugin);
+        }
+        repaintIcons();
+      },
+      destroy: () => {
+        tearDownDocks();
+        removeSideDockEl();
+      }
+    };
+    deps2.shellRoot.setAttribute("data-desktop-mode-layout", layout);
+    buildDocksForCurrentLayout();
+    repaintIcons();
+    let lastResolvedId = resolveActive()?.id ?? null;
+    subscribe$3(() => {
+      const nextId2 = resolveActive()?.id ?? null;
+      if (nextId2 === lastResolvedId) {
+        return;
+      }
+      lastResolvedId = nextId2;
+      buildDocksForCurrentLayout();
+      repaintIcons();
+      document.dispatchEvent(
+        new CustomEvent("desktop-mode-layout-changed", {
+          detail: {
+            layout,
+            primary: primaryDock,
+            side: sideDock
+          }
+        })
+      );
+    });
+    return dispatcher;
+  }
+  function loadImpl(scriptUrl) {
+    if (window.desktopModeCreateAiAssistant) {
+      return Promise.resolve(window.desktopModeCreateAiAssistant);
+    }
+    return new Promise((resolve2, reject) => {
+      const existing = document.querySelector(
+        `script[data-desktop-mode-ai="1"]`
+      );
+      const finish = () => {
+        const factory = window.desktopModeCreateAiAssistant;
+        if (!factory) {
+          reject(
+            new Error(
+              "[desktop-mode] ai-assistant bundle loaded but did not register desktopModeCreateAiAssistant"
+            )
+          );
+          return;
+        }
+        resolve2(factory);
+      };
+      if (existing) {
+        if (window.desktopModeCreateAiAssistant) {
+          finish();
+        } else {
+          existing.addEventListener("load", finish);
+          existing.addEventListener(
+            "error",
+            () => reject(new Error("failed to load ai-assistant bundle"))
+          );
+        }
+        return;
+      }
+      const s = document.createElement("script");
+      s.src = scriptUrl;
+      s.async = true;
+      s.dataset.desktopModeAi = "1";
+      s.addEventListener("load", finish);
+      s.addEventListener(
+        "error",
+        () => reject(new Error("failed to load ai-assistant bundle"))
+      );
+      document.head.appendChild(s);
+    });
+  }
+  class AiAssistantStub {
+    constructor(config, scriptUrl) {
+      this._real = null;
+      this._loadPromise = null;
+      this._pendingAsk = null;
+      this._intendOpen = false;
+      this.ask = (...args) => {
+        return this._ensure().then((r) => r.ask(...args));
+      };
+      this._config = config;
+      this._scriptUrl = scriptUrl;
+    }
+    _ensure() {
+      if (this._loadPromise) {
+        return this._loadPromise;
+      }
+      this._loadPromise = loadImpl(this._scriptUrl).then((factory) => {
+        const real = factory(this._config);
+        if (this._pendingAsk) {
+          real.attachAsk(this._pendingAsk);
+        }
+        this._real = real;
+        return real;
+      });
+      return this._loadPromise;
+    }
+    open() {
+      this._intendOpen = true;
+      void this._ensure().then((r) => r.open());
+    }
+    close() {
+      this._intendOpen = false;
+      if (this._real) {
+        this._real.close();
+      }
+    }
+    toggle() {
+      if (this.isOpen) {
+        this.close();
+      } else {
+        this.open();
+      }
+    }
+    get isOpen() {
+      return this._real ? this._real.isOpen : this._intendOpen;
+    }
+    /**
+     * Late-bind the programmatic `ask` callback. Mirrors the real
+     * class's `attachAsk` signature so `desktop.ts`'s call site is
+     * identical whether it's wiring the stub or the impl.
+     */
+    attachAsk(fn) {
+      this._pendingAsk = fn;
+      if (this._real) {
+        this._real.attachAsk(fn);
+      }
+    }
+  }
+  const isAbortError = (err) => {
+    if (!err || typeof err !== "object") {
+      return false;
+    }
+    return err.name === "AbortError";
+  };
+  const normaliseToolsOpt = (tools) => {
+    if (!tools) {
+      return [];
+    }
+    const all2 = listAiCallableCommands();
+    if (tools === true || tools === "aiCallable") {
+      return all2;
+    }
+    if (Array.isArray(tools)) {
+      const allowed = new Set(tools.map((s) => s.toLowerCase()));
+      return all2.filter((c) => allowed.has(c.slug));
+    }
+    if (typeof tools === "function") {
+      return all2.filter((c) => {
+        try {
+          return tools(c.slug) === true;
+        } catch {
+          return false;
+        }
+      });
+    }
+    return [];
+  };
+  const normaliseSystemPrompt = (sp) => {
+    if (!sp) {
+      return null;
+    }
+    if (typeof sp === "string") {
+      return { text: sp, mode: "append" };
+    }
+    if (typeof sp === "object" && typeof sp.text === "string" && sp.text !== "") {
+      return {
+        text: sp.text,
+        mode: sp.mode === "replace" ? "replace" : "append"
+      };
+    }
+    return null;
+  };
+  function liftMessage(payloadMessage, result) {
+    const seed2 = payloadMessage ?? "";
+    if (seed2 !== "") {
+      return seed2;
+    }
+    if (typeof result === "string" && result !== "") {
+      return result;
+    }
+    if (result && typeof result === "object" && "message" in result && typeof result.message === "string") {
+      return result.message;
+    }
+    return "";
+  }
+  function serialiseOutcome(result) {
+    if (result === void 0) {
+      return { value: null };
+    }
+    if (typeof result === "object" && result !== null) {
+      return result;
+    }
+    return { value: result };
+  }
+  function createAsk(deps2) {
+    const postToSearch = async (body, signal) => {
+      const config = deps2.config();
+      const url = config.aiSearchUrl ?? "";
+      const nonce = config.restNonce ?? "";
+      if (!url || !nonce) {
+        throw new Error(
+          "[desktop-mode] wp.desktop.ai.ask: aiSearchUrl / restNonce missing from config. AI Copilot may not be enabled."
+        );
+      }
+      try {
+        return await trackedFetch$1(
+          url,
+          {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "X-WP-Nonce": nonce
+            },
+            body: JSON.stringify(body),
+            signal
+          },
+          { source: "desktop-mode/ai-ask" }
+        );
+      } catch (err) {
+        if (isAbortError(err)) {
+          throw err;
+        }
+        throw new Error(
+          `[desktop-mode] wp.desktop.ai.ask: network error — ${String(
+            err?.message ?? err
+          )}`
+        );
+      }
+    };
+    const dispatchToolCall = async (payload, opts) => {
+      const slug = payload.tool?.slug ?? "";
+      const args = payload.tool?.args ?? "";
+      const cmd = findCommand(slug);
+      if (!cmd) {
+        return {
+          ok: false,
+          response: {
+            answer_type: "tool_call",
+            message: `Command /${slug} was not registered on this page.`,
+            entity: null,
+            admin_links: null,
+            toolCall: {
+              slug,
+              args,
+              result: { error: "command_not_found" }
+            },
+            request_id: payload.request_id
+          }
+        };
+      }
+      const ctx = opts.commandContext ?? deps2.fallbackContext();
+      let result;
+      try {
+        result = await Promise.resolve(cmd.run(args, ctx));
+      } catch (err) {
+        result = { error: String(err?.message ?? err) };
+      }
+      return { ok: true, slug, args, result };
+    };
+    const composeFollowUp = async (text, slug, args, result, sp, signal) => {
+      const body = {
+        query: text,
+        follow_up: {
+          tool: { slug, args },
+          result: serialiseOutcome(result)
+        }
+      };
+      if (sp) {
+        body.system_prompt_text = sp.text;
+        body.system_prompt_mode = sp.mode;
+      }
+      let res;
+      try {
+        res = await postToSearch(body, signal);
+      } catch (err) {
+        if (isAbortError(err)) {
+          throw err;
+        }
+        return null;
+      }
+      if (!res.ok) {
+        return null;
+      }
+      const payload = await res.json().catch(() => ({}));
+      const message = typeof payload.message === "string" ? payload.message.trim() : "";
+      return message !== "" ? payload.message ?? null : null;
+    };
+    return async function ask(query, opts = {}) {
+      const text = (query ?? "").trim();
+      if (text === "") {
+        const hasMeaningfulOpts = opts.tools !== void 0 || opts.systemPrompt !== void 0 || opts.followUp === true || opts.resumeTool !== void 0 || opts.commandContext !== void 0;
+        if (hasMeaningfulOpts) {
+          throw new Error(
+            "[desktop-mode] wp.desktop.ai.ask: empty query passed with non-default options — likely a caller bug. Provide a query or call without options."
+          );
+        }
+        return {
+          answer_type: "chat",
+          message: "",
+          entity: null,
+          admin_links: null
+        };
+      }
+      const commandTools = normaliseToolsOpt(opts.tools);
+      const sp = normaliseSystemPrompt(opts.systemPrompt);
+      const body = { query: text };
+      if (opts.resumeTool) {
+        body.resume_tool = opts.resumeTool;
+      }
+      if (typeof opts.startOffset === "number") {
+        body.start_offset = opts.startOffset;
+      }
+      if (commandTools.length > 0) {
+        body.command_tools = commandTools;
+      }
+      if (sp) {
+        body.system_prompt_text = sp.text;
+        body.system_prompt_mode = sp.mode;
+      }
+      const res = await postToSearch(body, opts.signal);
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(
+          `[desktop-mode] wp.desktop.ai.ask: HTTP ${res.status} — ${detail.message ?? res.statusText}`
+        );
+      }
+      const payload = await res.json();
+      if (payload.answer_type !== "tool_call" || !payload.tool) {
+        return {
+          answer_type: payload.answer_type,
+          message: payload.message ?? "",
+          entity: payload.entity ?? null,
+          admin_links: payload.admin_links ?? null,
+          request_id: payload.request_id,
+          continue: payload.continue ?? null
+        };
+      }
+      const dispatch2 = await dispatchToolCall(payload, opts);
+      if (!dispatch2.ok) {
+        return dispatch2.response;
+      }
+      const { slug, args, result } = dispatch2;
+      let message = liftMessage(payload.message, result);
+      if (opts.followUp === true) {
+        const composed = await composeFollowUp(
+          text,
+          slug,
+          args,
+          result,
+          sp,
+          opts.signal
+        );
+        if (composed !== null) {
+          message = composed;
+        }
+      }
+      return {
+        answer_type: "tool_call",
+        message,
+        entity: null,
+        admin_links: null,
+        toolCall: { slug, args, result },
+        request_id: payload.request_id
+      };
+    };
+  }
+  const EVENT_NAME = "desktop-mode-broadcast";
+  const POSTMESSAGE_TYPE = "desktop-mode-broadcast";
+  const ORIGIN = window.location.origin;
+  let _manager = null;
+  function attachBroadcastBus(manager) {
+    _manager = manager;
+  }
+  function broadcast(topic, payload) {
+    const filteredTopic = String(
+      applyFilters("desktop-mode.broadcast.topic", topic, { payload }) ?? topic
+    );
+    const filteredPayload = applyFilters(
+      "desktop-mode.broadcast.payload",
+      payload,
+      { topic: filteredTopic }
+    );
+    const detail = {
+      topic: filteredTopic,
+      payload: filteredPayload
+    };
+    document.dispatchEvent(new CustomEvent(EVENT_NAME, { detail }));
+    doAction(HOOKS.BROADCAST, detail);
+    activity.publish(
+      filteredTopic,
+      filteredPayload
+    );
+    if (!_manager) {
+      return;
+    }
+    const message = {
+      type: POSTMESSAGE_TYPE,
+      topic: filteredTopic,
+      payload: filteredPayload
+    };
+    for (const win of _manager._stack) {
+      const target = win.iframe?.contentWindow;
+      if (!target) {
+        continue;
+      }
+      try {
+        target.postMessage(message, ORIGIN);
+      } catch (err) {
+      }
+    }
+  }
+  function subscribe$2(topic, cb) {
+    const handler = (e) => {
+      const detail = e.detail;
+      if (!detail) {
+        return;
+      }
+      if (topic !== "*" && detail.topic !== topic) {
+        return;
+      }
+      try {
+        cb(detail.payload, { topic: detail.topic });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "broadcast-subscriber",
+          topic: detail.topic,
+          error: err
+        });
+      }
+    };
+    document.addEventListener(EVENT_NAME, handler);
+    return () => document.removeEventListener(EVENT_NAME, handler);
+  }
+  function installBroadcastReceiver() {
+    window.addEventListener("message", (e) => {
+      if (e.origin !== ORIGIN) {
+        return;
+      }
+      const data = e.data;
+      if (!data || data.type !== POSTMESSAGE_TYPE) {
+        return;
+      }
+      if (data._fromParent) {
+        return;
+      }
+      if (typeof data.topic !== "string") {
+        return;
+      }
+      broadcast(data.topic, data.payload);
+    });
+  }
+  const LOG_PREFIX = "[desktop-mode-bin badge]";
+  function log(...args) {
+    try {
+      if (window.localStorage?.getItem("desktopModeBinDebug")) {
+        console.info(LOG_PREFIX, ...args);
+      }
+    } catch {
+    }
+  }
+  function warn(...args) {
+    console.warn(LOG_PREFIX, ...args);
+  }
+  const TARGET_ID = "desktop-mode-recycle-bin";
+  const HEARTBEAT_FIELD = "desktop_mode_recycle_bin_seen_ts";
+  function getDesktopApi() {
+    return window.wp?.desktop;
+  }
+  const store$3 = createSharedStore(
+    "desktop-mode/recycle-bin/badge",
+    () => ({
+      current: 0,
+      seenTs: 0,
+      started: false,
+      countUrl: ""
+    })
+  );
+  function setRecycleBinBadge(next) {
+    const safe = Math.max(0, Math.floor(next));
+    const prev = store$3.state.current;
+    store$3.state.current = safe;
+    log("setRecycleBinBadge", { prev, next: safe });
+    paintBadge(safe);
+  }
+  function adjustRecycleBinBadge(delta) {
+    setRecycleBinBadge(store$3.state.current + delta);
+  }
+  function _currentRecycleBinBadge() {
+    return store$3.state.current;
+  }
+  function paintBadge(count) {
+    const desktop = getDesktopApi();
+    const active2 = isBinWindowActive();
+    const visible = active2 ? 0 : count;
+    log("paintBadge", { count, visible, active: active2 });
+    desktop?.dock?.setBadge?.(TARGET_ID, visible);
+    desktop?.taskbar?.setBadge?.(TARGET_ID, visible);
+    desktop?.icons?.setBadge?.(TARGET_ID, visible);
+  }
+  function isBinWindowActive() {
+    return !!getDesktopApi()?.windowManager?.isActive?.(TARGET_ID);
+  }
+  function startRecycleBinBadge(initialRaw, countUrl = "") {
+    const initial = Number(initialRaw) || 0;
+    const cfg = window.desktopModeConfig;
+    const cfgCount = cfg?.recycleBinCount;
+    const cfgUrl = cfg?.recycleBinCountUrl;
+    const cfgDebug = cfg?.desktopModeBinDebug;
+    log("startRecycleBinBadge entry", {
+      initial,
+      countUrl,
+      alreadyStarted: store$3.state.started,
+      cfgCount,
+      cfgUrl,
+      cfgDebug,
+      readyState: document.readyState
+    });
+    const cfgCountNum = Number(cfgCount);
+    const cfgCountIsHealthy = (typeof cfgCount === "number" || typeof cfgCount === "string") && Number.isFinite(cfgCountNum);
+    if (!cfgCountIsHealthy) {
+      warn(
+        "desktopModeConfig.recycleBinCount is missing — PHP filter `desktop_mode_shell_config` did not deliver. Check your PHP error log for `[desktop-mode-bin debug]` lines.",
+        { cfg }
+      );
+    }
+    if (store$3.state.started) {
+      setRecycleBinBadge(initial);
+      return;
+    }
+    store$3.state.started = true;
+    store$3.state.countUrl = countUrl;
+    store$3.state.seenTs = Date.now();
+    setRecycleBinBadge(initial);
+    wireDockTileSignal();
+    wireDesktopIconsSignal();
+    wireBroadcastDeltas();
+    wirePostMessageFastPath();
+    wireHeartbeatProbe();
+    wireWindowLifecycleSignals();
+  }
+  function wireWindowLifecycleSignals() {
+    const ns = "desktop-mode/recycle-bin/badge-lifecycle";
+    const repaint = (payload) => {
+      const detail = payload;
+      if (detail?.windowId !== TARGET_ID) {
+        return;
+      }
+      paintBadge(store$3.state.current);
+    };
+    addAction(HOOKS.WINDOW_OPENED, ns, repaint);
+    addAction(HOOKS.WINDOW_FOCUSED, ns, repaint);
+    addAction(HOOKS.WINDOW_BLURRED, ns, repaint);
+    addAction(HOOKS.WINDOW_MINIMIZED, ns, repaint);
+    addAction(HOOKS.WINDOW_RESTORED, ns, repaint);
+    addAction(HOOKS.WINDOW_CLOSED, ns, repaint);
+    addAction(HOOKS.WINDOW_REOPENED, ns, repaint);
+  }
+  function wireDockTileSignal() {
+    addAction(
+      HOOKS.DOCK_ITEM_APPENDED,
+      "desktop-mode/recycle-bin/badge",
+      (payload) => {
+        if (payload?.id === TARGET_ID) {
+          paintBadge(store$3.state.current);
+        }
+      }
+    );
+  }
+  function wireDesktopIconsSignal() {
+    addAction(
+      HOOKS.DESKTOP_ICONS_RENDERED,
+      "desktop-mode/recycle-bin/badge",
+      (payload) => {
+        if (payload?.ids?.includes(TARGET_ID)) {
+          paintBadge(store$3.state.current);
+        }
+      }
+    );
+  }
+  function wireBroadcastDeltas() {
+    const onDomain = (payload) => {
+      const detail = payload;
+      if (!detail) {
+        return;
+      }
+      const ids = Array.isArray(detail.ids) ? detail.ids.length : 0;
+      switch (detail.action) {
+        case "trashed":
+          adjustRecycleBinBadge(+ids);
+          break;
+        case "untrashed":
+        case "deleted":
+          adjustRecycleBinBadge(-ids);
+          break;
+      }
+    };
+    subscribe$2("desktop-mode.post.changed", onDomain);
+    subscribe$2("desktop-mode.page.changed", onDomain);
+    subscribe$2("desktop-mode.attachment.changed", onDomain);
+    subscribe$2("desktop-mode.comment.changed", onDomain);
+    subscribe$2("desktop-mode.placement.changed", onDomain);
+    subscribe$2("desktop-mode.shortcut.changed", onDomain);
+    subscribe$2("desktop-mode.folder.changed", onDomain);
+  }
+  function wirePostMessageFastPath() {
+    const expectedOrigin = window.location.origin;
+    window.addEventListener("message", (e) => {
+      if (e.origin !== expectedOrigin) {
+        return;
+      }
+      const data = e.data;
+      if (!data || data.type !== "desktop-mode-recycle-bin-changed") {
+        return;
+      }
+      const ts = typeof data.ts === "number" ? data.ts : Date.now();
+      if (ts <= store$3.state.seenTs) {
+        log("postMessage skipped (ts <= seenTs)", { ts, seenTs: store$3.state.seenTs });
+        return;
+      }
+      log("postMessage triggers refetch", { ts, prevSeenTs: store$3.state.seenTs });
+      store$3.state.seenTs = ts;
+      void refetchCount();
+    });
+  }
+  function wireHeartbeatProbe() {
+    const $ = window.jQuery;
+    if (!$) {
+      warn("wireHeartbeatProbe: window.jQuery not available — heartbeat path disabled");
+      return;
+    }
+    log("wireHeartbeatProbe: jQuery + heartbeat hooks attached");
+    $(document).on("heartbeat-send", (...args) => {
+      const data = args[1];
+      if (data) {
+        data[HEARTBEAT_FIELD] = store$3.state.seenTs;
+      }
+    });
+    $(document).on("heartbeat-tick", (...args) => {
+      const response = args[1];
+      const block = response?.desktop_mode_recycle_bin;
+      log("heartbeat-tick", { hasBlock: !!block, block });
+      if (!block) {
+        return;
+      }
+      if (typeof block.ts === "number" && block.ts > store$3.state.seenTs) {
+        store$3.state.seenTs = block.ts;
+      }
+      if (typeof block.count === "number") {
+        setRecycleBinBadge(block.count);
+      }
+    });
+  }
+  async function refetchCount() {
+    if (!store$3.state.countUrl) {
+      log("refetchCount: no countUrl, skip");
+      return;
+    }
+    log("refetchCount: hitting", store$3.state.countUrl);
+    try {
+      const response = await fetch(store$3.state.countUrl, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok) {
+        warn("refetchCount: non-OK", response.status, response.statusText);
+        return;
+      }
+      const json = await response.json();
+      log("refetchCount: response", json);
+      if (typeof json.count === "number") {
+        setRecycleBinBadge(json.count);
+      }
+    } catch (err) {
+      warn("refetchCount: fetch failed", err);
+    }
+  }
+  const OS_SETTINGS_ID = "desktop-mode-os-settings";
+  const RECYCLE_BIN_ID = "desktop-mode-recycle-bin";
+  function registerBuiltInPeekRenderers(opts) {
+    const wpHooks = getWpHooks();
+    if (!wpHooks) {
+      return;
+    }
+    wpHooks.addFilter(
+      "desktop-mode.dock.peek-card-content",
+      "desktop-mode/built-in-peek-renderers",
+      (body, ctx) => {
+        const context = ctx;
+        const id = context.window.id;
+        if (id === OS_SETTINGS_ID) {
+          return renderOsSettings();
+        }
+        if (id === RECYCLE_BIN_ID) {
+          return renderRecycleBin(context, opts.getRecycleBinCount);
+        }
+        return body;
+      }
+    );
+  }
+  function renderOsSettings(_ctx) {
+    const root = document.createElement("span");
+    root.className = "desktop-mode-dock-peek__card-body desktop-mode-dock-peek__card-body--os-settings";
+    root.setAttribute("aria-hidden", "true");
+    const hero = document.createElement("span");
+    hero.className = "desktop-mode-dock-peek__os-hero dashicons dashicons-admin-generic";
+    root.appendChild(hero);
+    const subtitle = document.createElement("span");
+    subtitle.className = "desktop-mode-dock-peek__os-subtitle";
+    subtitle.textContent = __("System Preferences");
+    root.appendChild(subtitle);
+    const tabs = document.createElement("span");
+    tabs.className = "desktop-mode-dock-peek__os-tabs";
+    for (const cls of [
+      "dashicons-art",
+      "dashicons-admin-customizer",
+      "dashicons-editor-help"
+    ]) {
+      const tab = document.createElement("span");
+      tab.className = `desktop-mode-dock-peek__os-tab dashicons ${cls}`;
+      tabs.appendChild(tab);
+    }
+    root.appendChild(tabs);
+    return root;
+  }
+  function renderRecycleBin(_ctx, getCount) {
+    const root = document.createElement("span");
+    root.className = "desktop-mode-dock-peek__card-body desktop-mode-dock-peek__card-body--recycle-bin";
+    root.setAttribute("aria-hidden", "true");
+    const count = Math.max(0, Math.floor(getCount() || 0));
+    root.dataset.empty = count === 0 ? "true" : "false";
+    const stage = document.createElement("span");
+    stage.className = "desktop-mode-dock-peek__bin-stage";
+    const stack = document.createElement("span");
+    stack.className = "desktop-mode-dock-peek__bin-stack";
+    for (let i = 0; i < 3; i++) {
+      const slip = document.createElement("span");
+      slip.className = "desktop-mode-dock-peek__bin-slip";
+      stack.appendChild(slip);
+    }
+    stage.appendChild(stack);
+    const icon = document.createElement("span");
+    icon.className = `desktop-mode-dock-peek__bin-icon dashicons ${count === 0 ? "dashicons-trash" : "dashicons-trash"}`;
+    stage.appendChild(icon);
+    root.appendChild(stage);
+    const label = document.createElement("span");
+    label.className = "desktop-mode-dock-peek__bin-label";
+    if (count === 0) {
+      label.textContent = __("Recycle Bin — empty");
+    } else if (count === 1) {
+      label.textContent = __("1 item");
+    } else if (count > 99) {
+      label.textContent = "99+ items";
+    } else {
+      label.textContent = `${count} items`;
+    }
+    root.appendChild(label);
+    return root;
+  }
+  function getWpHooks() {
+    const wp = window.wp;
+    return wp?.hooks ?? null;
+  }
+  const BUG_REPORT_WINDOW_ID = "desktop-mode-bug-report";
+  const REPO_OWNER = "WordPress";
+  const REPO_NAME = "desktop-mode";
+  const MAX_BODY_LENGTH = 6e3;
+  function renderBugReport(body) {
+    body.classList.add("desktop-mode-bug-report");
+    body.replaceChildren();
+    const form = document.createElement("form");
+    form.className = "desktop-mode-bug-report__form";
+    form.setAttribute("novalidate", "");
+    const intro = document.createElement("p");
+    intro.className = "desktop-mode-bug-report__intro";
+    intro.textContent = __(
+      "Found a bug or have a feature idea? Fill this in and we will open a pre-filled GitHub issue for you to review and submit."
+    );
+    form.appendChild(intro);
+    form.appendChild(buildTypeField());
+    form.appendChild(buildTextField("title", __("Title"), {
+      placeholder: __("A short summary"),
+      required: true
+    }));
+    form.appendChild(buildTextareaField("description", __("What happened? What did you expect?"), {
+      placeholder: __("Describe the issue or the feature you have in mind."),
+      rows: 5,
+      required: true
+    }));
+    form.appendChild(buildTextareaField("steps", __("Steps to reproduce (bug only)"), {
+      placeholder: __("One step per line"),
+      rows: 4
+    }));
+    const meta = buildMetadataPreview();
+    form.appendChild(meta);
+    const actions = document.createElement("div");
+    actions.className = "desktop-mode-bug-report__actions";
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.className = "desktop-mode-bug-report__submit";
+    submit.textContent = __("Open issue on GitHub");
+    actions.appendChild(submit);
+    const hint = document.createElement("span");
+    hint.className = "desktop-mode-bug-report__hint";
+    hint.textContent = __("You will review and submit on GitHub.");
+    actions.appendChild(hint);
+    form.appendChild(actions);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const state2 = readFormState(form);
+      if (!state2.title.trim() || !state2.description.trim()) {
+        showInlineError(form, __("Title and description are both required."));
+        return;
+      }
+      const url = buildGithubIssueUrl(state2);
+      window.open(url, "_blank", "noopener");
+    });
+    body.appendChild(form);
+  }
+  function buildTypeField() {
+    const wrap = document.createElement("div");
+    wrap.className = "desktop-mode-bug-report__field desktop-mode-bug-report__field--type";
+    const label = document.createElement("span");
+    label.className = "desktop-mode-bug-report__label";
+    label.textContent = __("Type");
+    wrap.appendChild(label);
+    const group = document.createElement("div");
+    group.className = "desktop-mode-bug-report__radio-group";
+    group.setAttribute("role", "radiogroup");
+    const options = [
+      { value: "bug", label: __("Bug"), checked: true },
+      { value: "feature", label: __("Feature request") },
+      { value: "question", label: __("Question") }
+    ];
+    for (const opt of options) {
+      const radioLabel = document.createElement("label");
+      radioLabel.className = "desktop-mode-bug-report__radio";
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "type";
+      input.value = opt.value;
+      if (opt.checked) {
+        input.checked = true;
+      }
+      radioLabel.appendChild(input);
+      const text = document.createElement("span");
+      text.textContent = opt.label;
+      radioLabel.appendChild(text);
+      group.appendChild(radioLabel);
+    }
+    wrap.appendChild(group);
+    return wrap;
+  }
+  function buildTextField(name, labelText, opts = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "desktop-mode-bug-report__field";
+    const label = document.createElement("label");
+    label.className = "desktop-mode-bug-report__label";
+    label.textContent = labelText;
+    wrap.appendChild(label);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.name = name;
+    input.className = "desktop-mode-bug-report__input";
+    if (opts.placeholder) {
+      input.placeholder = opts.placeholder;
+    }
+    if (opts.required) {
+      input.setAttribute("aria-required", "true");
+    }
+    label.appendChild(input);
+    return wrap;
+  }
+  function buildTextareaField(name, labelText, opts = {}) {
+    const wrap = document.createElement("div");
+    wrap.className = "desktop-mode-bug-report__field";
+    const label = document.createElement("label");
+    label.className = "desktop-mode-bug-report__label";
+    label.textContent = labelText;
+    wrap.appendChild(label);
+    const textarea = document.createElement("textarea");
+    textarea.name = name;
+    textarea.className = "desktop-mode-bug-report__textarea";
+    textarea.rows = opts.rows ?? 4;
+    if (opts.placeholder) {
+      textarea.placeholder = opts.placeholder;
+    }
+    if (opts.required) {
+      textarea.setAttribute("aria-required", "true");
+    }
+    label.appendChild(textarea);
+    return wrap;
+  }
+  function buildMetadataPreview() {
+    const details = document.createElement("details");
+    details.className = "desktop-mode-bug-report__metadata";
+    const summary = document.createElement("summary");
+    summary.textContent = __("Environment included with the report");
+    details.appendChild(summary);
+    const pre = document.createElement("pre");
+    pre.className = "desktop-mode-bug-report__metadata-body";
+    pre.textContent = formatMetadata(collectMetadata());
+    details.appendChild(pre);
+    return details;
+  }
+  function showInlineError(form, msg) {
+    let banner = form.querySelector(".desktop-mode-bug-report__error");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.className = "desktop-mode-bug-report__error";
+      banner.setAttribute("role", "alert");
+      form.prepend(banner);
+    }
+    banner.textContent = msg;
+  }
+  function readFormState(form) {
+    const data = new FormData(form);
+    return {
+      type: data.get("type") ?? "bug",
+      title: data.get("title") ?? "",
+      description: data.get("description") ?? "",
+      steps: data.get("steps") ?? ""
+    };
+  }
+  function buildGithubIssueUrl(state2) {
+    const labels = labelsForType(state2.type);
+    const body = composeIssueBody(state2);
+    const params = new URLSearchParams();
+    params.set("title", state2.title.trim());
+    params.set("body", body);
+    if (labels.length) {
+      params.set("labels", labels.join(","));
+    }
+    return `https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new?${params.toString()}`;
+  }
+  function labelsForType(type) {
+    switch (type) {
+      case "bug":
+        return ["bug"];
+      case "feature":
+        return ["enhancement"];
+      case "question":
+        return ["question"];
+      default:
+        return [];
+    }
+  }
+  function composeIssueBody(state2) {
+    const parts = [];
+    parts.push(state2.description.trim());
+    if (state2.type === "bug" && state2.steps.trim()) {
+      parts.push("");
+      parts.push("## Steps to reproduce");
+      parts.push("");
+      parts.push(state2.steps.trim());
+    }
+    parts.push("");
+    parts.push("<details><summary>Environment</summary>");
+    parts.push("");
+    parts.push("```");
+    parts.push(formatMetadata(collectMetadata()));
+    parts.push("```");
+    parts.push("");
+    parts.push("</details>");
+    let out = parts.join("\n");
+    if (out.length > MAX_BODY_LENGTH) {
+      out = out.slice(0, MAX_BODY_LENGTH) + "\n\n…(truncated to fit GitHub URL length limit)";
+    }
+    return out;
+  }
+  function collectMetadata() {
+    const cfg = window.wp?.desktop?.config;
+    return {
+      pluginVersion: cfg?.pluginVersion ?? "unknown",
+      wordpressVersion: cfg?.wordpressVersion ?? "unknown",
+      userAgent: navigator.userAgent,
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
+      platform: navigator.platform || "unknown",
+      currentUrl: window.location.href
+    };
+  }
+  function formatMetadata(m) {
+    return [
+      `Plugin version:    ${m.pluginVersion}`,
+      `WordPress version: ${m.wordpressVersion}`,
+      `User agent:        ${m.userAgent}`,
+      `Viewport:          ${m.viewport}`,
+      `Platform:          ${m.platform}`,
+      `Current URL:       ${m.currentUrl}`
+    ].join("\n");
+  }
+  let _config = null;
+  let _state = {
+    installHintDismissed: false,
+    notificationsEnabled: false
+  };
+  const _listeners = /* @__PURE__ */ new Set();
+  function initPwaState(config) {
+    if (!config) {
+      _config = null;
+      return;
+    }
+    _config = config;
+    _state = { ...config.state };
+    notify$4();
+  }
+  function getPwaState() {
+    return { ..._state };
+  }
+  function updatePwaState(patch) {
+    _state = { ..._state, ...patch };
+    notify$4();
+    if (!_config) {
+      return getPwaState();
+    }
+    const body = JSON.stringify(patch);
+    const nonce = readRestNonce$2();
+    void fetch(_config.stateUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        ...nonce ? { "X-WP-Nonce": nonce } : {}
+      },
+      body
+    }).catch((err) => {
+      if (typeof console !== "undefined") {
+        console.warn("[desktop-mode] pwa-state write failed:", err);
+      }
+    });
+    return getPwaState();
+  }
+  function subscribePwaState(cb) {
+    _listeners.add(cb);
+    return () => {
+      _listeners.delete(cb);
+    };
+  }
+  function notify$4() {
+    const snapshot = getPwaState();
+    for (const cb of Array.from(_listeners)) {
+      try {
+        cb(snapshot);
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] pwa-state listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function readRestNonce$2() {
+    const cfg = window.desktopModeConfig;
+    return cfg?.restNonce ?? "";
+  }
+  const state = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    getPwaState,
+    initPwaState,
+    subscribePwaState,
+    updatePwaState
+  }, Symbol.toStringTag, { value: "Module" }));
+  let _registration = null;
+  let _registrationFailed = false;
+  let _controllerChangeBound = false;
+  let _reloadingForSwUpdate = false;
+  let _status = "pending";
+  function bindControllerChangeReload() {
+    if (_controllerChangeBound) {
+      return;
+    }
+    _controllerChangeBound = true;
+    const hadInitialController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadInitialController) {
+        return;
+      }
+      if (_reloadingForSwUpdate) {
+        return;
+      }
+      if (wasRecentlyReloadedForSwUpdate()) {
+        return;
+      }
+      markReloadedForSwUpdate();
+      _reloadingForSwUpdate = true;
+      setTimeout(() => window.location.reload(), 0);
+    });
+  }
+  const SW_RELOAD_THROTTLE_KEY = "wpd-sw-reload-ts";
+  const SW_RELOAD_THROTTLE_MS = 3e4;
+  function wasRecentlyReloadedForSwUpdate() {
+    try {
+      const raw = sessionStorage.getItem(SW_RELOAD_THROTTLE_KEY);
+      const last = raw ? Number.parseInt(raw, 10) : 0;
+      if (!Number.isFinite(last) || last <= 0) {
+        return false;
+      }
+      return Date.now() - last < SW_RELOAD_THROTTLE_MS;
+    } catch {
+      return false;
+    }
+  }
+  function markReloadedForSwUpdate() {
+    try {
+      sessionStorage.setItem(SW_RELOAD_THROTTLE_KEY, String(Date.now()));
+    } catch {
+    }
+  }
+  async function registerServiceWorker(config, options = {}) {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+      _status = "unsupported";
+      return null;
+    }
+    if (!config?.swUrl) {
+      _status = "unsupported";
+      return null;
+    }
+    if (!window.isSecureContext) {
+      _status = "unsupported";
+      return null;
+    }
+    if (_registration || _registrationFailed) {
+      return _registration;
+    }
+    if (!options.forceReplace) {
+      const existing = await navigator.serviceWorker.getRegistrations().catch(() => []);
+      const foreign = existing.find((reg) => {
+        const url = reg.active?.scriptURL ?? reg.installing?.scriptURL ?? "";
+        return url !== "" && url !== config.swUrl;
+      });
+      if (foreign) {
+        _status = "foreign-sw";
+        if (typeof console !== "undefined") {
+          console.warn(
+            "[desktop-mode] another service worker is already registered (" + foreign.scope + "); skipping desktop-mode SW. Set desktop_mode_pwa_force_replace_sw=true to override."
+          );
+        }
+        return null;
+      }
+    }
+    try {
+      _registration = await navigator.serviceWorker.register(config.swUrl, {
+        scope: "/",
+        updateViaCache: "none"
+      });
+      _status = "registered";
+      bindControllerChangeReload();
+      return _registration;
+    } catch (err) {
+      _registrationFailed = true;
+      _status = "failed";
+      if (typeof console !== "undefined") {
+        console.warn("[desktop-mode] SW registration failed:", err);
+      }
+      return null;
+    }
+  }
+  function getSwRegistrationStatus() {
+    return _status;
+  }
+  const PWA_INSTALL_TILE_ID = "desktop-mode-pwa-install";
+  function isStandaloneDisplay() {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    if (window.matchMedia?.("(display-mode: standalone)").matches) {
+      return true;
+    }
+    const nav = window.navigator;
+    return nav.standalone === true;
+  }
+  async function isLikelyInstalled() {
+    if (isStandaloneDisplay()) {
+      return true;
+    }
+    const nav = window.navigator;
+    if (typeof nav.getInstalledRelatedApps !== "function") {
+      return false;
+    }
+    try {
+      const apps = await nav.getInstalledRelatedApps();
+      return Array.isArray(apps) && apps.length > 0;
+    } catch {
+      return false;
+    }
+  }
+  let _deferred = null;
+  function installPwaInstallAffordance(siteName, showToast2) {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.removeEventListener(
+      "beforeinstallprompt",
+      _handleBeforeInstall
+    );
+    window.addEventListener(
+      "beforeinstallprompt",
+      _handleBeforeInstall
+    );
+    window.removeEventListener("appinstalled", _handleAppInstalled);
+    window.addEventListener("appinstalled", _handleAppInstalled);
+    function _handleBeforeInstall(ev) {
+      ev.preventDefault();
+      _deferred = ev;
+    }
+    function _handleAppInstalled() {
+      _deferred = null;
+      showToast2({
+        message: sprintf(
+          /* translators: %s: site name */
+          __("Installed %s as an app."),
+          siteName
+        )
+      });
+    }
+  }
+  function getInstallTileDef(siteName, showToast2) {
+    return {
+      id: PWA_INSTALL_TILE_ID,
+      title: sprintf(
+        /* translators: %s: site name */
+        __("Install %s as an app"),
+        siteName
+      ),
+      // Dashicons class — the dock renderer prefers Dashicons
+      // strings. `dashicons-download` is the closest match for
+      // "install" in the WordPress glyph set without shipping
+      // bespoke artwork.
+      icon: "dashicons-download",
+      onOpen: () => {
+        void onTileClick(siteName, showToast2);
+      }
+    };
+  }
+  async function onTileClick(siteName, showToast2) {
+    if (_deferred) {
+      const event = _deferred;
+      _deferred = null;
+      try {
+        await event.prompt();
+        const choice = await event.userChoice;
+        if (choice.outcome === "dismissed") {
+          showToast2({
+            message: __("Install cancelled.")
+          });
+        }
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.warn(
+            "[desktop-mode] install prompt failed:",
+            err
+          );
+        }
+      }
+      return;
+    }
+    if (await isLikelyInstalled()) {
+      showToast2({
+        message: sprintf(
+          /* translators: %s: site name */
+          __(
+            "%s is already installed. Open it from your apps menu or home screen."
+          ),
+          siteName
+        )
+      });
+      return;
+    }
+    if (getSwRegistrationStatus() === "foreign-sw") {
+      showToast2({
+        message: __(
+          "Install isn't available — another plugin's service worker is active on this site. A site admin can opt in by setting the desktop_mode_pwa_force_replace_sw filter to true."
+        )
+      });
+      return;
+    }
+    showToast2({
+      message: __(
+        "Install isn't available right now. Keep using the page; if it still doesn't appear, the app may already be installed in this browser."
+      )
+    });
+  }
+  async function promptInstall() {
+    if (!_deferred) {
+      return "unavailable";
+    }
+    const event = _deferred;
+    _deferred = null;
+    try {
+      await event.prompt();
+      const choice = await event.userChoice;
+      return choice.outcome;
+    } catch {
+      return "unavailable";
+    }
+  }
+  function undismissInstallHint() {
+    Promise.resolve().then(() => state).then((m) => {
+      m.updatePwaState({ installHintDismissed: false });
+    });
+  }
+  function notify$3(options) {
+    const intent = activity.filter(
+      "desktop-mode/notification-requested",
+      { ...options }
+    );
+    if (!intent || intent.cancel === true || !intent.title) {
+      return () => void 0;
+    }
+    let dismissed = false;
+    let dismissNative = null;
+    let dismissToast = null;
+    const dismiss = () => {
+      if (dismissed) {
+        return;
+      }
+      dismissed = true;
+      if (dismissNative) {
+        dismissNative();
+      }
+      if (dismissToast) {
+        dismissToast();
+      }
+    };
+    const fallback = () => {
+      dismissToast = showToast({
+        message: intent.body ? intent.title + " — " + intent.body : intent.title
+      });
+      activity.publish("desktop-mode/notification-shown", {
+        ...intent,
+        fallback: "toast"
+      });
+    };
+    if (typeof window === "undefined" || typeof Notification === "undefined") {
+      fallback();
+      return dismiss;
+    }
+    const perm = Notification.permission;
+    if (perm === "granted") {
+      dismissNative = renderNative(intent);
+      return dismiss;
+    }
+    if (perm === "denied") {
+      fallback();
+      return dismiss;
+    }
+    void Notification.requestPermission().then((result) => {
+      if (dismissed) {
+        return;
+      }
+      if (result === "granted") {
+        updatePwaState({ notificationsEnabled: true });
+        dismissNative = renderNative(intent);
+        return;
+      }
+      fallback();
+    });
+    return dismiss;
+  }
+  function renderNative(intent) {
+    let n = null;
+    try {
+      n = new Notification(intent.title, {
+        body: intent.body,
+        icon: intent.icon,
+        tag: intent.tag,
+        requireInteraction: intent.requireInteraction
+      });
+    } catch (err) {
+      if (typeof console !== "undefined") {
+        console.warn("[desktop-mode] Notification ctor threw:", err);
+      }
+      return () => void 0;
+    }
+    if (intent.onClick) {
+      const handler = intent.onClick;
+      n.onclick = () => {
+        try {
+          handler(n);
+        } catch (hErr) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] notification onClick threw:",
+              hErr
+            );
+          }
+        }
+      };
+    }
+    activity.publish("desktop-mode/notification-shown", {
+      ...intent,
+      fallback: null
+    });
+    return () => {
+      if (n) {
+        n.close();
+      }
+    };
+  }
+  async function requestNotificationPermission() {
+    if (typeof Notification === "undefined") {
+      return "unsupported";
+    }
+    if (Notification.permission !== "default") {
+      return Notification.permission;
+    }
+    const result = await Notification.requestPermission();
+    if (result === "granted") {
+      updatePwaState({ notificationsEnabled: true });
+    }
+    return result;
+  }
+  function getNotificationPermission() {
+    if (typeof Notification === "undefined") {
+      return "unsupported";
+    }
+    return Notification.permission;
+  }
+  function bootstrapPwa(config, showToast2) {
+    if (!config.pwa) {
+      return;
+    }
+    initPwaState(config.pwa);
+    installPwaInstallAffordance(
+      config.pwa.appName || "WordPress",
+      showToast2
+    );
+    void registerServiceWorker(config.pwa, {
+      forceReplace: !!config.pwa.forceReplaceSw
+    });
+  }
+  const DRAG_BRIDGE_EVENTS = {
+    START: "desktop-mode-cross-frame-drag-start",
+    END: "desktop-mode-cross-frame-drag-end"
+  };
+  function isStart(m) {
+    return !!m && typeof m === "object" && m.type === "desktop-mode-drag-start" && !!m.payload && typeof m.payload === "object";
+  }
+  function isEnd(m) {
+    return !!m && typeof m === "object" && m.type === "desktop-mode-drag-end";
+  }
+  function isPayloadRequest(m) {
+    return !!m && typeof m === "object" && m.type === "desktop-mode-drag-payload-request";
+  }
+  class DragBridge {
+    constructor() {
+      this._payload = null;
+      this._onMessage = (e) => {
+        if (e.origin !== this._origin) {
+          return;
+        }
+        const msg = e.data;
+        if (isStart(msg)) {
+          this._startDrag(msg.payload, e.source ?? null);
+          return;
+        }
+        if (isEnd(msg)) {
+          this._endDrag();
+          return;
+        }
+        if (isPayloadRequest(msg) && this._payload && e.source) {
+          try {
+            e.source.postMessage(
+              { type: "desktop-mode-drag-payload", payload: this._payload },
+              this._origin
+            );
+          } catch {
+          }
+        }
+      };
+      this._origin = window.location.origin;
+      window.addEventListener("message", this._onMessage);
+    }
+    getPayload() {
+      return this._payload;
+    }
+    isDragging() {
+      return this._payload !== null;
+    }
+    _startDrag(payload, _source) {
+      this._payload = payload;
+      document.dispatchEvent(
+        new CustomEvent(DRAG_BRIDGE_EVENTS.START, { detail: { payload } })
+      );
+    }
+    _endDrag() {
+      if (this._payload === null) {
+        return;
+      }
+      const payload = this._payload;
+      this._payload = null;
+      document.dispatchEvent(
+        new CustomEvent(DRAG_BRIDGE_EVENTS.END, { detail: { payload } })
+      );
+    }
+  }
+  class DropTargetRegistry {
+    constructor() {
+      this._targets = /* @__PURE__ */ new Map();
+      this._byElement = /* @__PURE__ */ new Map();
+    }
+    register(target) {
+      const prev = this._targets.get(target.id);
+      if (prev) {
+        this._byElement.delete(prev.element);
+      }
+      this._targets.set(target.id, target);
+      this._byElement.set(target.element, target);
+      return () => {
+        const cur = this._targets.get(target.id);
+        if (cur === target) {
+          this._targets.delete(target.id);
+          this._byElement.delete(target.element);
+        }
+      };
+    }
+    list() {
+      return Array.from(this._targets.values());
+    }
+    clear() {
+      this._targets.clear();
+      this._byElement.clear();
+    }
+    /**
+     * Find the deepest registered target whose element is `el` or an
+     * ancestor of `el`. Walks the DOM tree once (O(depth)).
+     *
+     * Window claim boundary: if the walk crosses a `.desktop-mode-window`
+     * element BEFORE finding a registered target, hit-testing stops
+     * there and returns null. This is the rule that makes "drag over
+     * a Gutenberg admin window" produce reject feedback instead of
+     * silently routing the drop to the wallpaper canvas underneath.
+     *
+     * A window can opt INTO accepting drops by registering a target
+     * on its own body (e.g. Recycle Bin's `[data-desktop-mode-recycle-bin-root]`):
+     * since that element sits inside the window, the walk hits it
+     * before reaching the window boundary and the body's target wins.
+     */
+    hitTest(el) {
+      let cur = el;
+      while (cur) {
+        if (cur instanceof HTMLElement) {
+          const t = this._byElement.get(cur);
+          if (t) {
+            return t;
+          }
+          if (cur.classList.contains("desktop-mode-window")) {
+            return null;
+          }
+        }
+        cur = cur.parentElement;
+      }
+      return null;
+    }
+    /**
+     * Convenience: pick the target at viewport `(clientX, clientY)`.
+     * Caller is responsible for hiding any obscuring ghost element
+     * before calling — see `GhostHandle.withHidden()`.
+     */
+    hitTestPoint(clientX, clientY) {
+      const el = document.elementFromPoint(clientX, clientY);
+      const target = this.hitTest(el);
+      return { target, element: el, accepted: false };
+    }
+  }
+  const GHOST_CLASS = "desktop-mode-drag-ghost";
+  const GHOST_ACCEPT_CLASS = "desktop-mode-drag-ghost--accept";
+  const GHOST_REJECT_CLASS = "desktop-mode-drag-ghost--reject";
+  const HINT_CLASS = "desktop-mode-drag-hint";
+  const HINT_ACCEPT_CLASS = "desktop-mode-drag-hint--accept";
+  const HINT_REJECT_CLASS = "desktop-mode-drag-hint--reject";
+  const HINT_NEUTRAL_CLASS = "desktop-mode-drag-hint--neutral";
+  const HINT_OFFSET_X = 16;
+  const HINT_OFFSET_Y = 18;
+  function mountGhost(payload, clientX, clientY) {
+    const ghost = buildGhost(payload);
+    const offsetX = payload.ghost?.offsetX ?? defaultOffsetX(payload.source);
+    const offsetY = payload.ghost?.offsetY ?? defaultOffsetY(payload.source);
+    ghost.classList.add(GHOST_CLASS);
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.style.position = "fixed";
+    ghost.style.left = "0";
+    ghost.style.top = "0";
+    ghost.style.margin = "0";
+    ghost.style.pointerEvents = "none";
+    ghost.style.zIndex = "2147483647";
+    ghost.style.willChange = "transform";
+    document.body.appendChild(ghost);
+    const labels = resolveHintLabels(payload);
+    const hint = labels ? buildHintChip() : null;
+    if (hint) {
+      document.body.appendChild(hint);
+    }
+    const handle = {
+      get element() {
+        return ghost;
+      },
+      moveTo(cx, cy) {
+        ghost.style.transform = `translate3d(${cx - offsetX}px, ${cy - offsetY}px, 0)`;
+        if (hint) {
+          hint.style.transform = `translate3d(${cx + HINT_OFFSET_X}px, ${cy + HINT_OFFSET_Y}px, 0)`;
+        }
+      },
+      setMode(mode) {
+        ghost.classList.remove(GHOST_ACCEPT_CLASS, GHOST_REJECT_CLASS);
+        if (mode === "accept") {
+          ghost.classList.add(GHOST_ACCEPT_CLASS);
+        } else if (mode === "reject") {
+          ghost.classList.add(GHOST_REJECT_CLASS);
+        }
+        if (hint && labels) {
+          hint.classList.remove(
+            HINT_ACCEPT_CLASS,
+            HINT_REJECT_CLASS,
+            HINT_NEUTRAL_CLASS
+          );
+          if (mode === "accept") {
+            hint.classList.add(HINT_ACCEPT_CLASS);
+            hint.textContent = labels.accept;
+          } else if (mode === "reject") {
+            hint.classList.add(HINT_REJECT_CLASS);
+            hint.textContent = labels.reject;
+          } else {
+            hint.classList.add(HINT_NEUTRAL_CLASS);
+            hint.textContent = labels.neutral;
+          }
+          hint.hidden = !hint.textContent;
+        }
+      },
+      withHidden(fn) {
+        const prevG = ghost.style.visibility;
+        const prevH = hint?.style.visibility ?? "";
+        ghost.style.visibility = "hidden";
+        if (hint) {
+          hint.style.visibility = "hidden";
+        }
+        try {
+          return fn();
+        } finally {
+          ghost.style.visibility = prevG;
+          if (hint) {
+            hint.style.visibility = prevH;
+          }
+        }
+      },
+      dispose() {
+        if (ghost.isConnected) {
+          ghost.remove();
+        }
+        if (hint?.isConnected) {
+          hint.remove();
+        }
+      }
+    };
+    handle.moveTo(clientX, clientY);
+    handle.setMode("neutral");
+    return handle;
+  }
+  function buildHintChip() {
+    const chip = document.createElement("div");
+    chip.className = HINT_CLASS;
+    chip.setAttribute("aria-hidden", "true");
+    chip.setAttribute("role", "presentation");
+    chip.style.position = "fixed";
+    chip.style.left = "0";
+    chip.style.top = "0";
+    chip.style.margin = "0";
+    chip.style.pointerEvents = "none";
+    chip.style.zIndex = "2147483647";
+    chip.style.willChange = "transform";
+    return chip;
+  }
+  function resolveHintLabels(payload) {
+    const cfg = payload.ghost?.hint;
+    if (cfg?.hidden) {
+      return null;
+    }
+    return {
+      accept: cfg?.accept ?? defaultAcceptLabel(payload),
+      reject: cfg?.reject ?? defaultRejectLabel(),
+      neutral: cfg?.neutral ?? defaultNeutralLabel(payload)
+    };
+  }
+  function defaultAcceptLabel(payload) {
+    if (payload.type === "shortcut") {
+      return __("Drop here to create shortcut", "desktop-mode");
+    }
+    if (payload.type === "desktop-file") {
+      return __("Drop here to move", "desktop-mode");
+    }
+    return __("Drop here", "desktop-mode");
+  }
+  function defaultRejectLabel(_payload) {
+    return __("Can’t drop here", "desktop-mode");
+  }
+  function defaultNeutralLabel(payload) {
+    if (payload.type === "shortcut") {
+      return __(
+        "Drop on the desktop or a folder",
+        "desktop-mode"
+      );
+    }
+    if (payload.type === "desktop-file") {
+      return __("Drop in a folder", "desktop-mode");
+    }
+    return "";
+  }
+  function buildGhost(payload) {
+    if (payload.ghost?.element) {
+      return payload.ghost.element;
+    }
+    const clone = payload.source.cloneNode(true);
+    clone.removeAttribute("id");
+    const rect = payload.source.getBoundingClientRect();
+    clone.style.width = `${rect.width}px`;
+    clone.style.height = `${rect.height}px`;
+    return clone;
+  }
+  function defaultOffsetX(source) {
+    return source.offsetWidth / 2;
+  }
+  function defaultOffsetY(source) {
+    return source.offsetHeight / 2;
+  }
+  let _installed$1 = false;
+  function installRecovery(cancelActive) {
+    if (_installed$1) {
+      return;
+    }
+    _installed$1 = true;
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        cancelActive("escape");
+      }
+    });
+    window.addEventListener("blur", () => {
+      cancelActive("blur");
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        cancelActive("visibility");
+      }
+    });
+  }
+  const DRAG_THRESHOLD_PX = 4;
+  const DRAG_EVENTS = {
+    START: "desktop-mode.drag.start",
+    MOVE: "desktop-mode.drag.move",
+    ENTER: "desktop-mode.drag.enter",
+    LEAVE: "desktop-mode.drag.leave",
+    REJECTED: "desktop-mode.drag.rejected",
+    COMMIT: "desktop-mode.drag.commit",
+    CANCEL: "desktop-mode.drag.cancel",
+    END: "desktop-mode.drag.end"
+  };
+  const SOURCE_DRAGGING_CLASS = "desktop-mode-file-tile--dragging";
+  const TARGET_DROP_ACTIVE_CLASS = "desktop-mode-file-tile--drop-target";
+  const TRASH_DROP_ACTIVE_ATTR$1 = "data-desktop-mode-trash-drop-active";
+  const FILES_DROP_ACTIVE_ATTR = "data-files-drop-active";
+  const BODY_DRAGGING_ATTR = "data-desktop-mode-dragging";
+  const BODY_DRAG_TYPE_ATTR = "data-desktop-mode-drag-type";
+  const BODY_DRAG_MODE_ATTR = "data-desktop-mode-drag-mode";
+  class DragManager {
+    constructor() {
+      this._registry = new DropTargetRegistry();
+      this._active = null;
+      this._docListenersAttached = false;
+      this._lastLiftedEndAt = 0;
+      this._onPointerMove = (e) => {
+        const session = this._active;
+        if (!session || session._pointerId !== e.pointerId) {
+          return;
+        }
+        const dx = e.clientX - session._origin.clientX;
+        const dy = e.clientY - session._origin.clientY;
+        if (!session._lifted) {
+          if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) {
+            return;
+          }
+          this._lift(session, e);
+        }
+        if (!session._ghost) {
+          return;
+        }
+        session._ghost.moveTo(e.clientX, e.clientY);
+        this._updateHover(session, e.clientX, e.clientY);
+        dispatchOnDocument(DRAG_EVENTS.MOVE, {
+          payload: session.payload,
+          clientX: e.clientX,
+          clientY: e.clientY
+        });
+      };
+      this._onPointerUp = (e) => {
+        const session = this._active;
+        if (!session || session._pointerId !== e.pointerId) {
+          return;
+        }
+        if (!session._lifted) {
+          session._finished = true;
+          this._active = null;
+          try {
+            session._callbacks.onClickOnly?.();
+          } catch (err) {
+            console.error("[desktop-mode] drag onClickOnly threw:", err);
+          }
+          return;
+        }
+        const hit = this._hitTestNow(session, e.clientX, e.clientY);
+        if (hit && hit.accepted && hit.target) {
+          this._commit(session, hit.target, e.clientX, e.clientY);
+          return;
+        }
+        this._cancel(session, hit && hit.target ? "rejected" : "no-target");
+      };
+      this._onPointerCancel = (e) => {
+        const session = this._active;
+        if (!session || session._pointerId !== e.pointerId) {
+          return;
+        }
+        this._cancel(session, "pointercancel");
+      };
+    }
+    start(opts) {
+      if (this._active) {
+        return null;
+      }
+      if (opts.origin.button !== 0) {
+        return null;
+      }
+      const session = {
+        payload: opts.payload,
+        isFinished: () => session._finished,
+        cancel: (reason) => this._cancel(session, reason ?? "caller"),
+        _origin: opts.origin,
+        _pointerId: opts.origin.pointerId,
+        _lifted: false,
+        _finished: false,
+        _callbacks: {
+          onClickOnly: opts.onClickOnly,
+          onCancel: opts.onCancel,
+          onCommit: opts.onCommit
+        },
+        _ghost: null,
+        _currentTarget: null,
+        _currentAccepted: false
+      };
+      this._active = session;
+      this._ensureDocListeners();
+      installRecovery((reason) => {
+        if (this._active) {
+          this._cancel(this._active, reason);
+        }
+      });
+      return session;
+    }
+    registerDropTarget(target) {
+      return this._registry.register(target);
+    }
+    isDragging() {
+      return this._active !== null && this._active._lifted;
+    }
+    /**
+     * Whether a real (lifted) drag ended within `withinMs` of now.
+     * Surfaces that bind plain `click` listeners use this to ignore
+     * the synthesized click that fires after a drop. 500 ms is a
+     * generous default — browsers fire the click within 10–50 ms of
+     * pointerup, but plugins may chain post-drag work into a
+     * `requestAnimationFrame` and call back into a click-driven API.
+     *
+     * @public
+     * @since 0.18.x
+     */
+    recentlyEndedDrag(withinMs = 500) {
+      if (this._lastLiftedEndAt === 0) {
+        return false;
+      }
+      return Date.now() - this._lastLiftedEndAt < withinMs;
+    }
+    getActive() {
+      return this._active;
+    }
+    debug() {
+      return {
+        findOrphans: () => findOrphans(),
+        listTargets: () => this._registry.list()
+      };
+    }
+    // -----------------------------------------------------------------
+    // Internals
+    // -----------------------------------------------------------------
+    _ensureDocListeners() {
+      if (this._docListenersAttached) {
+        return;
+      }
+      this._docListenersAttached = true;
+      document.addEventListener("pointermove", this._onPointerMove, true);
+      document.addEventListener("pointerup", this._onPointerUp, true);
+      document.addEventListener("pointercancel", this._onPointerCancel, true);
+    }
+    _lift(session, e) {
+      session._lifted = true;
+      session.payload.source.classList.add(SOURCE_DRAGGING_CLASS);
+      session._ghost = mountGhost(session.payload, e.clientX, e.clientY);
+      if (typeof document !== "undefined" && document.body) {
+        document.body.setAttribute(BODY_DRAGGING_ATTR, "");
+        document.body.setAttribute(
+          BODY_DRAG_TYPE_ATTR,
+          String(session.payload.type)
+        );
+        document.body.setAttribute(BODY_DRAG_MODE_ATTR, "neutral");
+      }
+      dispatchOnDocument(DRAG_EVENTS.START, { payload: session.payload });
+    }
+    _hitTestNow(session, clientX, clientY) {
+      const run = () => {
+        const el = document.elementFromPoint(clientX, clientY);
+        const target = this._registry.hitTest(el);
+        if (!target) {
+          return { target: null, accepted: false };
+        }
+        let accepted = false;
+        try {
+          accepted = target.accept(session.payload);
+        } catch (err) {
+          console.error("[desktop-mode] drop target accept() threw:", target.id, err);
+        }
+        return { target, accepted };
+      };
+      if (session._ghost) {
+        return session._ghost.withHidden(run);
+      }
+      return run();
+    }
+    _updateHover(session, clientX, clientY) {
+      const next = this._hitTestNow(session, clientX, clientY);
+      const prevTarget = session._currentTarget;
+      if (next.target === prevTarget && next.accepted === session._currentAccepted) {
+        return;
+      }
+      if (prevTarget) {
+        fireLeave(prevTarget, session);
+      }
+      session._currentTarget = next.target;
+      session._currentAccepted = next.accepted;
+      let mode;
+      if (next.target) {
+        if (next.accepted) {
+          fireEnter(next.target, session);
+          session._ghost?.setMode("accept");
+          mode = "accept";
+        } else {
+          session._ghost?.setMode("reject");
+          dispatchOnDocument(DRAG_EVENTS.REJECTED, {
+            payload: session.payload,
+            targetId: next.target.id
+          });
+          mode = "reject";
+        }
+      } else {
+        session._ghost?.setMode("reject");
+        mode = "reject";
+      }
+      if (typeof document !== "undefined" && document.body) {
+        document.body.setAttribute(BODY_DRAG_MODE_ATTR, mode);
+      }
+    }
+    _commit(session, target, clientX, clientY) {
+      session._finished = true;
+      this._lastLiftedEndAt = Date.now();
+      fireLeave(target, session);
+      this._cleanupDom(session);
+      const prevActive = this._active;
+      this._active = null;
+      try {
+        void target.onDrop(session, { clientX, clientY });
+      } catch (err) {
+        console.error("[desktop-mode] drop target onDrop threw:", target.id, err);
+      }
+      try {
+        session._callbacks.onCommit?.(target);
+      } catch (err) {
+        console.error("[desktop-mode] drag onCommit threw:", err);
+      }
+      dispatchOnDocument(DRAG_EVENTS.COMMIT, {
+        payload: session.payload,
+        targetId: target.id
+      });
+      dispatchOnDocument(DRAG_EVENTS.END, { payload: session.payload, reason: "commit" });
+      if (this._active === prevActive) {
+        this._active = null;
+      }
+    }
+    _cancel(session, reason) {
+      if (session._finished) {
+        return;
+      }
+      session._finished = true;
+      if (session._lifted) {
+        this._lastLiftedEndAt = Date.now();
+      }
+      if (session._currentTarget) {
+        fireLeave(session._currentTarget, session);
+      }
+      this._cleanupDom(session);
+      this._active = null;
+      try {
+        session._callbacks.onCancel?.(reason);
+      } catch (err) {
+        console.error("[desktop-mode] drag onCancel threw:", err);
+      }
+      dispatchOnDocument(DRAG_EVENTS.CANCEL, { payload: session.payload, reason });
+      dispatchOnDocument(DRAG_EVENTS.END, { payload: session.payload, reason });
+    }
+    _cleanupDom(session) {
+      try {
+        session.payload.source.classList.remove(SOURCE_DRAGGING_CLASS);
+      } catch {
+      }
+      session._ghost?.dispose();
+      session._ghost = null;
+      session._currentTarget = null;
+      session._currentAccepted = false;
+      if (typeof document !== "undefined" && document.body) {
+        document.body.removeAttribute(BODY_DRAGGING_ATTR);
+        document.body.removeAttribute(BODY_DRAG_TYPE_ATTR);
+        document.body.removeAttribute(BODY_DRAG_MODE_ATTR);
+      }
+      scrubOrphans();
+    }
+  }
+  function dispatchOnDocument(type, detail) {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.dispatchEvent(new CustomEvent(type, { detail }));
+  }
+  function fireEnter(target, session) {
+    try {
+      target.onEnter?.(session);
+    } catch (err) {
+      console.error("[desktop-mode] drop target onEnter threw:", target.id, err);
+    }
+    dispatchOnDocument(DRAG_EVENTS.ENTER, {
+      payload: session.payload,
+      targetId: target.id
+    });
+  }
+  function fireLeave(target, session) {
+    try {
+      target.onLeave?.(session);
+    } catch (err) {
+      console.error("[desktop-mode] drop target onLeave threw:", target.id, err);
+    }
+    dispatchOnDocument(DRAG_EVENTS.LEAVE, {
+      payload: session.payload,
+      targetId: target.id
+    });
+  }
+  function findOrphans() {
+    if (typeof document === "undefined") {
+      return [];
+    }
+    const out = [];
+    for (const sel of [
+      `.${SOURCE_DRAGGING_CLASS}`,
+      `.${TARGET_DROP_ACTIVE_CLASS}`,
+      `[${TRASH_DROP_ACTIVE_ATTR$1}]`,
+      `[${FILES_DROP_ACTIVE_ATTR}]`
+    ]) {
+      document.querySelectorAll(sel).forEach((el) => out.push(el));
+    }
+    return out;
+  }
+  function scrubOrphans() {
+    for (const el of findOrphans()) {
+      el.classList.remove(SOURCE_DRAGGING_CLASS, TARGET_DROP_ACTIVE_CLASS);
+      el.removeAttribute(TRASH_DROP_ACTIVE_ATTR$1);
+      el.removeAttribute(FILES_DROP_ACTIVE_ATTR);
+    }
+  }
+  function collectOpenables() {
+    const desktop = window.wp?.desktop;
+    if (!desktop) {
+      return [];
+    }
+    const wm = desktop.windowManager;
+    const config = desktop.config;
+    if (!wm || !config) {
+      return [];
+    }
+    const items = [];
+    const fromMenu = (item, group) => ({
+      id: item.id,
+      label: item.title,
+      description: group,
+      icon: item.icon,
+      open: () => wm.open({
+        id: item.id,
+        baseId: item.id,
+        url: item.url,
+        title: item.title,
+        icon: item.icon
+      })
+    });
+    for (const item of config.dockItems ?? []) {
+      items.push(fromMenu(item, "Admin menu"));
+    }
+    const filtered = applyFilters(
+      "desktop-mode.open-command.items",
+      items
+    );
+    return Array.isArray(filtered) ? filtered : items;
+  }
+  const openCommand = {
+    slug: "open",
+    label: "Open",
+    description: "Open an admin page or registered window.",
+    hint: "[window]",
+    icon: "dashicons-external",
+    /**
+     * Suggest matching windows as the user types args. Simple
+     * case-insensitive substring match against label AND id so
+     * "add" finds "Add New Post" and "jorvy" finds Jorvy whether
+     * the plugin listed it with a friendly label or the slug.
+     */
+    suggest(args) {
+      const q = args.trim().toLowerCase();
+      const list2 = collectOpenables();
+      const hits = q === "" ? list2 : list2.filter(
+        (w) => w.label.toLowerCase().includes(q) || w.id.toLowerCase().includes(q)
+      );
+      return hits.slice(0, 12).map((w) => ({
+        value: w.label,
+        label: w.label,
+        description: w.description,
+        icon: w.icon ?? "dashicons-external"
+      }));
+    },
+    run(args, ctx) {
+      const q = args.trim();
+      if (!q) {
+        return "Type the name of a window to open, for example `/open Posts`.";
+      }
+      const list2 = collectOpenables();
+      const ql = q.toLowerCase();
+      const match = list2.find((w) => w.label.toLowerCase() === ql || w.id.toLowerCase() === ql) ?? list2.find(
+        (w) => w.label.toLowerCase().includes(ql) || w.id.toLowerCase().includes(ql)
+      );
+      if (!match) {
+        return `No window matching **${q}** — try \`/open\` alone to see available options.`;
+      }
+      match.open();
+      ctx.close();
+    }
+  };
+  function registerBuiltInCommands() {
+    registerCommand(openCommand);
+  }
+  const palettes = [];
+  const listeners$2 = /* @__PURE__ */ new Set();
+  function registerPalette(p) {
+    if (!p || typeof p.id !== "string" || p.id === "") {
+      return () => {
+      };
+    }
+    if (typeof p.open !== "function" || typeof p.close !== "function" || typeof p.isOpen !== "function") {
+      return () => {
+      };
+    }
+    const idx = palettes.findIndex((x) => x.id === p.id);
+    if (idx >= 0) {
+      palettes[idx] = p;
+    } else {
+      palettes.push(p);
+    }
+    notify$2();
+    return () => {
+      const i = palettes.findIndex((x) => x.id === p.id);
+      if (i >= 0) {
+        palettes.splice(i, 1);
+        notify$2();
+      }
+    };
+  }
+  function unregisterPalette(id) {
+    const idx = palettes.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      palettes.splice(idx, 1);
+      notify$2();
+    }
+  }
+  function listPalettes() {
+    return palettes.slice();
+  }
+  function notify$2() {
+    for (const cb of Array.from(listeners$2)) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error("[desktop-mode] palette-registry listener threw:", err);
+        }
+      }
+    }
+  }
+  function cyclePalettes() {
+    if (palettes.length === 0) {
+      return;
+    }
+    const cur = palettes.findIndex((p) => {
+      try {
+        return p.isOpen();
+      } catch {
+        return false;
+      }
+    });
+    if (cur === -1) {
+      try {
+        palettes[0].open();
+      } catch {
+      }
+      return;
+    }
+    try {
+      palettes[cur].close();
+    } catch {
+    }
+    const next = cur + 1;
+    if (next < palettes.length) {
+      try {
+        palettes[next].open();
+      } catch {
+      }
+    }
+  }
+  function openPaletteOnly(id) {
+    const target = palettes.find((p) => p.id === id);
+    if (!target) {
+      return;
+    }
+    for (const p of palettes) {
+      if (p.id !== id) {
+        try {
+          if (p.isOpen()) {
+            p.close();
+          }
+        } catch {
+        }
+      }
+    }
+    try {
+      target.open();
+    } catch {
+    }
+  }
+  let installed$1 = false;
+  function installPaletteShortcut() {
+    if (installed$1) {
+      return;
+    }
+    installed$1 = true;
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (!(e.metaKey || e.ctrlKey) || e.key !== "k") {
+          return;
+        }
+        if (e.shiftKey || e.altKey) {
+          return;
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        cyclePalettes();
+      },
+      true
+    );
+    const origin = window.location.origin;
+    window.addEventListener("message", (e) => {
+      if (e.origin !== origin) {
+        return;
+      }
+      const data = e.data;
+      if (data && data.type === "desktop-mode-palette-cycle") {
+        cyclePalettes();
+      }
+    });
+  }
+  const suppliers = /* @__PURE__ */ new Map();
+  const subscribers = /* @__PURE__ */ new Map();
+  let booted$1 = false;
+  const heartbeat = {
+    contribute(field, supplier) {
+      suppliers.set(field, supplier);
+      return () => {
+        if (suppliers.get(field) === supplier) {
+          suppliers.delete(field);
+        }
+      };
+    },
+    subscribe(field, cb) {
+      let set = subscribers.get(field);
+      if (!set) {
+        set = /* @__PURE__ */ new Set();
+        subscribers.set(field, set);
+      }
+      set.add(cb);
+      return () => {
+        set.delete(cb);
+      };
+    }
+  };
+  function bootHeartbeatBus() {
+    if (booted$1) {
+      return;
+    }
+    booted$1 = true;
+    const $ = window.jQuery;
+    if (!$) {
+      console.warn(
+        "[desktop-mode/heartbeat] jQuery missing — Heartbeat bus disabled."
+      );
+      return;
+    }
+    $(document).on("heartbeat-send", (...args) => {
+      const data = args[1];
+      if (!data) {
+        return;
+      }
+      for (const [field, supplier] of suppliers) {
+        try {
+          data[field] = supplier();
+        } catch (err) {
+          console.error(
+            `[desktop-mode/heartbeat] supplier for "${field}" threw:`,
+            err
+          );
+        }
+      }
+    });
+    $(document).on("heartbeat-tick", (...args) => {
+      const response = args[1];
+      if (!response) {
+        return;
+      }
+      for (const [field, set] of subscribers) {
+        const value = response[field];
+        if (value === void 0) {
+          continue;
+        }
+        for (const cb of set) {
+          try {
+            cb(value);
+          } catch (err) {
+            console.error(
+              `[desktop-mode/heartbeat] subscriber for "${field}" threw:`,
+              err
+            );
+          }
+        }
+      }
+    });
+  }
+  const store$2 = createSharedStore(
+    "desktop-mode/presence",
+    () => ({ byUser: /* @__PURE__ */ new Map(), serverTimeMs: 0 })
+  );
+  const ACTIVE_THRESHOLD_MS = 5 * 60 * 1e3;
+  let lastInputMs = Date.now();
+  let booted = false;
+  function noteUserActivity() {
+    lastInputMs = Date.now();
+  }
+  function applySnapshot(block) {
+    if (!block || !block.snapshot) {
+      return;
+    }
+    const previous = store$2.state.byUser;
+    const next = new Map(previous);
+    const transitions = [];
+    for (const [rawId, raw] of Object.entries(block.snapshot)) {
+      const userId = Number(rawId);
+      if (!Number.isFinite(userId) || userId <= 0) {
+        continue;
+      }
+      const status = raw?.status ?? "offline";
+      const entry = {
+        status,
+        lastSeenMs: Number(raw?.lastSeenMs ?? 0) || 0,
+        lastActiveMs: Number(raw?.lastActiveMs ?? 0) || 0
+      };
+      const old = previous.get(userId);
+      next.set(userId, entry);
+      if (!old || old.status !== entry.status) {
+        transitions.push({
+          userId,
+          oldStatus: old ? old.status : null,
+          newStatus: entry.status,
+          entry
+        });
+      }
+    }
+    store$2.state.byUser = next;
+    if (typeof block.serverTimeMs === "number") {
+      store$2.state.serverTimeMs = block.serverTimeMs;
+    }
+    store$2.notify();
+    for (const t of transitions) {
+      const detail = {
+        userId: t.userId,
+        oldStatus: t.oldStatus,
+        newStatus: t.newStatus,
+        lastSeenMs: t.entry.lastSeenMs,
+        lastActiveMs: t.entry.lastActiveMs
+      };
+      document.dispatchEvent(
+        new CustomEvent("desktop-mode-presence-changed", { detail })
+      );
+      activity.publish("desktop-mode/presence-changed", detail);
+    }
+    activity.publish("desktop-mode/presence-snapshot-applied", {
+      applied: Object.keys(block.snapshot).length,
+      transitions: transitions.length
+    });
+  }
+  function bootPresenceProbe() {
+    if (booted) {
+      return;
+    }
+    booted = true;
+    document.addEventListener("pointerdown", noteUserActivity, {
+      capture: true,
+      passive: true
+    });
+    document.addEventListener("keydown", noteUserActivity, {
+      capture: true,
+      passive: true
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        noteUserActivity();
+      }
+    });
+    heartbeat.contribute("desktop_mode_presence_active", () => true);
+    heartbeat.contribute(
+      "desktop_mode_user_active",
+      () => Date.now() - lastInputMs < ACTIVE_THRESHOLD_MS
+    );
+    heartbeat.subscribe("desktop_mode_presence", (block) => {
+      applySnapshot(block);
+    });
+  }
+  function getStatus(userId) {
+    const entry = store$2.state.byUser.get(userId);
+    return entry ? entry.status : "offline";
+  }
+  function getAll() {
+    return new Map(store$2.state.byUser);
+  }
+  function getEntry(userId) {
+    return store$2.state.byUser.get(userId) ?? null;
+  }
+  function subscribe$1(cb) {
+    return store$2.subscribe((s) => cb(s));
+  }
+  function markActive() {
+    noteUserActivity();
+  }
+  function applyPresenceBatch(updates) {
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return;
+    }
+    const previous = store$2.state.byUser;
+    const next = new Map(previous);
+    const transitions = [];
+    for (const u of updates) {
+      const userId = Number(u.userId);
+      if (!Number.isFinite(userId) || userId <= 0) {
+        continue;
+      }
+      const old = previous.get(userId);
+      const entry = {
+        status: u.status,
+        lastSeenMs: typeof u.lastSeenMs === "number" ? u.lastSeenMs : old?.lastSeenMs ?? 0,
+        lastActiveMs: typeof u.lastActiveMs === "number" ? u.lastActiveMs : old?.lastActiveMs ?? 0
+      };
+      next.set(userId, entry);
+      if (!old || old.status !== entry.status) {
+        transitions.push({
+          userId,
+          oldStatus: old ? old.status : null,
+          newStatus: entry.status,
+          entry
+        });
+      }
+    }
+    if (transitions.length === 0 && next.size === previous.size) {
+      return;
+    }
+    store$2.state.byUser = next;
+    store$2.notify();
+    for (const t of transitions) {
+      const detail = {
+        userId: t.userId,
+        oldStatus: t.oldStatus,
+        newStatus: t.newStatus,
+        lastSeenMs: t.entry.lastSeenMs,
+        lastActiveMs: t.entry.lastActiveMs
+      };
+      document.dispatchEvent(
+        new CustomEvent("desktop-mode-presence-changed", { detail })
+      );
+      activity.publish("desktop-mode/presence-changed", detail);
+    }
+    activity.publish("desktop-mode/presence-snapshot-applied", {
+      applied: updates.length,
+      transitions: transitions.length
+    });
+  }
+  const presenceApi = Object.freeze({
+    getStatus,
+    getAll,
+    getEntry,
+    subscribe: subscribe$1,
+    markActive,
+    applyBatch: applyPresenceBatch
+  });
+  const VIEWPORT_CLAMP_MARGIN = 12;
+  function findDockEntryForUrl(url, config) {
+    const windowId = deriveWindowId(url, config.adminUrl);
+    return (config.dockItems || []).find(
+      (i) => deriveWindowId(i.url, config.adminUrl) === windowId || (i.submenu || []).some(
+        (s) => deriveWindowId(s.url, config.adminUrl) === windowId
+      )
+    );
+  }
+  function clampGeometryToViewport(win, rect) {
+    const maxW = Math.max(200, rect.width - VIEWPORT_CLAMP_MARGIN * 2);
+    const maxH = Math.max(200, rect.height - VIEWPORT_CLAMP_MARGIN * 2);
+    const width = Math.min(win.width, maxW);
+    const height = Math.min(win.height, maxH);
+    const maxX = Math.max(0, rect.width - width - VIEWPORT_CLAMP_MARGIN);
+    const maxY = Math.max(0, rect.height - height - VIEWPORT_CLAMP_MARGIN);
+    const x = Math.max(VIEWPORT_CLAMP_MARGIN, Math.min(win.x, maxX));
+    const y = Math.max(VIEWPORT_CLAMP_MARGIN, Math.min(win.y, maxY));
+    return { x, y, width, height };
+  }
+  const INITIAL_ORIGIN$1 = window.location.origin;
+  function bindTopWindowLinkInterceptor(manager, config) {
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (e.defaultPrevented) {
+          return;
+        }
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+          return;
+        }
+        const target = e.target;
+        const link = target && target.closest ? target.closest("a[href]") : null;
+        if (!link) {
+          return;
+        }
+        const anchor = link;
+        const linkTarget = anchor.getAttribute("target");
+        if (linkTarget && linkTarget !== "" && linkTarget !== "_self") {
+          return;
+        }
+        if (anchor.hasAttribute("download")) {
+          return;
+        }
+        const rawHref = anchor.getAttribute("href");
+        if (!rawHref || rawHref.charAt(0) === "#") {
+          return;
+        }
+        if (/^(mailto:|tel:|javascript:|data:)/i.test(rawHref)) {
+          return;
+        }
+        let url;
+        try {
+          url = new URL(rawHref, window.location.href);
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.warn(
+              "[desktop-mode] Couldn’t parse href; letting the browser handle the click:",
+              rawHref,
+              err
+            );
+          }
+          return;
+        }
+        if (url.origin !== INITIAL_ORIGIN$1) {
+          return;
+        }
+        let adminPath;
+        try {
+          adminPath = new URL(config.adminUrl).pathname;
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] config.adminUrl is not a valid URL; falling back to /wp-admin/:",
+              config.adminUrl,
+              err
+            );
+          }
+          adminPath = "/wp-admin/";
+        }
+        if (!url.pathname.startsWith(adminPath)) {
+          return;
+        }
+        if (/\/(admin-post|admin-ajax)\.php$/.test(url.pathname)) {
+          return;
+        }
+        if (url.searchParams.has("action") && url.searchParams.get("action") === "logout") {
+          return;
+        }
+        if (url.searchParams.has("desktop_mode_classic")) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        if (tryNativeUrlRemap(url.href)) {
+          return;
+        }
+        const windowId = deriveWindowId(url.href, config.adminUrl);
+        const dockEntry = findDockEntryForUrl(url.href, config);
+        const fallbackTitle = (anchor.textContent || "").trim() || dockEntry?.title || "";
+        void manager.open({
+          id: windowId,
+          baseId: windowId,
+          multi: !!dockEntry?.multi,
+          url: url.href,
+          parentUrl: dockEntry?.url ?? url.href,
+          title: dockEntry?.title || fallbackTitle,
+          icon: dockEntry?.icon || "dashicons-admin-generic",
+          submenu: dockEntry?.submenu
+        });
+      },
+      true
+    );
+  }
+  const REGISTRY_CHANGED_EVENT = "desktop-mode-registry-changed";
+  function diffIds(prev, next) {
+    const prevIds = /* @__PURE__ */ new Set();
+    if (Array.isArray(prev)) {
+      for (const item of prev) {
+        if (item && typeof item.id === "string") {
+          prevIds.add(item.id);
+        }
+      }
+    }
+    const nextIds = /* @__PURE__ */ new Set();
+    for (const item of next) {
+      if (item && typeof item.id === "string") {
+        nextIds.add(item.id);
+      }
+    }
+    const added = [];
+    for (const id of nextIds) {
+      if (!prevIds.has(id)) {
+        added.push(id);
+      }
+    }
+    const removed = [];
+    for (const id of prevIds) {
+      if (!nextIds.has(id)) {
+        removed.push(id);
+      }
+    }
+    return { added, removed };
+  }
+  function emitRegistryChanged(registry2, prev, next) {
+    const { added, removed } = diffIds(prev, next);
+    if (added.length === 0 && removed.length === 0) {
+      return;
+    }
+    if (typeof document === "undefined") {
+      return;
+    }
+    const detail = { registry: registry2, added, removed };
+    document.dispatchEvent(
+      new CustomEvent(REGISTRY_CHANGED_EVENT, { detail })
+    );
+  }
+  function createApplyPayload(deps2) {
+    const {
+      applyDockItems,
+      config,
+      syncNativeWindows,
+      syncServerWidgets,
+      syncServerWallpapers,
+      syncServerCommands,
+      syncServerSettingsTabs,
+      syncServerTitleBarButtons,
+      syncServerDockRailRenderers,
+      renderIcons
+    } = deps2;
+    return function applyPayload(payload) {
+      const dockItems = payload.dockItems;
+      const nativeWindows = payload.nativeWindows;
+      const serverWidgets = payload.serverWidgets;
+      const serverWallpapers = payload.serverWallpapers;
+      const serverCommandScripts = payload.serverCommandScripts;
+      const serverCommands = payload.serverCommands;
+      const serverSettingsTabScripts = payload.serverSettingsTabScripts;
+      const serverSettingsTabs = payload.serverSettingsTabs;
+      const serverDockRailRendererScripts = payload.serverDockRailRendererScripts;
+      const serverTitleBarButtonScripts = payload.serverTitleBarButtonScripts;
+      const serverWindowNotices = payload.serverWindowNotices;
+      const desktopIcons = payload.desktopIcons;
+      if (!Array.isArray(dockItems) || dockItems.length === 0) {
+        return;
+      }
+      const prevDockItems = config.dockItems;
+      applyDockItems(dockItems);
+      config.dockItems = dockItems;
+      emitRegistryChanged(
+        "dock-items",
+        prevDockItems,
+        dockItems
+      );
+      if (Array.isArray(nativeWindows)) {
+        const prevNativeWindows = config.nativeWindows;
+        void syncNativeWindows(
+          nativeWindows
+        );
+        config.nativeWindows = nativeWindows;
+        emitRegistryChanged(
+          "native-windows",
+          prevNativeWindows,
+          nativeWindows
+        );
+      }
+      if (Array.isArray(serverWidgets)) {
+        void syncServerWidgets(
+          serverWidgets
+        );
+        config.serverWidgets = serverWidgets;
+      }
+      if (Array.isArray(serverWallpapers)) {
+        void syncServerWallpapers(
+          serverWallpapers
+        );
+        config.serverWallpapers = serverWallpapers;
+      }
+      if (Array.isArray(serverCommandScripts)) {
+        void syncServerCommands(
+          serverCommandScripts,
+          Array.isArray(serverCommands) ? serverCommands : void 0
+        );
+        config.serverCommandScripts = serverCommandScripts;
+        if (Array.isArray(serverCommands)) {
+          config.serverCommands = serverCommands;
+        }
+      }
+      if (Array.isArray(serverSettingsTabScripts)) {
+        void syncServerSettingsTabs(
+          serverSettingsTabScripts,
+          Array.isArray(serverSettingsTabs) ? serverSettingsTabs : void 0
+        );
+        config.serverSettingsTabScripts = serverSettingsTabScripts;
+        if (Array.isArray(serverSettingsTabs)) {
+          config.serverSettingsTabs = serverSettingsTabs;
+        }
+      }
+      if (Array.isArray(serverTitleBarButtonScripts)) {
+        void syncServerTitleBarButtons(
+          serverTitleBarButtonScripts
+        );
+        config.serverTitleBarButtonScripts = serverTitleBarButtonScripts;
+      }
+      if (Array.isArray(serverDockRailRendererScripts)) {
+        void syncServerDockRailRenderers(
+          serverDockRailRendererScripts
+        );
+        config.serverDockRailRendererScripts = serverDockRailRendererScripts;
+      }
+      if (Array.isArray(serverWindowNotices)) {
+        applyServerWindowNotices(
+          serverWindowNotices
+        );
+        config.serverWindowNotices = serverWindowNotices;
+      }
+      if (Array.isArray(desktopIcons)) {
+        const prevDesktopIcons = config.desktopIcons;
+        renderIcons(desktopIcons);
+        config.desktopIcons = desktopIcons;
+        emitRegistryChanged(
+          "desktop-icons",
+          prevDesktopIcons,
+          desktopIcons
+        );
+      }
+    };
+  }
+  const MENU_REFRESH_TIMEOUT_MS = 8e3;
+  function bindMenuRefresh(deps2) {
+    const {
+      layoutDispatcher,
+      config,
+      syncNativeWindows,
+      syncServerWidgets,
+      syncServerWallpapers,
+      syncServerCommands,
+      syncServerSettingsTabs,
+      syncServerTitleBarButtons,
+      syncServerDockRailRenderers,
+      renderIcons
+    } = deps2;
+    const applyPayload = createApplyPayload({
+      applyDockItems: (items) => layoutDispatcher?.applyDockItems(items),
+      config,
+      syncNativeWindows,
+      syncServerWidgets,
+      syncServerWallpapers,
+      syncServerCommands,
+      syncServerSettingsTabs,
+      syncServerTitleBarButtons,
+      syncServerDockRailRenderers,
+      renderIcons
+    });
+    window.addEventListener("message", (e) => {
+      if (e.origin !== INITIAL_ORIGIN$1) {
+        return;
+      }
+      const data = e.data;
+      if (!data || data.type !== "desktop-mode-plugins-changed") {
+        return;
+      }
+      if (data.payload) {
+        applyPayload(data.payload);
+      }
+    });
+    const refresh = () => {
+      if (!config.adminUrl) {
+        return Promise.resolve();
+      }
+      const probeUrl = (() => {
+        try {
+          const url = new URL("admin.php", config.adminUrl);
+          url.searchParams.set("desktop_mode_chromeless", "1");
+          url.searchParams.set("desktop_mode_menu_refresh", "1");
+          return url.toString();
+        } catch (_err) {
+          return null;
+        }
+      })();
+      if (!probeUrl) {
+        return Promise.resolve();
+      }
+      return new Promise((resolve2) => {
+        const iframe = document.createElement("iframe");
+        iframe.setAttribute("aria-hidden", "true");
+        iframe.tabIndex = -1;
+        iframe.style.cssText = "position:absolute;top:-9999px;left:-9999px;width:1px;height:1px;border:0;opacity:0;pointer-events:none;";
+        iframe.src = probeUrl;
+        let done = false;
+        const cleanup = () => {
+          if (done) {
+            return;
+          }
+          done = true;
+          window.clearTimeout(timeoutId);
+          window.removeEventListener("message", onMessage);
+          if (iframe.parentNode) {
+            iframe.parentNode.removeChild(iframe);
+          }
+          resolve2();
+        };
+        const onMessage = (e) => {
+          if (e.source !== iframe.contentWindow) {
+            return;
+          }
+          const data = e.data;
+          if (!data || data.type !== "desktop-mode-plugins-changed") {
+            return;
+          }
+          cleanup();
+        };
+        const timeoutId = window.setTimeout(() => {
+          doAction(HOOKS.SHELL_ERROR, {
+            scope: "menu-refresh",
+            error: new Error("menu refresh probe timed out")
+          });
+          cleanup();
+        }, MENU_REFRESH_TIMEOUT_MS);
+        window.addEventListener("message", onMessage);
+        document.body.appendChild(iframe);
+      });
+    };
+    return refresh;
+  }
+  async function restoreSession(manager, config, desktopArea) {
+    const rect = desktopArea.getBoundingClientRect();
+    if (Array.isArray(config.session.desktops) && config.session.desktops.length > 0) {
+      manager.seedDesktops(
+        config.session.desktops,
+        config.session.activeDesktop || config.session.desktops[0].id
+      );
+    }
+    for (const win of config.session.windows) {
+      const clamped = clampGeometryToViewport(win, rect);
+      const dockEntry = findDockEntryForUrl(win.url, config);
+      const opened = await manager.open({
+        id: win.id,
+        baseId: win.baseId || win.id,
+        desktopId: win.desktopId,
+        multi: !!dockEntry?.multi,
+        url: win.url,
+        // `dockEntry?.url` is the parent menu's landing page —
+        // recover it so the synthetic "back to parent" tab in
+        // the in-window strip points at the dock URL even when
+        // the saved `win.url` is a sub-page (e.g. theme-install.php
+        // under Appearance, or a deep wc-admin route under
+        // WooCommerce). Without this the dedup check in
+        // `dom.ts` sees the iframe URL match a submenu entry
+        // and suppresses the parent tab — losing the only
+        // affordance to navigate back.
+        parentUrl: dockEntry?.url ?? win.url,
+        title: win.title,
+        icon: win.icon || "dashicons-admin-generic",
+        x: clamped.x,
+        y: clamped.y,
+        width: clamped.width,
+        height: clamped.height,
+        initialState: win.state,
+        submenu: dockEntry?.submenu
+      });
+      if (Array.isArray(win.externalTabs)) {
+        for (const ext of win.externalTabs) {
+          if (ext && typeof ext.url === "string" && ext.url !== "") {
+            opened.addExternalTab(
+              ext.url,
+              typeof ext.label === "string" && ext.label !== "" ? ext.label : ext.url
+            );
+          }
+        }
+      }
+    }
+    if (config.session.focused) {
+      const focused = manager.getById(config.session.focused);
+      if (focused) {
+        manager.focus(focused);
+      }
+    }
+  }
+  async function openCurrentPage(manager, config) {
+    if (tryNativeUrlRemap(config.currentPage)) {
+      return;
+    }
+    const windowId = deriveWindowId(config.currentPage, config.adminUrl);
+    const dockEntry = findDockEntryForUrl(config.currentPage, config);
+    await manager.open({
+      id: windowId,
+      baseId: windowId,
+      multi: !!dockEntry?.multi,
+      url: config.currentPage,
+      parentUrl: dockEntry?.url ?? config.currentPage,
+      title: config.currentTitle,
+      icon: config.currentIcon,
+      submenu: dockEntry?.submenu
+    });
+  }
+  function shouldAutoOpenCurrentPage(inputs) {
+    const suppress = inputs.fromPortal && !inputs.fromPortalIntent && (inputs.hasSession || !inputs.defaultEnabled || inputs.isNativeDefault);
+    return !suppress;
+  }
+  function trackedFetch(manager, input, requestInit, opts) {
+    const finalInit = injectRestNonce(input, requestInit);
+    const promise = window.fetch(input, finalInit);
+    if (opts?.silent) {
+      return promise;
+    }
+    let target = opts?.window;
+    if (!target && opts?.windowId) {
+      target = manager.getById(opts.windowId) ?? null;
+    }
+    if (!target) {
+      target = manager.getFocused();
+    }
+    if (target && typeof target.trackActivity === "function") {
+      void target.trackActivity(promise).catch(() => {
+      });
+    }
+    return promise;
+  }
+  const SESSION_SAVE_DEBOUNCE_MS = 500;
+  function createSessionSaver(manager, config) {
+    let debounceTimer = null;
+    let inFlight = false;
+    const doSave = async () => {
+      if (inFlight) {
+        return;
+      }
+      const payload = manager.snapshot();
+      inFlight = true;
+      try {
+        await trackedFetch(
+          manager,
+          config.sessionUrl,
+          {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "X-WP-Nonce": config.restNonce
+            },
+            body: JSON.stringify({ session: payload }),
+            // Best-effort: we don't block the UI on persistence.
+            keepalive: true
+          },
+          { silent: true }
+        );
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, { scope: "session-save", error: err });
+      } finally {
+        inFlight = false;
+      }
+    };
+    const flushImmediately = () => {
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      const payload = manager.snapshot();
+      const body = new Blob(
+        [JSON.stringify({ session: payload })],
+        { type: "application/json" }
+      );
+      const beaconUrl = config.sessionUrl + (config.sessionUrl.includes("?") ? "&" : "?") + "_wpnonce=" + encodeURIComponent(config.restNonce);
+      if (navigator.sendBeacon && navigator.sendBeacon(beaconUrl, body)) {
+        return;
+      }
+      void doSave();
+    };
+    const schedule = () => {
+      if (debounceTimer !== null) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = window.setTimeout(() => {
+        debounceTimer = null;
+        void doSave();
+      }, SESSION_SAVE_DEBOUNCE_MS);
+    };
+    window.addEventListener("pagehide", flushImmediately);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        flushImmediately();
+      }
+    });
+    return schedule;
+  }
+  const SHELL_RESIZE_DEBOUNCE_MS = 120;
+  function wireSessionEvents(save) {
+    document.addEventListener("desktop-mode-window-opened", save);
+    document.addEventListener("desktop-mode-window-closed", save);
+    document.addEventListener("desktop-mode-window-focused", save);
+    document.addEventListener("desktop-mode-window-changed", save);
+  }
+  function bindShellLifecycle() {
+    const shellEl = document.getElementById("desktop-mode-shell");
+    let resizeTimer = null;
+    const fireShellResize = () => {
+      resizeTimer = null;
+      const rect = shellEl ? shellEl.getBoundingClientRect() : null;
+      doAction(HOOKS.SHELL_RESIZED, {
+        width: rect ? Math.round(rect.width) : window.innerWidth,
+        height: rect ? Math.round(rect.height) : window.innerHeight
+      });
+    };
+    window.addEventListener("resize", () => {
+      if (resizeTimer !== null) {
+        window.clearTimeout(resizeTimer);
+      }
+      resizeTimer = window.setTimeout(
+        fireShellResize,
+        SHELL_RESIZE_DEBOUNCE_MS
+      );
+    });
+    document.addEventListener("visibilitychange", () => {
+      doAction(HOOKS.SHELL_VISIBILITY, {
+        state: document.hidden ? "hidden" : "visible"
+      });
+    });
+  }
+  function applyTileClasses(baseClasses, item, ctx) {
+    const fullCtx = {
+      rail: ctx.rail ?? "dock",
+      orientation: ctx.orientation,
+      dockId: ctx.dockId,
+      container: ctx.container ?? document.body,
+      item,
+      isSystem: ctx.isSystem
+    };
+    return applyFilters(
+      HOOKS.DOCK_TILE_CLASS,
+      baseClasses,
+      fullCtx
+    );
+  }
+  function applyTileElement(tile2, item, ctx) {
+    const fullCtx = {
+      rail: ctx.rail ?? "dock",
+      orientation: ctx.orientation,
+      dockId: ctx.dockId,
+      container: ctx.container ?? document.body,
+      item,
+      isSystem: ctx.isSystem
+    };
+    return applyFilters(
+      HOOKS.DOCK_TILE_ELEMENT,
+      tile2,
+      fullCtx
+    );
+  }
+  function applyTileTooltip(label, item, ctx) {
+    const fullCtx = {
+      rail: ctx.rail ?? "dock",
+      orientation: ctx.orientation,
+      dockId: ctx.dockId,
+      container: ctx.container ?? document.body,
+      item,
+      isSystem: ctx.isSystem
+    };
+    return applyFilters(
+      HOOKS.DOCK_TILE_TOOLTIP,
+      label,
+      fullCtx
+    );
+  }
+  function dispatchTileRendered(el, item, ctx) {
+    const fullCtx = {
+      rail: ctx.rail ?? "dock",
+      orientation: ctx.orientation,
+      dockId: ctx.dockId,
+      container: ctx.container ?? document.body,
+      item,
+      isSystem: ctx.isSystem
+    };
+    doAction(HOOKS.DOCK_TILE_RENDERED, { ...fullCtx, el });
+  }
+  const DEFAULT_DOCK_SELECTOR = [
+    ".desktop-mode-dock",
+    "#desktop-mode-dock",
+    "#desktop-mode-side-dock",
+    ".desktop-mode-dock__tooltip",
+    ".desktop-mode-dock-submenu"
+  ].join(",");
+  const customSelectors = /* @__PURE__ */ new Set();
+  function isDockElement(target) {
+    if (!target || typeof target.closest !== "function") {
+      return false;
+    }
+    const el = target;
+    if (el.closest(DEFAULT_DOCK_SELECTOR)) {
+      return true;
+    }
+    for (const selector of customSelectors) {
+      if (el.closest(selector)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function registerDockSelector(selector) {
+    if (typeof selector !== "string" || selector.trim() === "") {
+      return () => void 0;
+    }
+    customSelectors.add(selector);
+    return () => {
+      customSelectors.delete(selector);
+    };
+  }
+  const states = /* @__PURE__ */ new Map();
+  const INITIAL_ORIGIN = window.location.origin;
+  function ensureState(windowId) {
+    let s = states.get(windowId);
+    if (!s) {
+      s = {
+        headers: /* @__PURE__ */ new Map(),
+        observers: /* @__PURE__ */ new Set(),
+        observeCount: 0,
+        loadHandler: null,
+        loadHandlerTarget: null
+      };
+      states.set(windowId, s);
+    }
+    ensureLoadHandler(windowId, s);
+    return s;
+  }
+  function ensureLoadHandler(windowId, s) {
+    const iframe = findIframe(windowId);
+    if (!iframe) {
+      return;
+    }
+    if (s.loadHandlerTarget === iframe && s.loadHandler) {
+      return;
+    }
+    if (s.loadHandlerTarget && s.loadHandler && typeof s.loadHandlerTarget.removeEventListener === "function") {
+      s.loadHandlerTarget.removeEventListener("load", s.loadHandler);
+    }
+    if (typeof iframe.addEventListener !== "function") {
+      return;
+    }
+    const handler = () => {
+      queueMicrotask(() => pushInstrumentation(windowId));
+    };
+    iframe.addEventListener("load", handler);
+    s.loadHandler = handler;
+    s.loadHandlerTarget = iframe;
+  }
+  function detachLoadHandler(s) {
+    if (s.loadHandlerTarget && s.loadHandler && typeof s.loadHandlerTarget.removeEventListener === "function") {
+      s.loadHandlerTarget.removeEventListener("load", s.loadHandler);
+    }
+    s.loadHandler = null;
+    s.loadHandlerTarget = null;
+  }
+  function findIframe(windowId) {
+    const wpd = window.wp?.desktop?.windowManager;
+    if (wpd && typeof wpd.getById === "function") {
+      const win = wpd.getById(windowId);
+      if (win?.iframe) {
+        return win.iframe;
+      }
+      if (win?.element) {
+        const synth = win.element.querySelector("iframe");
+        if (synth) {
+          return synth;
+        }
+      }
+    }
+    const fallback = document.getElementById(`wp-window-${windowId}`);
+    return fallback?.querySelector("iframe") ?? null;
+  }
+  function snapshotHeaders(s) {
+    const out = {};
+    for (const [name, contributions] of s.headers) {
+      const parts = [];
+      for (const c of contributions) {
+        let v;
+        try {
+          v = typeof c.value === "function" ? c.value() : c.value;
+        } catch {
+          continue;
+        }
+        if (typeof v === "string" && v !== "") {
+          parts.push(v);
+        }
+      }
+      if (parts.length > 0) {
+        out[name] = parts.join(", ");
+      }
+    }
+    return out;
+  }
+  function pushInstrumentation(windowId) {
+    const iframe = findIframe(windowId);
+    if (!iframe || !iframe.contentWindow) {
+      return;
+    }
+    const s = states.get(windowId);
+    const headers = s ? snapshotHeaders(s) : {};
+    const observe = !!s && s.observeCount > 0;
+    try {
+      iframe.contentWindow.postMessage(
+        {
+          type: "desktop-mode-instrument-set",
+          headers,
+          observe
+        },
+        INITIAL_ORIGIN
+      );
+    } catch {
+    }
+  }
+  addAction(HOOKS.IFRAME_READY, "desktop-mode/devtools/replay", (payload) => {
+    const p = payload;
+    if (p && typeof p.windowId === "string" && states.has(p.windowId)) {
+      pushInstrumentation(p.windowId);
+    }
+  });
+  addAction(
+    HOOKS.IFRAME_NETWORK_COMPLETED,
+    "desktop-mode/devtools/dispatch",
+    (payload) => {
+      const p = payload;
+      if (!p || typeof p.windowId !== "string") {
+        return;
+      }
+      const s = states.get(p.windowId);
+      if (!s) {
+        return;
+      }
+      for (const cb of s.observers) {
+        try {
+          cb(p);
+        } catch {
+        }
+      }
+    }
+  );
+  const sessions = /* @__PURE__ */ new Map();
+  const POLL_INTERVAL_MS = 1e3;
+  function pollOnce(sessionId, restUrl2, restNonce) {
+    const sp = sessions.get(sessionId);
+    if (!sp || sp.inflight) {
+      return;
+    }
+    sp.inflight = true;
+    const u = new URL(restUrl2 + "desktop-mode/v1/debug", window.location.origin);
+    u.searchParams.set("sessionId", sessionId);
+    u.searchParams.set("since", String(sp.cursor));
+    for (const ch of sp.channels.keys()) {
+      u.searchParams.append("channels[]", ch);
+    }
+    const url = u.toString();
+    fetch(url, {
+      credentials: "same-origin",
+      headers: { "X-WP-Nonce": restNonce }
+    }).then((r) => r.ok ? r.json() : { events: [], cursor: sp.cursor }).then((body) => {
+      sp.inflight = false;
+      if (!sessions.has(sessionId)) {
+        return;
+      }
+      if (typeof body.cursor === "number") {
+        sp.cursor = body.cursor;
+      }
+      for (const ev of body.events || []) {
+        const bucket2 = sp.channels.get(ev.channel);
+        if (!bucket2) {
+          continue;
+        }
+        for (const cb of bucket2) {
+          try {
+            cb(ev);
+          } catch {
+          }
+        }
+      }
+    }).catch(() => {
+      sp.inflight = false;
+    }).finally(() => {
+      const stillThere = sessions.get(sessionId);
+      if (stillThere && stillThere.channels.size > 0) {
+        stillThere.timer = setTimeout(
+          () => pollOnce(sessionId, restUrl2, restNonce),
+          POLL_INTERVAL_MS
+        );
+      }
+    });
+  }
+  function getRestEndpoint() {
+    const cfg = window.desktopModeConfig;
+    if (!cfg || !cfg.restUrl || !cfg.restNonce) {
+      return null;
+    }
+    return { restUrl: cfg.restUrl, restNonce: cfg.restNonce };
+  }
+  function dispatchLocal(sessionId, ev) {
+    const sp = sessions.get(sessionId);
+    if (!sp) {
+      return;
+    }
+    const bucket2 = sp.channels.get(ev.channel);
+    if (!bucket2) {
+      return;
+    }
+    for (const cb of bucket2) {
+      try {
+        cb(ev);
+      } catch {
+      }
+    }
+  }
+  let _localEventCounter = 0;
+  const debugBus = {
+    startSession() {
+      const cryptoApi = window.crypto;
+      if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+        return cryptoApi.randomUUID();
+      }
+      return "wpdbg-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    },
+    publish(sessionId, channel, payload) {
+      dispatchLocal(sessionId, {
+        id: ++_localEventCounter,
+        t: Date.now(),
+        channel,
+        payload
+      });
+    },
+    subscribe(sessionId, channel, cb) {
+      let sp = sessions.get(sessionId);
+      const startedFresh = !sp;
+      if (!sp) {
+        sp = {
+          channels: /* @__PURE__ */ new Map(),
+          cursor: 0,
+          timer: null,
+          inflight: false
+        };
+        sessions.set(sessionId, sp);
+      }
+      let bucket2 = sp.channels.get(channel);
+      if (!bucket2) {
+        bucket2 = /* @__PURE__ */ new Set();
+        sp.channels.set(channel, bucket2);
+      }
+      bucket2.add(cb);
+      if (startedFresh) {
+        const ep = getRestEndpoint();
+        if (ep) {
+          pollOnce(sessionId, ep.restUrl, ep.restNonce);
+        }
+      }
+      return () => {
+        const cur = sessions.get(sessionId);
+        if (!cur) {
+          return;
+        }
+        const b = cur.channels.get(channel);
+        if (b) {
+          b.delete(cb);
+          if (b.size === 0) {
+            cur.channels.delete(channel);
+          }
+        }
+        if (cur.channels.size === 0) {
+          if (cur.timer) {
+            clearTimeout(cur.timer);
+          }
+          sessions.delete(sessionId);
+        }
+      };
+    }
+  };
+  const devtools = {
+    addRequestHeader(windowId, name, value) {
+      if (typeof windowId !== "string" || windowId === "") {
+        return () => {
+        };
+      }
+      if (typeof name !== "string" || name === "") {
+        return () => {
+        };
+      }
+      const s = ensureState(windowId);
+      const contribution = { value };
+      let bucket2 = s.headers.get(name);
+      if (!bucket2) {
+        bucket2 = [];
+        s.headers.set(name, bucket2);
+      }
+      bucket2.push(contribution);
+      pushInstrumentation(windowId);
+      return () => {
+        const cur = states.get(windowId);
+        if (!cur) {
+          return;
+        }
+        const b = cur.headers.get(name);
+        if (!b) {
+          return;
+        }
+        const i = b.indexOf(contribution);
+        if (i >= 0) {
+          b.splice(i, 1);
+        }
+        if (b.length === 0) {
+          cur.headers.delete(name);
+        }
+        pushInstrumentation(windowId);
+        gcWindowState(windowId);
+      };
+    },
+    onRequest(windowId, cb, opts) {
+      if (typeof windowId !== "string" || windowId === "") {
+        return () => {
+        };
+      }
+      if (typeof cb !== "function") {
+        return () => {
+        };
+      }
+      const s = ensureState(windowId);
+      s.observers.add(cb);
+      const wantsObserve = !!opts?.observe;
+      if (wantsObserve) {
+        s.observeCount++;
+        pushInstrumentation(windowId);
+      }
+      return () => {
+        const cur = states.get(windowId);
+        if (!cur) {
+          return;
+        }
+        cur.observers.delete(cb);
+        if (wantsObserve) {
+          cur.observeCount = Math.max(0, cur.observeCount - 1);
+          pushInstrumentation(windowId);
+        }
+        gcWindowState(windowId);
+      };
+    },
+    reloadWithDebugSession(windowId, sessionId, opts) {
+      if (typeof windowId !== "string" || windowId === "" || typeof sessionId !== "string" || sessionId === "") {
+        return null;
+      }
+      const iframe = findIframe(windowId);
+      if (!iframe) {
+        return null;
+      }
+      const headerName = opts?.headerName || "X-WP-Debug-Session";
+      const queryArg = opts?.queryArg || "wp_debug_session";
+      const stopHeader = devtools.addRequestHeader(windowId, headerName, sessionId);
+      try {
+        const currentSrc = iframe.getAttribute("src") || iframe.src || "";
+        const u = new URL(currentSrc, window.location.origin);
+        u.searchParams.set(queryArg, sessionId);
+        iframe.src = u.toString();
+      } catch {
+      }
+      return {
+        dispose: () => {
+          stopHeader();
+        }
+      };
+    },
+    debug: debugBus
+  };
+  function gcWindowState(windowId) {
+    const s = states.get(windowId);
+    if (!s) {
+      return;
+    }
+    if (s.headers.size === 0 && s.observers.size === 0) {
+      detachLoadHandler(s);
+      states.delete(windowId);
+    }
+  }
+  async function wpdConfirm(options) {
+    await ensureShellOverlaysLoaded(shellOverlaysBundleUrl());
+    return new Promise((resolve2) => {
+      const dialog2 = document.createElement("wpd-confirm-dialog");
+      dialog2.setAttribute("open", "");
+      if (options.title) {
+        dialog2.setAttribute("title", options.title);
+      }
+      dialog2.setAttribute("message", options.message);
+      if (options.confirmLabel) {
+        dialog2.setAttribute("confirm-label", options.confirmLabel);
+      }
+      if (options.cancelLabel) {
+        dialog2.setAttribute("cancel-label", options.cancelLabel);
+      }
+      if (options.danger) {
+        dialog2.setAttribute("danger", "");
+      }
+      if (options.hideCancel) {
+        dialog2.setAttribute("hide-cancel", "");
+      }
+      if (options.dismissable) {
+        dialog2.setAttribute("dismissable", "");
+      }
+      const cleanup = (ok) => {
+        dialog2.remove();
+        resolve2(ok);
+      };
+      dialog2.addEventListener("wpd-confirm", () => cleanup(true));
+      dialog2.addEventListener("wpd-cancel", () => cleanup(false));
+      document.body.appendChild(dialog2);
+      const inner = dialog2.shadowRoot?.querySelector(".dialog");
+      (inner ?? dialog2).focus?.();
+    });
+  }
+  function collectWallpaperSurfaces(manager) {
+    const seed2 = [];
+    for (const w of manager.getVisibleRects()) {
+      if (w.state === "minimized") {
+        continue;
+      }
+      if (w.element.offsetParent === null) {
+        continue;
+      }
+      const r = w.element.getBoundingClientRect();
+      seed2.push({
+        id: `window:${w.windowId}`,
+        kind: "window",
+        rect: rectFromDom(r),
+        face: "top",
+        element: w.element
+      });
+    }
+    const shellEl = document.getElementById("desktop-mode-shell");
+    if (shellEl) {
+      const r = shellEl.getBoundingClientRect();
+      seed2.push({
+        id: "shell:floor",
+        kind: "shell",
+        rect: {
+          x: r.left,
+          y: r.bottom - 1,
+          width: r.width,
+          height: 1
+        },
+        face: "top",
+        element: shellEl
+      });
+    }
+    const dockEls = document.querySelectorAll(
+      ".desktop-mode-dock"
+    );
+    let dockIndex = 0;
+    for (const dockEl of Array.from(dockEls)) {
+      const r = dockEl.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) {
+        continue;
+      }
+      const placement = dockEl.getAttribute("data-desktop-mode-dock-placement") ?? "bottom";
+      const id = dockIndex === 0 ? "dock:edge" : `dock:edge:${dockIndex}`;
+      dockIndex++;
+      if (placement === "bottom") {
+        seed2.push({
+          id,
+          kind: "dock",
+          rect: { x: r.left, y: r.top, width: r.width, height: 1 },
+          face: "top",
+          element: dockEl
+        });
+      } else if (placement === "right") {
+        seed2.push({
+          id,
+          kind: "dock",
+          rect: { x: r.left, y: r.top, width: 1, height: r.height },
+          face: "left",
+          element: dockEl
+        });
+      } else {
+        seed2.push({
+          id,
+          kind: "dock",
+          rect: {
+            x: r.right - 1,
+            y: r.top,
+            width: 1,
+            height: r.height
+          },
+          face: "right",
+          element: dockEl
+        });
+      }
+    }
+    const widgetCards = document.querySelectorAll(
+      ".desktop-mode-widgets__card"
+    );
+    let widgetIndex = 0;
+    widgetCards.forEach((card) => {
+      const r = card.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) {
+        return;
+      }
+      const id = card.dataset.widgetId ?? String(widgetIndex++);
+      seed2.push({
+        id: `widget:${id}`,
+        kind: "widget",
+        rect: rectFromDom(r),
+        face: "top",
+        element: card
+      });
+    });
+    const filtered = applyFilters(HOOKS.WALLPAPER_SURFACES, seed2);
+    return Array.isArray(filtered) ? filtered : seed2;
+  }
+  function rectFromDom(r) {
+    return {
+      x: r.left,
+      y: r.top,
+      width: r.width,
+      height: r.height
+    };
+  }
+  const NODE_KEY_PROP = "__desktop_modeKeyedListKey";
+  const NODE_DATA_PROP = "__desktop_modeKeyedListData";
+  function getHostState(host) {
+    const cached = host.__desktop_modeKeyedList;
+    if (cached) {
+      return cached;
+    }
+    const fresh = { byKey: /* @__PURE__ */ new Map() };
+    host.__desktop_modeKeyedList = fresh;
+    return fresh;
+  }
+  function renderKeyedList(host, items, opts) {
+    const state2 = getHostState(host);
+    const prev = state2.byKey;
+    const next = /* @__PURE__ */ new Map();
+    const ordered = [];
+    const seenKeys = /* @__PURE__ */ new Set();
+    for (const item of items) {
+      const key = String(opts.keyOf(item));
+      if (seenKeys.has(key)) {
+        console.warn(
+          "[desktop-mode/keyed-list] duplicate key — only the last item with this key will render:",
+          key
+        );
+      }
+      seenKeys.add(key);
+      const reused = prev.get(key);
+      if (reused) {
+        const prevData = reused.data;
+        opts.updateItem?.(reused.el, item, prevData);
+        reused.data = item;
+        next.set(key, reused);
+        ordered.push(reused.el);
+        continue;
+      }
+      const el = opts.buildItem(item);
+      el[NODE_KEY_PROP] = key;
+      el[NODE_DATA_PROP] = item;
+      next.set(key, { el, data: item });
+      ordered.push(el);
+    }
+    for (const [key, entry] of prev) {
+      if (!next.has(key)) {
+        entry.el.remove();
+      }
+    }
+    for (let i = 0; i < ordered.length; i++) {
+      const desired = ordered[i];
+      const live = host.children[i];
+      if (live === desired) {
+        continue;
+      }
+      host.insertBefore(desired, live ?? null);
+    }
+    state2.byKey = next;
+  }
+  function clearKeyedList(host) {
+    const cached = host.__desktop_modeKeyedList;
+    if (!cached) {
+      return;
+    }
+    for (const entry of cached.byKey.values()) {
+      entry.el.remove();
+    }
+    cached.byKey.clear();
+    delete host.__desktop_modeKeyedList;
+  }
+  function createInfiniteList(options) {
+    const {
+      root,
+      fetchPage,
+      getId,
+      renderItem,
+      rootMargin = "200px",
+      initialCursor = null,
+      onLoadingChange = () => void 0,
+      onError = (err) => {
+        if (typeof console !== "undefined") {
+          console.error("[desktop-mode] createInfiniteList:", err);
+        }
+      }
+    } = options;
+    let sentinel = options.sentinel ?? null;
+    if (!sentinel) {
+      sentinel = document.createElement("div");
+      sentinel.dataset.wpdInfiniteListSentinel = "";
+      sentinel.style.height = "1px";
+      root.appendChild(sentinel);
+    }
+    const seen = /* @__PURE__ */ new Set();
+    let cursor = initialCursor;
+    let hasMoreInternal = true;
+    let loading = false;
+    let controller = null;
+    let renderedCount = 0;
+    let destroyed = false;
+    let observer = null;
+    const setLoading = (next) => {
+      if (loading === next) {
+        return;
+      }
+      loading = next;
+      try {
+        onLoadingChange(next);
+      } catch (err) {
+        onError(err);
+      }
+    };
+    const detachObserver = () => {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+    };
+    const ensureObserver = () => {
+      if (observer || !sentinel || destroyed) {
+        return;
+      }
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              void loadMore();
+            }
+          }
+        },
+        { rootMargin }
+      );
+      observer.observe(sentinel);
+    };
+    const loadMore = async () => {
+      if (destroyed || loading || !hasMoreInternal) {
+        return;
+      }
+      setLoading(true);
+      controller = new AbortController();
+      const localController = controller;
+      try {
+        const page = await fetchPage(cursor, localController.signal);
+        if (destroyed || localController !== controller) {
+          return;
+        }
+        let appended = 0;
+        const frag = document.createDocumentFragment();
+        for (const item of page.items ?? []) {
+          const key = String(getId(item));
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          const el = renderItem(item, renderedCount + appended);
+          frag.appendChild(el);
+          appended++;
+        }
+        if (appended > 0) {
+          if (sentinel && sentinel.parentNode === root) {
+            root.insertBefore(frag, sentinel);
+          } else {
+            root.appendChild(frag);
+          }
+          renderedCount += appended;
+        }
+        cursor = page.nextCursor ?? null;
+        if (!cursor) {
+          hasMoreInternal = false;
+          detachObserver();
+        }
+      } catch (err) {
+        if (err?.name === "AbortError") {
+          return;
+        }
+        onError(err);
+      } finally {
+        if (localController === controller) {
+          setLoading(false);
+          controller = null;
+        }
+      }
+    };
+    const reset = () => {
+      if (destroyed) {
+        return;
+      }
+      controller?.abort();
+      controller = null;
+      seen.clear();
+      cursor = initialCursor;
+      hasMoreInternal = true;
+      renderedCount = 0;
+      const sentinelInRoot = sentinel && sentinel.parentNode === root;
+      while (root.firstChild) {
+        root.removeChild(root.firstChild);
+      }
+      if (sentinelInRoot && sentinel) {
+        root.appendChild(sentinel);
+      }
+      setLoading(false);
+      ensureObserver();
+      void loadMore();
+    };
+    const destroy = () => {
+      if (destroyed) {
+        return;
+      }
+      destroyed = true;
+      detachObserver();
+      controller?.abort();
+      controller = null;
+      if (!options.sentinel && sentinel && sentinel.parentNode === root) {
+        root.removeChild(sentinel);
+      }
+      sentinel = null;
+      setLoading(false);
+    };
+    ensureObserver();
+    void loadMore();
+    return {
+      reset,
+      loadMore,
+      hasMore: () => hasMoreInternal,
+      isLoading: () => loading,
+      destroy
+    };
+  }
+  const POPUP_DEFAULT_WIDTH = 520;
+  const POPUP_DEFAULT_HEIGHT = 720;
+  const POPUP_CLOSE_POLL_MS = 500;
+  function startOAuth(service, options = {}) {
+    if (typeof service !== "string" || service === "") {
+      return Promise.reject(
+        new Error("[desktop-mode] startOAuth requires a non-empty service slug.")
+      );
+    }
+    const restRoot = readRestRoot$1();
+    const restNonce = readRestNonce$1();
+    return trackedFetch$1(
+      joinRestUrl(restRoot, "desktop-mode/v1/oauth/start"),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": restNonce ?? ""
+        },
+        body: JSON.stringify({ service })
+      },
+      { source: "desktop-mode/oauth-start" }
+    ).then(async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(
+          `[desktop-mode] OAuth start failed (${res.status}): ${text}`
+        );
+      }
+      return await res.json();
+    }).then((startBody) => openPopupAndWait(startBody, service, options));
+  }
+  function openPopupAndWait(body, service, options) {
+    return new Promise((resolve2, reject) => {
+      const width = options.width ?? POPUP_DEFAULT_WIDTH;
+      const height = options.height ?? POPUP_DEFAULT_HEIGHT;
+      const left = Math.max(0, Math.floor((window.screen.width - width) / 2));
+      const top = Math.max(0, Math.floor((window.screen.height - height) / 2));
+      const features = [
+        `width=${width}`,
+        `height=${height}`,
+        `left=${left}`,
+        `top=${top}`,
+        "menubar=no",
+        "toolbar=no",
+        "location=yes",
+        "status=no",
+        "resizable=yes",
+        "scrollbars=yes"
+      ].join(",");
+      const popup = window.open(
+        body.authorize_url,
+        `desktop-mode-oauth-${service}`,
+        features
+      );
+      if (!popup) {
+        reject(
+          new Error(
+            "[desktop-mode] OAuth popup blocked. Tell users to allow popups for this site."
+          )
+        );
+        return;
+      }
+      const expectedOrigin = window.location.origin;
+      let pollTimer = null;
+      let detached = false;
+      const cleanup = () => {
+        if (detached) {
+          return;
+        }
+        detached = true;
+        window.removeEventListener("message", onMessage);
+        if (pollTimer !== null) {
+          window.clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      };
+      const onMessage = (e) => {
+        if (e.origin !== expectedOrigin) {
+          return;
+        }
+        const data = e.data;
+        if (!data || data.type !== "desktop-mode-oauth-callback") {
+          return;
+        }
+        const payload = data.payload;
+        cleanup();
+        if (payload && payload.ok) {
+          resolve2(payload);
+        } else {
+          const reason = payload?.reason ?? "unknown";
+          const message = payload?.message ?? "OAuth flow failed";
+          const err = new Error(
+            `[desktop-mode] startOAuth(${service}) failed: ${reason} — ${message}`
+          );
+          err.cause = payload;
+          reject(err);
+        }
+      };
+      window.addEventListener("message", onMessage);
+      pollTimer = window.setInterval(() => {
+        if (popup.closed) {
+          cleanup();
+          reject(
+            new Error(
+              `[desktop-mode] startOAuth(${service}) cancelled — popup closed before completing.`
+            )
+          );
+        }
+      }, POPUP_CLOSE_POLL_MS);
+    });
+  }
+  function readDesktopConfig() {
+    return window.desktopModeConfig ?? {};
+  }
+  function readRestRoot$1() {
+    const root = readDesktopConfig().restRoot;
+    if (typeof root === "string" && root !== "") {
+      return root;
+    }
+    return `${window.location.origin}/wp-json/`;
+  }
+  function readRestNonce$1() {
+    const nonce = readDesktopConfig().restNonce;
+    return typeof nonce === "string" && nonce !== "" ? nonce : null;
+  }
+  const RESERVED_NAMESPACE_KEYS = /* @__PURE__ */ new Set([
+    "windowManager",
+    "dock",
+    "taskbar",
+    "icons",
+    "saveSession",
+    "hooks",
+    "HOOKS",
+    "isActive",
+    "registerWallpaper",
+    "registerWidget",
+    "widgetLayer",
+    "widgets",
+    "registerSystemTile",
+    "registerWindow",
+    "openWindow",
+    "cloneTemplate",
+    "onWindow",
+    "loadVendorScript",
+    "getWallpaperSurfaces",
+    "registerModule",
+    "loadModules",
+    "whenReady",
+    "ready",
+    "isReady",
+    "setDefaultWindow",
+    "refreshMenu",
+    "config",
+    "ai",
+    "dragBridge",
+    "dragManager",
+    "registerCommand",
+    "unregisterCommand",
+    "listCommands",
+    "registerDestructiveAdminAction",
+    "unregisterDestructiveAdminAction",
+    "listDestructiveAdminActions",
+    "registerSettingsTab",
+    "unregisterSettingsTab",
+    "listSettingsTabs",
+    "registerDockRailRenderer",
+    "unregisterDockRailRenderer",
+    "listDockRailRenderers",
+    "openOsSettings",
+    "getOsSettings",
+    "subscribeOsSettings",
+    "updateOsSettings",
+    "deriveWindowId",
+    "listSystemTiles",
+    "getSystemTile",
+    "getMenuItems",
+    "renderIcon",
+    "applyTileClasses",
+    "applyTileElement",
+    "applyTileTooltip",
+    "dispatchTileRendered",
+    "isDockElement",
+    "registerDockSelector",
+    "registerTitleBarButton",
+    "unregisterTitleBarButton",
+    "listTitleBarButtons",
+    "registerWindowTheme",
+    "unregisterWindowTheme",
+    "listWindowThemes",
+    "applyWindowTheme",
+    "registerWindowControl",
+    "unregisterWindowControl",
+    "listWindowControls",
+    "applyWindowControls",
+    "registerWindowSlot",
+    "unregisterWindowSlot",
+    "listWindowSlots",
+    "applyWindowSlot",
+    "registerWindowNotice",
+    "unregisterWindowNotice",
+    "listWindowNotices",
+    "dismissWindowNotice",
+    "undismissWindowNotice",
+    "registerWindowChrome",
+    "unregisterWindowChrome",
+    "listWindowChromes",
+    "applyWindowChrome",
+    "connect",
+    "broadcast",
+    "subscribe",
+    "registerPalette",
+    "unregisterPalette",
+    "listPalettes",
+    "openPalette",
+    "devtools",
+    "createSharedStore",
+    "presence",
+    "activity",
+    "heartbeat",
+    "showToast",
+    "renderKeyedList",
+    "clearKeyedList",
+    "registerNamespace",
+    "notify",
+    "pwa",
+    "getWindowConfig",
+    "debug",
+    "fetch"
+  ]);
+  function buildPublicApi(deps2) {
+    const {
+      manager,
+      dock,
+      layoutDispatcher,
+      osSettings,
+      iconsApi: iconsApi2,
+      filesApi: filesApi2,
+      saveSession,
+      widgetLayer,
+      registerWindow,
+      openWindowById,
+      openNewWindowById,
+      placeSystemTile,
+      setDefaultWindow,
+      refreshMenu,
+      openOsSettings,
+      aiAssistant,
+      dragBridge,
+      dragManager,
+      connect,
+      config
+    } = deps2;
+    const desktopApi = {
+      windowManager: manager,
+      dock,
+      sideDock: layoutDispatcher?.getSide() ?? null,
+      desktopLayout: osSettings.getOsSettingsSnapshot().desktopLayout,
+      icons: iconsApi2,
+      files: filesApi2,
+      confirm: wpdConfirm,
+      saveSession,
+      hooks: rawHooks(),
+      HOOKS,
+      isActive: () => !!document.getElementById("desktop-mode-shell"),
+      registerWallpaper: (def) => {
+        register$2(def);
+        osSettings.apply();
+      },
+      registerWidget: (def) => {
+        register(def);
+      },
+      widgetLayer,
+      widgets: {
+        redock: (id) => {
+          widgetLayer?.redock(id);
+        }
+      },
+      loadVendorScript,
+      getWallpaperSurfaces: () => collectWallpaperSurfaces(manager),
+      registerWindow,
+      openWindow: openWindowById,
+      openNewWindow: openNewWindowById,
+      fetch: (input, requestInit, opts) => trackedFetch(manager, input, requestInit, opts),
+      repaintLoadingOverlays,
+      cloneTemplate,
+      onWindow,
+      createInfiniteList,
+      startOAuth,
+      registerSystemTile: (item) => {
+        placeSystemTile(item);
+        doAction(HOOKS.DOCK_ITEM_APPENDED, { id: item.id });
+      },
+      registerModule,
+      loadModules,
+      whenReady,
+      ready: whenReady,
+      isReady,
+      setDefaultWindow,
+      refreshMenu,
+      config,
+      ai: aiAssistant,
+      dragBridge,
+      dragManager,
+      registerCommand,
+      unregisterCommand,
+      listCommands,
+      registerDestructiveAdminAction,
+      unregisterDestructiveAdminAction,
+      listDestructiveAdminActions,
+      registerSettingsTab,
+      unregisterSettingsTab,
+      listSettingsTabs,
+      registerDockRailRenderer: register$1,
+      unregisterDockRailRenderer: unregister$1,
+      listDockRailRenderers: list,
+      openOsSettings,
+      getOsSettings: () => osSettings.getOsSettingsSnapshot(),
+      subscribeOsSettings: (cb) => osSettings.subscribeOsSettings(cb),
+      updateOsSettings: (patch, opts = {}) => {
+        if (typeof patch.wallpaper === "string") {
+          osSettings.state.wallpaper = patch.wallpaper;
+        }
+        if (typeof patch.accent === "string") {
+          osSettings.state.accent = patch.accent;
+        }
+        if (typeof patch.dockSize === "string") {
+          osSettings.state.dockSize = patch.dockSize;
+        }
+        if (typeof patch.desktopLayout === "string") {
+          osSettings.state.desktopLayout = patch.desktopLayout;
+        }
+        if (typeof patch.dockRailRenderer === "string") {
+          osSettings.state.dockRailRenderer = patch.dockRailRenderer;
+        }
+        if (patch.ai && typeof patch.ai === "object") {
+          osSettings.state.ai = { ...osSettings.state.ai, ...patch.ai };
+        }
+        if (typeof patch.nativePostsEnabled === "boolean") {
+          osSettings.state.nativePostsEnabled = patch.nativePostsEnabled;
+        }
+        if (typeof patch.nativePagesEnabled === "boolean") {
+          osSettings.state.nativePagesEnabled = patch.nativePagesEnabled;
+        }
+        if (typeof patch.nativeUsersEnabled === "boolean") {
+          osSettings.state.nativeUsersEnabled = patch.nativeUsersEnabled;
+        }
+        if (typeof patch.nativePluginsEnabled === "boolean") {
+          osSettings.state.nativePluginsEnabled = patch.nativePluginsEnabled;
+        }
+        if (typeof patch.nativeCommentsEnabled === "boolean") {
+          osSettings.state.nativeCommentsEnabled = patch.nativeCommentsEnabled;
+        }
+        if (typeof patch.foldersSharingEnabled === "boolean") {
+          osSettings.state.foldersSharingEnabled = patch.foldersSharingEnabled;
+        }
+        if (Array.isArray(patch.nativePostsHiddenColumns)) {
+          osSettings.state.nativePostsHiddenColumns = patch.nativePostsHiddenColumns.filter(
+            (v) => typeof v === "string" && v !== ""
+          ).slice(0, 32);
+        }
+        if (patch.itemVisibility && typeof patch.itemVisibility === "object") {
+          const allowed = ["both", "dock", "desktop", "hidden"];
+          const next = {};
+          for (const [k, v] of Object.entries(
+            patch.itemVisibility
+          )) {
+            if (typeof k !== "string" || k === "") {
+              continue;
+            }
+            if (typeof v !== "string" || !allowed.includes(v)) {
+              continue;
+            }
+            next[k] = v;
+          }
+          osSettings.state.itemVisibility = next;
+        }
+        if (Array.isArray(patch.dockOrder)) {
+          osSettings.state.dockOrder = patch.dockOrder.filter(
+            (v) => typeof v === "string" && v !== ""
+          ).slice(0, 256);
+        }
+        if (patch.dockPromotedPositions && typeof patch.dockPromotedPositions === "object") {
+          const MAX_COORD = 1e5;
+          const next = {};
+          for (const [k, v] of Object.entries(
+            patch.dockPromotedPositions
+          )) {
+            if (typeof k !== "string" || k === "") {
+              continue;
+            }
+            if (!v || typeof v !== "object") {
+              continue;
+            }
+            const pos = v;
+            if (typeof pos.x !== "number" || typeof pos.y !== "number" || !Number.isFinite(pos.x) || !Number.isFinite(pos.y) || Math.abs(pos.x) > MAX_COORD || Math.abs(pos.y) > MAX_COORD) {
+              continue;
+            }
+            next[k] = { x: pos.x, y: pos.y };
+            if (Object.keys(next).length >= 256) {
+              break;
+            }
+          }
+          osSettings.state.dockPromotedPositions = next;
+        }
+        osSettings.save(opts);
+        if (patch.itemVisibility || patch.dockOrder) {
+          layoutDispatcher?.refresh();
+        }
+      },
+      deriveWindowId: (url, overrideAdminUrl) => deriveWindowId(url, overrideAdminUrl ?? config.adminUrl),
+      listSystemTiles: () => layoutDispatcher?.listSystemTiles() ?? [],
+      getSystemTile: (id) => layoutDispatcher?.getSystemTile(id) ?? null,
+      getMenuItems: () => layoutDispatcher?.getMenuItems() ?? [],
+      renderIcon,
+      applyTileClasses,
+      applyTileElement,
+      applyTileTooltip,
+      dispatchTileRendered,
+      isDockElement,
+      registerDockSelector,
+      registerTitleBarButton,
+      unregisterTitleBarButton,
+      listTitleBarButtons,
+      registerWindowTheme,
+      unregisterWindowTheme,
+      listWindowThemes,
+      applyWindowTheme: (windowId, override) => {
+        const win = manager.getById(windowId);
+        if (!win) {
+          return;
+        }
+        win.setAppearanceTheme(override);
+      },
+      registerWindowControl,
+      unregisterWindowControl,
+      listWindowControls,
+      applyWindowControls: (windowId, override) => {
+        const win = manager.getById(windowId);
+        if (!win) {
+          return;
+        }
+        win.setAppearanceControls(override);
+      },
+      registerWindowSlot,
+      unregisterWindowSlot,
+      listWindowSlots,
+      applyWindowSlot: (windowId, slot, slotConfig) => {
+        const win = manager.getById(windowId);
+        if (!win) {
+          return;
+        }
+        win.setAppearanceSlot(slot, slotConfig);
+      },
+      registerWindowNotice,
+      unregisterWindowNotice,
+      listWindowNotices,
+      dismissWindowNotice,
+      undismissWindowNotice,
+      registerWindowChrome,
+      unregisterWindowChrome,
+      listWindowChromes,
+      applyWindowChrome: (windowId, chromeId) => {
+        const win = manager.getById(windowId);
+        if (!win) {
+          return;
+        }
+        win.setAppearanceChrome(chromeId);
+      },
+      connect,
+      broadcast,
+      subscribe: subscribe$2,
+      registerPalette,
+      unregisterPalette,
+      listPalettes,
+      openPalette: openPaletteOnly,
+      devtools,
+      createSharedStore,
+      presence: presenceApi,
+      activity,
+      heartbeat,
+      showToast,
+      notify: notify$3,
+      pwa: {
+        promptInstall,
+        undismissInstallHint,
+        getState: getPwaState,
+        subscribe: subscribePwaState,
+        requestNotificationPermission,
+        getNotificationPermission
+      },
+      renderKeyedList,
+      clearKeyedList,
+      registerNamespace: (name, api) => {
+        if (typeof name !== "string" || name === "") {
+          console.warn(
+            "[desktop-mode] registerNamespace: name must be a non-empty string"
+          );
+          return;
+        }
+        if (!api || typeof api !== "object") {
+          console.warn(
+            `[desktop-mode] registerNamespace("${name}"): api must be an object`
+          );
+          return;
+        }
+        if (RESERVED_NAMESPACE_KEYS.has(name)) {
+          console.warn(
+            `[desktop-mode] registerNamespace("${name}"): name is reserved by the shell — pick a plugin-specific key`
+          );
+          return;
+        }
+        desktopApi[name] = api;
+      },
+      getWindowConfig: (id) => {
+        const store2 = window.desktopModeWindowConfig;
+        if (!store2 || typeof store2 !== "object") {
+          return void 0;
+        }
+        const value = store2[id];
+        return value === void 0 ? void 0 : value;
+      },
+      debug: {
+        window: (id) => {
+          const entry = (config.nativeWindows ?? []).find(
+            (e) => e.id === id
+          );
+          if (!entry) {
+            return null;
+          }
+          const url = entry.scriptUrl || "";
+          let loadPath = "unknown";
+          let tagInDom = false;
+          if (url) {
+            const lazyTag = document.querySelector(
+              `script[data-desktop-mode-vendor="${url.replace(/"/g, '\\"')}"]`
+            );
+            if (lazyTag) {
+              loadPath = "lazy";
+              tagInDom = true;
+            } else {
+              const eagerTag = Array.from(
+                document.querySelectorAll(
+                  "script[src]"
+                )
+              ).find((s) => s.src === url);
+              if (eagerTag) {
+                loadPath = "eager";
+                tagInDom = true;
+              }
+            }
+          }
+          const cfgStore = window.desktopModeWindowConfig;
+          const configPresent = !!(cfgStore && typeof cfgStore === "object" && Object.prototype.hasOwnProperty.call(cfgStore, id));
+          return {
+            id,
+            scriptHandle: entry.scriptHandle || "",
+            scriptUrl: url,
+            loadPath,
+            tagInDom,
+            configPresent,
+            extras: {
+              hasTranslations: !!entry.scriptTranslations,
+              l10nCount: (entry.scriptL10n ?? []).length,
+              beforeCount: (entry.scriptBefore ?? []).length,
+              afterCount: (entry.scriptAfter ?? []).length
+            }
+          };
+        }
+      }
+    };
+    return desktopApi;
+  }
+  function installPublicApi(api) {
+    if (!window.wp) {
+      window.wp = {};
+    }
+    if (!window.wp.desktop) {
+      window.wp.desktop = api;
+      return;
+    }
+    Object.assign(
+      window.wp.desktop,
+      api
+    );
+  }
+  const store$1 = createSharedStore("desktop-mode/layout", () => ({
+    // Default mirrors the OsSettingsSnapshot default; the shell
+    // re-publishes the persisted value as soon as it boots.
+    layout: "classic"
+  }));
+  function setCurrentLayout(layout) {
+    if (store$1.state.layout === layout) {
+      return;
+    }
+    store$1.state.layout = layout;
+    store$1.notify();
+  }
+  class DesktopFile {
+    constructor(shape) {
+      this.shape = shape;
+    }
+    /** Title shown under the tile. Defaults to `shape.title`. */
+    title() {
+      return this.shape.title;
+    }
+    /** Dashicon class or data URI. Defaults to `shape.icon`. */
+    icon() {
+      return this.shape.icon;
+    }
+    /** Optional preview-image URL. Defaults to `shape.previewUrl`. */
+    previewUrl() {
+      return this.shape.previewUrl;
+    }
+    /** Reference (id, URL, …). */
+    ref() {
+      return this.shape.ref;
+    }
+    /** Whether the underlying entity still exists. */
+    exists() {
+      return this.shape.exists;
+    }
+  }
+  class DefaultDesktopFile extends DesktopFile {
+    constructor(shape, typeSlug) {
+      super(shape);
+      this.typeSlug = typeSlug;
+    }
+    type() {
+      return this.typeSlug;
+    }
+  }
+  const seed$1 = /* @__PURE__ */ new Map();
+  const listeners$1 = /* @__PURE__ */ new Set();
+  function registerType(def) {
+    if (!def.type) {
+      throw new Error("[desktop-mode] registerType: `type` is required.");
+    }
+    if (!def.label) {
+      throw new Error("[desktop-mode] registerType: `label` is required.");
+    }
+    seed$1.set(def.type, {
+      type: def.type,
+      label: def.label,
+      sort: typeof def.sort === "number" ? def.sort : 100,
+      DesktopFile: def.DesktopFile
+    });
+    doAction("desktop-mode.files.type-registered", def.type, def);
+    notify$1();
+  }
+  function unregisterType(typeSlug) {
+    if (seed$1.delete(typeSlug)) {
+      doAction("desktop-mode.files.type-unregistered", typeSlug);
+      notify$1();
+    }
+  }
+  function getType(typeSlug) {
+    const entry = seed$1.get(typeSlug);
+    return entry ? entry : null;
+  }
+  function getTypes() {
+    const list2 = Array.from(seed$1.values()).slice();
+    const filtered = applyFilters(
+      "desktop-mode.files.types",
+      list2
+    );
+    const arr = Array.isArray(filtered) ? filtered : list2;
+    arr.sort((a, b) => {
+      if (a.sort !== b.sort) {
+        return a.sort - b.sort;
+      }
+      return a.label.localeCompare(b.label);
+    });
+    return arr;
+  }
+  function resolve(shape) {
+    const entry = seed$1.get(shape.type);
+    if (entry?.DesktopFile) {
+      return new entry.DesktopFile(shape);
+    }
+    return new DefaultDesktopFile(shape, shape.type);
+  }
+  function subscribe(cb) {
+    listeners$1.add(cb);
+    return () => listeners$1.delete(cb);
+  }
+  function notify$1() {
+    for (const cb of listeners$1) {
+      try {
+        cb();
+      } catch (err) {
+        console.error("[desktop-mode] files registry subscriber threw:", err);
+      }
+    }
+  }
+  const seed = /* @__PURE__ */ new Map();
+  const listeners = /* @__PURE__ */ new Set();
+  let userAssociations = {};
+  function setUserAssociations(map) {
+    userAssociations = { ...map };
+    notify();
+  }
+  function getUserAssociations() {
+    return { ...userAssociations };
+  }
+  function registerOpener(def) {
+    if (!def.id) {
+      throw new Error("[desktop-mode] registerOpener: `id` is required.");
+    }
+    if (!def.label) {
+      throw new Error("[desktop-mode] registerOpener: `label` is required.");
+    }
+    if (!Array.isArray(def.types) || def.types.length === 0) {
+      throw new Error("[desktop-mode] registerOpener: `types` must be a non-empty array.");
+    }
+    if (!def.handler || typeof def.handler !== "object") {
+      throw new Error("[desktop-mode] registerOpener: `handler` is required.");
+    }
+    seed.set(def.id, {
+      id: def.id,
+      label: def.label,
+      types: def.types.slice(),
+      isDefault: !!def.isDefault,
+      sort: typeof def.sort === "number" ? def.sort : 100,
+      handler: def.handler
+    });
+    doAction("desktop-mode.files.opener-registered", def.id, def);
+    notify();
+  }
+  function unregisterOpener(id) {
+    if (seed.delete(id)) {
+      doAction("desktop-mode.files.opener-unregistered", id);
+      notify();
+    }
+  }
+  function getOpener(id) {
+    return seed.get(id) ?? null;
+  }
+  function getOpeners() {
+    const list2 = Array.from(seed.values()).slice();
+    const filtered = applyFilters(
+      "desktop-mode.files.openers",
+      list2
+    );
+    const arr = Array.isArray(filtered) ? filtered : list2;
+    arr.sort((a, b) => {
+      const sa = typeof a.sort === "number" ? a.sort : 100;
+      const sb = typeof b.sort === "number" ? b.sort : 100;
+      if (sa !== sb) {
+        return sa - sb;
+      }
+      return a.label.localeCompare(b.label);
+    });
+    return arr;
+  }
+  function getOpenersForType(type) {
+    return getOpeners().filter((e) => e.types.includes(type));
+  }
+  function resolveOpener(type) {
+    const candidates = getOpenersForType(type);
+    if (candidates.length === 0) {
+      return null;
+    }
+    const override = userAssociations[type];
+    let resolved = null;
+    if (override) {
+      resolved = candidates.find((e) => e.id === override) ?? null;
+    }
+    if (!resolved) {
+      resolved = candidates.find((e) => e.isDefault) ?? null;
+    }
+    if (!resolved) {
+      resolved = candidates[0];
+    }
+    const filtered = applyFilters(
+      "desktop-mode.files.resolve-opener",
+      resolved,
+      type
+    );
+    return filtered ?? null;
+  }
+  function subscribeOpeners(cb) {
+    listeners.add(cb);
+    return () => listeners.delete(cb);
+  }
+  function notify() {
+    for (const cb of listeners) {
+      try {
+        cb();
+      } catch (err) {
+        console.error("[desktop-mode] openers subscriber threw:", err);
+      }
+    }
+  }
+  let deps$1 = null;
+  function installOpenDeps(next) {
+    deps$1 = next;
+  }
+  async function openFile(file, ctx) {
+    if (!deps$1) {
+      console.warn(
+        "[desktop-mode] wp.desktop.files.open() called before the shell installed open deps. The file will not open."
+      );
+      return false;
+    }
+    const opener = resolveOpener(file.type());
+    if (!opener) {
+      doAction("desktop-mode.files.open-failed", {
+        reason: "no-opener",
+        type: file.type(),
+        ref: file.ref()
+      });
+      return false;
+    }
+    doAction("desktop-mode.files.opening", { file, openerId: opener.id });
+    try {
+      const handler = opener.handler;
+      if (handler.kind === "url") {
+        const url = await handler.url(file);
+        if (!url) {
+          return false;
+        }
+        const id = handler.windowId ? handler.windowId(file) : deps$1.deriveWindowId(url);
+        const title = handler.title ? handler.title(file) : file.title();
+        const icon = file.icon();
+        const opened = deps$1.openUrl({ id, url, title, icon });
+        doAction("desktop-mode.files.opened", { file, openerId: opener.id, kind: "url" });
+        return opened;
+      }
+      if (handler.kind === "window") {
+        const config = handler.config ? handler.config(file) : void 0;
+        const opened = deps$1.openNativeWindow(handler.windowId, config);
+        doAction("desktop-mode.files.opened", { file, openerId: opener.id, kind: "window" });
+        return opened;
+      }
+      await handler.open(file, ctx);
+      doAction("desktop-mode.files.opened", { file, openerId: opener.id, kind: "js" });
+      return true;
+    } catch (err) {
+      doAction("desktop-mode.files.open-failed", {
+        reason: "handler-threw",
+        type: file.type(),
+        ref: file.ref(),
+        openerId: opener.id,
+        error: err
+      });
+      console.error("[desktop-mode] file opener threw:", err);
+      return false;
+    }
+  }
+  function registerBuiltInFileTypes() {
+    registerType({ type: "shortcut", label: "Plugin shortcut", sort: 1 });
+    registerType({ type: "folder", label: "Folder", sort: 5 });
+    registerType({ type: "post", label: "Post", sort: 10 });
+    registerType({ type: "attachment", label: "Media", sort: 20 });
+    registerType({ type: "user", label: "User", sort: 30 });
+    registerType({ type: "term", label: "Taxonomy term", sort: 40 });
+    registerType({ type: "comment", label: "Comment", sort: 50 });
+    registerType({ type: "bookmark", label: "Bookmark", sort: 60 });
+    registerType({ type: "link", label: "Web link", sort: 70 });
+    registerType({ type: "embed", label: "Embedded web window", sort: 80 });
+  }
+  let deps = null;
+  function installRestDeps(next) {
+    deps = next;
+  }
+  function ensureDeps() {
+    if (!deps) {
+      throw new Error("[desktop-mode] files REST client called before installRestDeps().");
+    }
+    return deps;
+  }
+  class FilesConflictError extends Error {
+    constructor(detail) {
+      super(
+        `Row was changed by ${detail.actor.name || "another session"} (parent="${detail.current.parentName}")`
+      );
+      this.name = "FilesConflictError";
+      this.status = 409;
+      this.detail = detail;
+    }
+  }
+  async function call(path, init2) {
+    const { baseUrl, nonce } = ensureDeps();
+    const url = joinRestUrl(baseUrl, path);
+    const headers = new Headers(init2.headers ?? {});
+    headers.set("X-WP-Nonce", nonce);
+    if (init2.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const res = await trackedFetch$1(
+      url,
+      { ...init2, headers, credentials: "same-origin" },
+      { source: "desktop-mode/files" }
+    );
+    const text = await res.text();
+    let body = null;
+    let parseError = null;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch (e) {
+        body = null;
+        parseError = e;
+      }
+    }
+    if (!res.ok) {
+      if (res.status === 409) {
+        const data = body?.data?.data ?? body?.data;
+        if (data && typeof data === "object") {
+          throw new FilesConflictError(data);
+        }
+      }
+      const err = body;
+      throw new Error(
+        `[desktop-mode] files REST ${res.status}: ${err?.code ?? ""} ${err?.message ?? ""}`.trim()
+      );
+    }
+    if (null === body) {
+      if (parseError && text) {
+        const head = text.slice(0, 120).replace(/\s+/g, " ");
+        throw new Error(
+          `[desktop-mode] files REST ${res.status} returned non-JSON body — ${parseError.message}. First 120 chars: ${head}`
+        );
+      }
+      throw new Error(
+        `[desktop-mode] files REST ${res.status}: empty or unparseable body.`
+      );
+    }
+    return body;
+  }
+  function listPlacements(folderId = 0) {
+    return call(
+      `/placements?folder=${encodeURIComponent(String(folderId))}`,
+      { method: "GET" }
+    );
+  }
+  function createPlacement(body) {
+    return call("/placements", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  }
+  function updatePlacement(id, body, ifMatchMs) {
+    const headers = {};
+    if (typeof ifMatchMs === "number" && ifMatchMs > 0) {
+      headers["If-Match"] = String(ifMatchMs);
+    }
+    return call(`/placements/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers
+    });
+  }
+  function deletePlacement(id) {
+    return call(`/placements/${id}`, { method: "DELETE" });
+  }
+  async function restoreTrashedItem(id, type) {
+    const { baseUrl, nonce } = ensureDeps();
+    const root = baseUrl.replace(/\/files\/?$/, "");
+    const url = `${root}/recycle-bin/restore`;
+    const res = await trackedFetch$1(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": nonce
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ items: [{ id, type }] })
+      },
+      { source: "desktop-mode/files" }
+    );
+    if (!res.ok) {
+      throw new Error(`[desktop-mode] restore ${res.status}`);
+    }
+    return await res.json();
+  }
+  function listFolders() {
+    return call("/folders", { method: "GET" });
+  }
+  function createFolder(body) {
+    return call("/folders", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  }
+  function updateFolder(id, body, ifMatchMs) {
+    const headers = {};
+    if (typeof ifMatchMs === "number" && ifMatchMs > 0) {
+      headers["If-Match"] = String(ifMatchMs);
+    }
+    return call(`/folders/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers
+    });
+  }
+  function deleteFolder(id) {
+    return call(`/folders/${id}`, { method: "DELETE" });
+  }
+  function saveAssociations(associations) {
+    return call("/associations", {
+      method: "PUT",
+      body: JSON.stringify({ associations })
+    });
+  }
+  function listShares(folderId) {
+    return call(`/folders/${folderId}/shares`, { method: "GET" });
+  }
+  function inviteShare(folderId, body) {
+    return call(`/folders/${folderId}/shares`, {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  }
+  function updateShareCapability(folderId, shareId, capability) {
+    return call(`/folders/${folderId}/shares/${shareId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ capability })
+    });
+  }
+  function revokeShare(folderId, shareId) {
+    return call(`/folders/${folderId}/shares/${shareId}`, {
+      method: "DELETE"
+    });
+  }
+  function acceptShare(folderId, shareId) {
+    return call(`/folders/${folderId}/shares/${shareId}/accept`, {
+      method: "POST"
+    });
+  }
+  function denyShare(folderId, shareId) {
+    return call(`/folders/${folderId}/shares/${shareId}/deny`, {
+      method: "POST"
+    });
+  }
+  function leaveShare(folderId) {
+    return call(`/folders/${folderId}/leave`, {
+      method: "POST"
+    });
+  }
+  function purgeFolderSharingTables() {
+    return call(
+      "/folder-sharing-tables/purge",
+      { method: "POST" }
+    );
+  }
+  const filesRest = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    FilesConflictError,
+    acceptShare,
+    createFolder,
+    createPlacement,
+    deleteFolder,
+    deletePlacement,
+    denyShare,
+    installRestDeps,
+    inviteShare,
+    leaveShare,
+    listFolders,
+    listPlacements,
+    listShares,
+    purgeFolderSharingTables,
+    restoreTrashedItem,
+    revokeShare,
+    saveAssociations,
+    updateFolder,
+    updatePlacement,
+    updateShareCapability
+  }, Symbol.toStringTag, { value: "Module" }));
+  const STORE_KEY = "desktop-mode/files";
+  function getFilesStore() {
+    return createSharedStore(STORE_KEY, () => ({
+      placementsByFolder: /* @__PURE__ */ new Map(),
+      folders: /* @__PURE__ */ new Map(),
+      hydratedFolders: /* @__PURE__ */ new Set()
+    }));
+  }
+  function fireChanged(detail) {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-files-changed", {
+        detail: { source: "local", ...detail }
+      })
+    );
+  }
+  function setFolderPlacements(folderId, placements) {
+    const store2 = getFilesStore();
+    const next = new Map(store2.state.placementsByFolder);
+    next.set(folderId, placements.slice());
+    const hydrated = new Set(store2.state.hydratedFolders);
+    hydrated.add(folderId);
+    store2.state = { ...store2.state, placementsByFolder: next, hydratedFolders: hydrated };
+    store2.notify();
+    fireChanged({ kind: "placements-set", folderId });
+  }
+  function upsertPlacement(placement, source = "local") {
+    if (!placement || typeof placement.id !== "number") {
+      console.warn(
+        "[desktop-mode] upsertPlacement called with a non-placement value; ignoring.",
+        placement
+      );
+      return;
+    }
+    const store2 = getFilesStore();
+    const next = new Map(store2.state.placementsByFolder);
+    for (const [folderId, list2] of next) {
+      const idx2 = list2.findIndex((p) => p && p.id === placement.id);
+      if (idx2 >= 0 && folderId !== placement.parentId) {
+        const copy = list2.filter(Boolean);
+        const removeAt = copy.findIndex((p) => p.id === placement.id);
+        if (removeAt >= 0) {
+          copy.splice(removeAt, 1);
+        }
+        next.set(folderId, copy);
+      }
+    }
+    const rawTarget = next.get(placement.parentId)?.slice() ?? [];
+    const target = rawTarget.filter(Boolean);
+    const idx = target.findIndex((p) => p.id === placement.id);
+    if (idx >= 0) {
+      target[idx] = placement;
+    } else {
+      target.push(placement);
+    }
+    next.set(placement.parentId, target);
+    store2.state = { ...store2.state, placementsByFolder: next };
+    store2.notify();
+    fireChanged({ kind: "placement-upserted", placementId: placement.id, folderId: placement.parentId, source });
+  }
+  function removePlacement(placementId, source = "local") {
+    const store2 = getFilesStore();
+    const next = new Map(store2.state.placementsByFolder);
+    let touchedFolder;
+    for (const [folderId, list2] of next) {
+      const idx = list2.findIndex((p) => p && p.id === placementId);
+      if (idx >= 0) {
+        const copy = list2.filter(Boolean).filter(
+          (p) => p.id !== placementId
+        );
+        next.set(folderId, copy);
+        touchedFolder = folderId;
+      }
+    }
+    if (touchedFolder === void 0) {
+      return;
+    }
+    store2.state = { ...store2.state, placementsByFolder: next };
+    store2.notify();
+    fireChanged({ kind: "placement-removed", placementId, folderId: touchedFolder, source });
+  }
+  function setFolders(folders) {
+    const store2 = getFilesStore();
+    const next = /* @__PURE__ */ new Map();
+    for (const f of folders) {
+      next.set(f.id, f);
+    }
+    store2.state = { ...store2.state, folders: next };
+    store2.notify();
+    fireChanged({ kind: "folders-set" });
+  }
+  function upsertFolder(folder, source = "local") {
+    const store2 = getFilesStore();
+    const next = new Map(store2.state.folders);
+    next.set(folder.id, folder);
+    store2.state = { ...store2.state, folders: next };
+    store2.notify();
+    fireChanged({ kind: "folder-upserted", folderRowId: folder.id, source });
+  }
+  function removeFolder(folderId, source = "local") {
+    const store2 = getFilesStore();
+    const folders = new Map(store2.state.folders);
+    folders.delete(folderId);
+    const placements = new Map(store2.state.placementsByFolder);
+    placements.delete(folderId);
+    store2.state = { ...store2.state, folders, placementsByFolder: placements };
+    store2.notify();
+    fireChanged({ kind: "folder-removed", folderRowId: folderId, source });
+  }
+  function subscribeFilesStore(cb) {
+    const store2 = getFilesStore();
+    const off = store2.subscribe(cb);
+    return off;
+  }
+  function getFilesState() {
+    return getFilesStore().getState();
+  }
+  const store = {
+    getState: getFilesState,
+    subscribe: subscribeFilesStore,
+    setFolderPlacements,
+    upsertPlacement,
+    upsertFolder,
+    removePlacement,
+    removeFolder
+  };
+  const styles$3 = css`:host{display:inline-block}`;
+  const styles$2 = css`:host{position:absolute;width:var( --wpd-ribbon-size,90px );height:var( --wpd-ribbon-size,90px );overflow:hidden;pointer-events:none;z-index:var( --wpd-ribbon-z,2 )}:host( [ hidden ] ){display:none}.banner{position:absolute;display:block;width:var( --wpd-ribbon-banner-width,140px );padding:var( --wpd-ribbon-padding,4px 0 );text-align:center;font:var( --wpd-ribbon-font,700 10px/1.4 var( --desktop-mode-font,system-ui ) );letter-spacing:var( --wpd-ribbon-tracking,0.06em );text-transform:uppercase;color:var( --wpd-ribbon-fg,#fff );background:var( --wpd-ribbon-bg,var( --wp-admin-theme-color,#2271b1 ) );box-shadow:var( --wpd-ribbon-shadow,0 2px 4px rgba( 0,0,0,0.2 ) )}:host(:not( [ placement ] ) ),:host( [ placement='top-end' ] ){inset-block-start:0;inset-inline-end:0}:host(:not( [ placement ] ) ) .banner,:host( [ placement='top-end' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host( [ placement='top-start' ] ){inset-block-start:0;inset-inline-start:0}:host( [ placement='top-start' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-end' ] ){inset-block-end:0;inset-inline-end:0}:host( [ placement='bottom-end' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-start' ] ){inset-block-end:0;inset-inline-start:0}:host( [ placement='bottom-start' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host(:not( [ placement ] ) ) .banner,:host-context( [ dir='rtl' ] ):host( [ placement='top-end' ] ) .banner{transform:rotate( -45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='top-start' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-end' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-start' ] ) .banner{transform:rotate( -45deg )}:host( [ tone='success' ] ) .banner{background:var( --wpd-ribbon-success,#1a7f37 )}:host( [ tone='warning' ] ) .banner{background:var( --wpd-ribbon-warning,#9a6700 )}:host( [ tone='danger' ] ) .banner{background:var( --wpd-ribbon-danger,#cf222e )}:host( [ tone='info' ] ) .banner{background:var( --wpd-ribbon-info,#0969da )}:host( [ tone='neutral' ] ) .banner{background:var( --wpd-ribbon-neutral,#57606a )}`;
+  const _WpdRibbon = class _WpdRibbon extends Component {
+    render() {
+      return html`<span class="banner" part="banner"><slot></slot></span>`;
+    }
+  };
+  _WpdRibbon.props = ["placement", "tone"];
+  _WpdRibbon.styles = [styles$2];
+  _WpdRibbon.help = {
+    title: "Ribbon",
+    summary: "45° corner ribbon. Wraps the top-end (default), top-start, bottom-end, or bottom-start corner of its positioned parent. The host owns clipping + rotation; consumers only set position-relative on the parent and drop a label inside.",
+    status: "experimental",
+    since: "0.20.0",
+    props: [
+      {
+        name: "placement",
+        type: '"top-end" | "top-start" | "bottom-end" | "bottom-start"',
+        description: "Which corner of the parent the ribbon hugs. Defaults to `top-end` (logical right in LTR, left in RTL)."
+      },
+      {
+        name: "tone",
+        type: '"primary" | "success" | "warning" | "danger" | "info" | "neutral"',
+        description: "Background color tone. Defaults to `primary` (the admin theme accent)."
+      }
+    ],
+    slots: [{ name: "(default)", description: "Ribbon label text. Keep short." }],
+    cssProps: [
+      { name: "--wpd-ribbon-size", default: "90px", description: "Square clipping window edge." },
+      { name: "--wpd-ribbon-banner-width", default: "140px", description: "Width of the rotated strip." },
+      { name: "--wpd-ribbon-banner-offset", default: "20px", description: "Distance from corner to strip center." },
+      { name: "--wpd-ribbon-banner-pull", default: "-36px", description: "How far the strip overhangs the clip edge." },
+      { name: "--wpd-ribbon-bg", default: "var(--wp-admin-theme-color, #2271b1)" },
+      { name: "--wpd-ribbon-fg", default: "#fff" },
+      { name: "--wpd-ribbon-shadow", default: "0 2px 4px rgba(0,0,0,0.2)" },
+      { name: "--wpd-ribbon-padding", default: "4px 0" },
+      { name: "--wpd-ribbon-font", default: "700 10px/1.4 system-ui" },
+      { name: "--wpd-ribbon-tracking", default: "0.06em" },
+      { name: "--wpd-ribbon-z", default: "2" }
+    ],
+    example: html`
+			<div
+				style="position: relative; width: 240px; height: 120px;
+				       border: 1px solid #ccc; border-radius: 8px;
+				       padding: 16px; box-sizing: border-box;"
+			>
+				<wpd-ribbon>Featured</wpd-ribbon>
+				Card body…
+			</div>
+		`
+  };
+  let WpdRibbon = _WpdRibbon;
+  defineComponent("wpd-ribbon", WpdRibbon);
+  const TILE_CLASS = "desktop-mode-file-tile";
+  const STATUS_LABEL = {
+    draft: "Draft",
+    pending: "Pending",
+    private: "Private",
+    future: "Scheduled"
+  };
+  function statusRibbonsEnabled() {
+    const get2 = window.wp?.desktop?.getOsSettings;
+    if (typeof get2 !== "function") {
+      return true;
+    }
+    try {
+      return get2()?.showPostStatusRibbons !== false;
+    } catch {
+      return true;
+    }
+  }
+  function getDragManager$1() {
+    const api = window.wp?.desktop?.dragManager;
+    return api ?? null;
+  }
+  const REACTIVE_PROPS = [
+    "type",
+    "ref",
+    "label",
+    "icon",
+    "thumbnail",
+    "kind",
+    "status",
+    "selected",
+    "missing",
+    "access-gated",
+    "drag-kind",
+    "drag-title",
+    "drag-icon"
+  ];
+  const _WpdTile = class _WpdTile extends Component {
+    constructor() {
+      super(...arguments);
+      this._pointerdownHandler = null;
+      this._keydownHandler = null;
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      if (!this._keydownHandler) {
+        this._keydownHandler = (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            this.click();
+          }
+        };
+        this.addEventListener("keydown", this._keydownHandler);
+      }
+      this._paint();
+    }
+    disconnectedCallback() {
+      if (this._pointerdownHandler) {
+        this.removeEventListener(
+          "pointerdown",
+          this._pointerdownHandler
+        );
+        this._pointerdownHandler = null;
+      }
+      if (this._keydownHandler) {
+        this.removeEventListener(
+          "keydown",
+          this._keydownHandler
+        );
+        this._keydownHandler = null;
+      }
+    }
+    /**
+     * Bypass the templated render loop. Lit-html's `render(template,
+     * root)` would wipe the host's light-DOM children every tick —
+     * including the visual / label / ribbon `_paint()` just
+     * inserted. We override `requestUpdate` directly so attribute
+     * changes call `_paint` (idempotent) without lit-html getting
+     * involved.
+     */
+    requestUpdate() {
+      if (!this.isConnected) {
+        return;
+      }
+      this._paint();
+    }
+    render() {
+      return html``;
+    }
+    _paint() {
+      const type = this.getAttribute("type") ?? "";
+      const ref = this.getAttribute("ref") ?? "";
+      const label = this.getAttribute("label") ?? "";
+      const icon = this.getAttribute("icon") ?? "";
+      const thumbnail = this.getAttribute("thumbnail") ?? "";
+      const kind = this.getAttribute("kind") ?? "entry";
+      const status = this.getAttribute("status") ?? "";
+      const selected = this.hasAttribute("selected");
+      const missing = this.hasAttribute("missing");
+      const accessGated = this.hasAttribute("access-gated");
+      const ownedClasses = [
+        TILE_CLASS,
+        `${TILE_CLASS}--folder`,
+        `${TILE_CLASS}--missing`,
+        `${TILE_CLASS}--access-gated`,
+        `${TILE_CLASS}--selected`
+      ];
+      for (const c of ownedClasses) {
+        this.classList.remove(c);
+      }
+      this.classList.add(TILE_CLASS);
+      if (kind === "folder") {
+        this.classList.add(`${TILE_CLASS}--folder`);
+      }
+      if (missing) {
+        this.classList.add(`${TILE_CLASS}--missing`);
+      }
+      if (accessGated) {
+        this.classList.add(`${TILE_CLASS}--access-gated`);
+      }
+      if (selected) {
+        this.classList.add(`${TILE_CLASS}--selected`);
+      }
+      this.dataset.fileType = type;
+      this.dataset.fileRef = ref;
+      if (kind) {
+        this.dataset.role = kind;
+      }
+      this.setAttribute("role", "listitem");
+      this.setAttribute("aria-label", label);
+      if (!this.hasAttribute("tabindex")) {
+        this.setAttribute("tabindex", "0");
+      }
+      const accessGatedTitle = "You don’t have permission to open this — ask the folder owner for access.";
+      if (accessGated) {
+        this.title = accessGatedTitle;
+        this.setAttribute("aria-disabled", "true");
+      } else {
+        this.removeAttribute("aria-disabled");
+        if (this.title === accessGatedTitle) {
+          this.removeAttribute("title");
+        }
+      }
+      const SLOTS = [
+        `${TILE_CLASS}__visual`,
+        `${TILE_CLASS}__label`,
+        `${TILE_CLASS}__lock`
+      ];
+      for (const cls of SLOTS) {
+        this.querySelectorAll(`:scope > .${cls}`).forEach(
+          (n) => n.remove()
+        );
+      }
+      this.querySelectorAll(":scope > wpd-ribbon").forEach(
+        (n) => n.remove()
+      );
+      const visual = document.createElement("span");
+      visual.className = `${TILE_CLASS}__visual`;
+      if (thumbnail) {
+        const img = document.createElement("img");
+        img.src = thumbnail;
+        img.alt = "";
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.className = `${TILE_CLASS}__preview`;
+        img.draggable = false;
+        visual.appendChild(img);
+      } else if (icon) {
+        const iconNode = renderIcon(icon, {
+          title: label,
+          className: `${TILE_CLASS}__icon`
+        });
+        visual.appendChild(iconNode);
+      }
+      this.appendChild(visual);
+      const labelNode = document.createElement("span");
+      labelNode.className = `${TILE_CLASS}__label`;
+      labelNode.textContent = label;
+      this.appendChild(labelNode);
+      if (accessGated) {
+        const lock = document.createElement("span");
+        lock.className = `${TILE_CLASS}__lock dashicons dashicons-lock`;
+        lock.setAttribute("aria-hidden", "true");
+        this.appendChild(lock);
+      }
+      if (status && status !== "publish" && STATUS_LABEL[status] && statusRibbonsEnabled()) {
+        const ribbon = document.createElement("wpd-ribbon");
+        ribbon.setAttribute("placement", "top-end");
+        ribbon.setAttribute("tone", ribbonToneFor(status));
+        ribbon.textContent = STATUS_LABEL[status];
+        this.appendChild(ribbon);
+      }
+      applyTileEntryStagger(this);
+      doAction("desktop-mode.tile.rendered", { tile: this });
+      this._wireDragOut();
+    }
+    _wireDragOut() {
+      if (this._pointerdownHandler) {
+        this.removeEventListener(
+          "pointerdown",
+          this._pointerdownHandler
+        );
+        this._pointerdownHandler = null;
+      }
+      const dragKind = this.getAttribute("drag-kind");
+      if (!dragKind) {
+        return;
+      }
+      const handler = (e) => {
+        if (e.button !== 0) {
+          return;
+        }
+        const dragManager = getDragManager$1();
+        if (!dragManager) {
+          return;
+        }
+        const ref = this.getAttribute("ref") ?? "";
+        const title = this.getAttribute("drag-title") ?? this.getAttribute("label") ?? void 0;
+        const icon = this.getAttribute("drag-icon") ?? this.getAttribute("icon") ?? void 0;
+        const rect = this.getBoundingClientRect();
+        dragManager.start({
+          payload: {
+            type: "shortcut",
+            source: this,
+            data: {
+              kind: dragKind,
+              ref,
+              title,
+              icon
+            },
+            ghost: {
+              offsetX: e.clientX - rect.left,
+              offsetY: e.clientY - rect.top
+            }
+          },
+          origin: e
+        });
+      };
+      this._pointerdownHandler = handler;
+      this.addEventListener("pointerdown", handler);
+    }
+  };
+  _WpdTile.shadow = false;
+  _WpdTile.props = REACTIVE_PROPS;
+  _WpdTile.styles = [styles$3];
+  _WpdTile.help = {
+    title: "Tile",
+    summary: "Canonical file/entity tile. Used across the wallpaper, folder windows, every My WordPress section, and plugin surfaces. Renders the standard `.desktop-mode-file-tile` chrome + optional status ribbon and wires the shared drag-out helper.",
+    status: "experimental",
+    since: "0.21.0",
+    props: [
+      { name: "type", type: "string" },
+      { name: "ref", type: "string" },
+      { name: "label", type: "string" },
+      { name: "icon", type: "string", description: "Dashicon class / URL / data URI. Ignored when `thumbnail` is set." },
+      { name: "thumbnail", type: "string", description: "Preview image URL. Renders as `<img>` and wins over `icon`." },
+      { name: "kind", type: "`entry` | `folder`" },
+      { name: "status", type: "`draft` | `pending` | `private` | `future` | `publish`" },
+      { name: "selected", type: "boolean" },
+      { name: "missing", type: "boolean" },
+      { name: "access-gated", type: "boolean" },
+      { name: "drag-kind", type: "string", description: "When set, the component wires pointerdown → DragManager." },
+      { name: "drag-title", type: "string" },
+      { name: "drag-icon", type: "string" }
+    ]
+  };
+  let WpdTile = _WpdTile;
+  function ribbonToneFor(status) {
+    switch (status) {
+      case "draft":
+        return "warning";
+      case "pending":
+        return "info";
+      case "private":
+        return "danger";
+      case "future":
+        return "primary";
+      default:
+        return "primary";
+    }
+  }
+  defineComponent("wpd-tile", WpdTile);
+  function buildTileFromSpec(spec) {
+    const tile2 = document.createElement("wpd-tile");
+    tile2.setAttribute("type", spec.type);
+    tile2.setAttribute("ref", spec.ref);
+    tile2.setAttribute("label", spec.label);
+    if (spec.icon) {
+      tile2.setAttribute("icon", spec.icon);
+    }
+    if (spec.thumbnail) {
+      tile2.setAttribute("thumbnail", spec.thumbnail);
+    }
+    if (spec.role) {
+      tile2.setAttribute("kind", spec.role);
+    }
+    if (spec.status) {
+      tile2.setAttribute("status", spec.status);
+    }
+    if (spec.missing) {
+      tile2.setAttribute("missing", "");
+    }
+    if (spec.accessGated) {
+      tile2.setAttribute("access-gated", "");
+    }
+    if (spec.dataset) {
+      for (const [key, raw] of Object.entries(spec.dataset)) {
+        if (raw === void 0 || raw === null) {
+          continue;
+        }
+        tile2.dataset[key] = String(raw);
+      }
+    }
+    if (Array.isArray(spec.extraClasses)) {
+      for (const c of spec.extraClasses) {
+        if (c) {
+          tile2.classList.add(c);
+        }
+      }
+    }
+    const classFiltered = applyFilters(
+      "desktop-mode.tile.class",
+      tile2.className,
+      spec
+    );
+    if (classFiltered && classFiltered !== tile2.className) {
+      tile2.className = classFiltered;
+    }
+    if (typeof spec.x === "number" && typeof spec.y === "number") {
+      tile2.style.position = "absolute";
+      tile2.style.left = `${spec.x}px`;
+      tile2.style.top = `${spec.y}px`;
+    }
+    return tile2;
+  }
+  function placementToSpec(placement, folderId) {
+    const file = resolve(placement.file);
+    const previewUrl = file.previewUrl();
+    const metaName = placement.meta && typeof placement.meta.name === "string" ? placement.meta.name.trim() : "";
+    const label = metaName !== "" ? metaName : file.title();
+    const metaIconUrl = placement.meta && typeof placement.meta.iconUrl === "string" ? placement.meta.iconUrl.trim() : "";
+    return {
+      type: placement.file.type,
+      ref: placement.file.ref,
+      label,
+      // Preview wins over icon (matches the previous behavior).
+      thumbnail: previewUrl || void 0,
+      icon: previewUrl ? void 0 : metaIconUrl || file.icon(),
+      x: placement.x,
+      y: placement.y,
+      dataset: {
+        placementId: placement.id,
+        folderId
+      },
+      meta: placement.meta,
+      missing: !placement.file.exists,
+      accessGated: Boolean(placement.accessGated),
+      ariaLabel: label
+    };
+  }
+  function buildTile(placement, folderId) {
+    const file = resolve(placement.file);
+    const tile2 = buildTileFromSpec(placementToSpec(placement, folderId));
+    const classFiltered = applyFilters(
+      "desktop-mode.files.tile-class",
+      TILE_CLASS,
+      placement
+    );
+    if (classFiltered && classFiltered !== TILE_CLASS) {
+      tile2.className = classFiltered;
+    }
+    const extra = applyFilters(
+      "desktop-mode.files.tile-element",
+      null,
+      placement
+    );
+    if (extra instanceof Element) {
+      tile2.appendChild(extra);
+    }
+    tile2.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (placement.accessGated) {
+        showToast({
+          message: `You don’t have permission to open "${placement.file.title || file.title()}". Ask the folder owner if you need access to this item.`,
+          duration: 6e3
+        });
+        return;
+      }
+      void openFile(file, {
+        placement: {
+          id: placement.id,
+          x: placement.x,
+          y: placement.y,
+          meta: placement.meta
+        }
+      });
+    });
+    doAction("desktop-mode.files.tile-rendered", { tile: tile2, placement });
+    return tile2;
+  }
+  function setTilePosition(tile2, x, y) {
+    tile2.style.left = `${x}px`;
+    tile2.style.top = `${y}px`;
+  }
+  function attachDismissable(host, options) {
+    const onAway = (e) => {
+      if (e.target instanceof Node && host.contains(e.target)) {
+        return;
+      }
+      if (e.target instanceof Node) {
+        for (const sel of options.siblingSelectors ?? []) {
+          const matches = Array.from(
+            document.querySelectorAll(sel)
+          );
+          for (const m of matches) {
+            if (m.contains(e.target)) {
+              return;
+            }
+          }
+        }
+      }
+      if (options.excludeOutsideTarget && e.target instanceof Node && options.excludeOutsideTarget.contains(e.target)) {
+        return;
+      }
+      options.close();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        options.close();
+      }
+    };
+    document.addEventListener("mousedown", onAway, { capture: true });
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onAway, { capture: true });
+      document.removeEventListener("keydown", onKey);
+    };
+  }
+  const MENU_CLASS$2 = "desktop-mode-wallpaper-menu";
+  let activeMenu$2 = null;
+  function closeTileMenu() {
+    if (!activeMenu$2) {
+      return;
+    }
+    activeMenu$2.dispatchEvent(new CustomEvent("tile-menu-closed"));
+    activeMenu$2.remove();
+    activeMenu$2 = null;
+    doAction("desktop-mode.files.tile-menu.closed", {});
+  }
+  let openGeneration$1 = 0;
+  function openTileMenu(pos, opts) {
+    closeTileMenu();
+    const myGen = ++openGeneration$1;
+    openWithShellOverlays(
+      () => myGen === openGeneration$1,
+      () => openTileMenuImmediate(pos, opts)
+    );
+  }
+  function openTileMenuImmediate(pos, { placement, items }) {
+    const list2 = applyFilters(
+      "desktop-mode.files.tile-menu",
+      items.slice(),
+      placement
+    );
+    const sorted = (Array.isArray(list2) ? list2 : items).slice().sort((a, b) => {
+      const sa = typeof a.sort === "number" ? a.sort : 100;
+      const sb = typeof b.sort === "number" ? b.sort : 100;
+      if (sa !== sb) {
+        return sa - sb;
+      }
+      return a.label.localeCompare(b.label);
+    });
+    if (sorted.length === 0) {
+      return;
+    }
+    const menu = document.createElement("wpd-context-menu");
+    menu.setAttribute("open", "");
+    menu.classList.add(MENU_CLASS$2);
+    menu.dataset.placementId = String(placement.id);
+    menu.style.left = `${pos.x}px`;
+    menu.style.top = `${pos.y}px`;
+    const itemById = /* @__PURE__ */ new Map();
+    for (const item of sorted) {
+      itemById.set(item.id, item);
+      const opt = document.createElement("wpd-context-menu-option");
+      opt.dataset.menuItemId = item.id;
+      opt.setAttribute("value", item.id);
+      if (item.danger) {
+        opt.setAttribute("danger", "");
+      }
+      if (item.disabled) {
+        opt.setAttribute("disabled", "");
+      }
+      if (item.icon) {
+        opt.setAttribute("icon", sanitizeClass$2(item.icon));
+      }
+      opt.textContent = item.label;
+      menu.appendChild(opt);
+    }
+    menu.addEventListener("wpd-context-menu-pick", (e) => {
+      const detail = e.detail;
+      const item = itemById.get(detail.id);
+      if (!item) {
+        return;
+      }
+      closeTileMenu();
+      void item.onClick(new MouseEvent("click"));
+    });
+    document.body.appendChild(menu);
+    activeMenu$2 = menu;
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${Math.max(0, window.innerWidth - rect.width - 8)}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${Math.max(0, window.innerHeight - rect.height - 8)}px`;
+    }
+    const detach = attachDismissable(menu, {
+      close: () => closeTileMenu()
+    });
+    menu.addEventListener("tile-menu-closed", detach);
+    doAction("desktop-mode.files.tile-menu.opened", {
+      placementId: placement.id,
+      items: sorted.map((i) => i.id)
+    });
+  }
+  function sanitizeClass$2(raw) {
+    return raw.replace(/[^a-zA-Z0-9_-]/g, "");
+  }
+  const ROOT_CLASS$3 = "desktop-mode-create-folder-dialog";
+  let active$1 = null;
+  function closeCreateFolderDialog() {
+    if (!active$1) {
+      return;
+    }
+    active$1.dispatchEvent(new CustomEvent("create-folder-dialog-closed"));
+    active$1.remove();
+    active$1 = null;
+    doAction("desktop-mode.files.create-folder.closed", {});
+  }
+  function openCreateFolderDialog(options) {
+    closeCreateFolderDialog();
+    const decision = applyFilters(
+      "desktop-mode.files.create-folder.dialog",
+      null,
+      options
+    );
+    if (decision === false) {
+      return;
+    }
+    const initial = (options.initialName ?? "Untitled folder").trim();
+    const overlay = document.createElement("div");
+    overlay.className = `${ROOT_CLASS$3}__overlay`;
+    overlay.setAttribute("role", "presentation");
+    const dialog2 = document.createElement("div");
+    dialog2.className = ROOT_CLASS$3;
+    dialog2.setAttribute("role", "dialog");
+    dialog2.setAttribute("aria-modal", "true");
+    dialog2.setAttribute("aria-labelledby", `${ROOT_CLASS$3}-title`);
+    const title = document.createElement("h2");
+    title.id = `${ROOT_CLASS$3}-title`;
+    title.className = `${ROOT_CLASS$3}__title`;
+    title.textContent = options.title ?? "New folder";
+    dialog2.appendChild(title);
+    const label = document.createElement("label");
+    label.className = `${ROOT_CLASS$3}__label`;
+    label.htmlFor = `${ROOT_CLASS$3}-input`;
+    label.textContent = options.label ?? "Folder name";
+    dialog2.appendChild(label);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.id = `${ROOT_CLASS$3}-input`;
+    input.className = `${ROOT_CLASS$3}__input`;
+    input.value = initial;
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("spellcheck", "false");
+    dialog2.appendChild(input);
+    const error = document.createElement("p");
+    error.className = `${ROOT_CLASS$3}__error`;
+    error.hidden = true;
+    error.setAttribute("role", "alert");
+    dialog2.appendChild(error);
+    const actions = document.createElement("div");
+    actions.className = `${ROOT_CLASS$3}__actions`;
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = `${ROOT_CLASS$3}__btn ${ROOT_CLASS$3}__btn--secondary`;
+    cancel.textContent = "Cancel";
+    const submit = document.createElement("button");
+    submit.type = "button";
+    submit.className = `${ROOT_CLASS$3}__btn ${ROOT_CLASS$3}__btn--primary`;
+    submit.textContent = options.submitLabel ?? "Create";
+    actions.appendChild(cancel);
+    actions.appendChild(submit);
+    dialog2.appendChild(actions);
+    overlay.appendChild(dialog2);
+    document.body.appendChild(overlay);
+    active$1 = overlay;
+    input.focus();
+    input.select();
+    doAction("desktop-mode.files.create-folder.opened", {});
+    const setBusy = (busy) => {
+      input.disabled = busy;
+      cancel.disabled = busy;
+      submit.disabled = busy;
+      dialog2.classList.toggle(`${ROOT_CLASS$3}--busy`, busy);
+    };
+    const showError = (msg) => {
+      error.textContent = msg;
+      error.hidden = false;
+    };
+    const doCancel = () => {
+      closeCreateFolderDialog();
+      options.onCancel?.();
+    };
+    const doSubmit = async () => {
+      const name = input.value.trim();
+      if (!name) {
+        showError("Please enter a name.");
+        input.focus();
+        return;
+      }
+      error.hidden = true;
+      setBusy(true);
+      try {
+        await options.onSubmit(name);
+        closeCreateFolderDialog();
+      } catch (err) {
+        setBusy(false);
+        showError(
+          err instanceof Error ? err.message : "Could not create the folder."
+        );
+        input.focus();
+        input.select();
+      }
+    };
+    cancel.addEventListener("click", () => doCancel());
+    submit.addEventListener("click", () => void doSubmit());
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        doCancel();
+      }
+    });
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        doCancel();
+      } else if (e.key === "Enter" && !e.isComposing) {
+        e.preventDefault();
+        void doSubmit();
+      }
+    };
+    dialog2.addEventListener("keydown", onKey);
+    overlay.addEventListener("create-folder-dialog-closed", () => {
+      dialog2.removeEventListener("keydown", onKey);
+    });
+  }
+  const GRID_PADDING = 16;
+  const GRID_CELL_W = 96;
+  const GRID_CELL_H = 110;
+  function pointToCell(x, y) {
+    const col = Math.max(0, Math.round((x - GRID_PADDING) / GRID_CELL_W));
+    const row = Math.max(0, Math.round((y - GRID_PADDING) / GRID_CELL_H));
+    return cellToPos(col, row);
+  }
+  function cellToPos(col, row) {
+    return {
+      col,
+      row,
+      x: GRID_PADDING + col * GRID_CELL_W,
+      y: GRID_PADDING + row * GRID_CELL_H
+    };
+  }
+  function snapToEmptyCell(x, y, occupied, host) {
+    const target = pointToCell(x, y);
+    if (!occupied.has(cellKey(target.col, target.row))) {
+      return target;
+    }
+    const maxRows = host ? Math.max(1, Math.floor((host.clientHeight - GRID_PADDING) / GRID_CELL_H)) : 999;
+    for (let col = 0; col < 999; col++) {
+      for (let row = 0; row < maxRows; row++) {
+        if (!occupied.has(cellKey(col, row))) {
+          return cellToPos(col, row);
+        }
+      }
+    }
+    return target;
+  }
+  function nextRowMajorCell(occupied, host) {
+    const cols = host ? Math.max(
+      1,
+      Math.floor((host.clientWidth - GRID_PADDING) / GRID_CELL_W)
+    ) : 4;
+    const maxCols = Math.max(1, cols);
+    for (let row = 0; row < 999; row++) {
+      for (let col = 0; col < maxCols; col++) {
+        if (!occupied.has(cellKey(col, row))) {
+          return cellToPos(col, row);
+        }
+      }
+    }
+    return cellToPos(0, 0);
+  }
+  function buildOccupiedSet(placements, excludeId) {
+    const out = /* @__PURE__ */ new Set();
+    for (const p of placements) {
+      const cell = pointToCell(p.x, p.y);
+      out.add(cellKey(cell.col, cell.row));
+    }
+    return out;
+  }
+  function cellKey(col, row) {
+    return `${col},${row}`;
+  }
+  function isConflict(err) {
+    return err instanceof FilesConflictError;
+  }
+  function buildReason(err) {
+    const actor = err.detail.actor.name || "Someone else";
+    const where = err.detail.current.parentName || "another folder";
+    if (err.detail.reason === "trashed") {
+      return "This item is in the recycle bin.";
+    }
+    if (err.detail.reason === "forbidden") {
+      return "You no longer have access.";
+    }
+    if (err.detail.reason === "gone") {
+      return "This item was deleted.";
+    }
+    return `${actor} moved this to "${where}".`;
+  }
+  function showConflictToast(err) {
+    const reason = buildReason(err);
+    const targetParentId = err.detail.current.parentId;
+    let action;
+    if (targetParentId > 0) {
+      action = {
+        label: "View folder",
+        onClick: () => {
+          const winId = `desktop-mode-folder-${targetParentId}`;
+          const mgr = window.desktopMode?.windowManager;
+          if (mgr?.focus) {
+            const w = mgr.focus(winId);
+            if (w) {
+              return;
+            }
+          }
+          if (mgr?.open) {
+            void mgr.open(winId);
+          }
+        }
+      };
+    }
+    showToast({
+      message: reason,
+      action,
+      duration: 7e3
+    });
+  }
+  function broadcastFilesChange(kind, action, ids) {
+    const api = window.wp?.desktop;
+    api?.broadcast?.(`desktop-mode.${kind}.changed`, {
+      source: "desktop-files",
+      action,
+      ids
+    });
+  }
+  function showTrashErrorToast(err) {
+    const api = window.wp?.desktop;
+    if (!api?.showToast) {
+      return;
+    }
+    const raw = err instanceof Error ? err.message : String(err);
+    const friendly = raw.replace(/^\[desktop-mode\][^:]*:\s*/, "").replace(/^desktop_mode_files_[a-z_]+\s*/, "");
+    api.showToast({
+      message: friendly || "Could not move this item to the recycle bin.",
+      duration: 5e3
+    });
+  }
+  function showTrashedToast(message, onUndo) {
+    const api = window.wp?.desktop;
+    if (!api?.showToast) {
+      return;
+    }
+    api.showToast({
+      message,
+      duration: 6e3,
+      action: {
+        label: "Undo",
+        onClick: onUndo
+      }
+    });
+  }
+  async function trashPlacementWithUndo(placement) {
+    const placementId = placement.id;
+    const parentId = placement.parentId;
+    const title = placement.file?.title ?? "Item";
+    const kind = placement.file?.type === "shortcut" ? "shortcut" : "placement";
+    store.removePlacement(placementId);
+    try {
+      await deletePlacement(placementId);
+      broadcastFilesChange(kind, "trashed", [placementId]);
+      showTrashedToast(`"${title}" moved to Trash`, async () => {
+        try {
+          await restoreTrashedItem(placementId, "placement");
+          const res = await listPlacements(parentId);
+          store.setFolderPlacements(parentId, res.placements);
+          broadcastFilesChange(kind, "untrashed", [placementId]);
+        } catch (err) {
+          console.error("[desktop-mode] restore failed:", err);
+        }
+      });
+    } catch (err) {
+      console.error("[desktop-mode] deletePlacement failed:", err);
+      showTrashErrorToast(err);
+      void listPlacements(parentId).then((res) => {
+        store.setFolderPlacements(parentId, res.placements);
+      });
+    }
+  }
+  async function trashFolderWithUndo(placement) {
+    const folderId = parseInt(placement.file.ref, 10);
+    if (!folderId) {
+      return;
+    }
+    const placementId = placement.id;
+    const parentId = placement.parentId;
+    const title = placement.file?.title ?? "Folder";
+    store.removePlacement(placementId);
+    store.removeFolder(folderId);
+    try {
+      await deleteFolder(folderId);
+      broadcastFilesChange("folder", "trashed", [folderId]);
+      showTrashedToast(`"${title}" moved to Trash`, async () => {
+        try {
+          await restoreTrashedItem(folderId, "folder");
+          const res = await listPlacements(parentId);
+          store.setFolderPlacements(parentId, res.placements);
+          broadcastFilesChange("folder", "untrashed", [folderId]);
+        } catch (err) {
+          console.error("[desktop-mode] restore folder failed:", err);
+        }
+      });
+    } catch (err) {
+      console.error("[desktop-mode] deleteFolder failed:", err);
+      showTrashErrorToast(err);
+      void listPlacements(parentId).then((res) => {
+        store.setFolderPlacements(parentId, res.placements);
+      });
+    }
+  }
+  function trashByFileType(placement) {
+    if (placement.file?.type === "folder") {
+      return trashFolderWithUndo(placement);
+    }
+    return trashPlacementWithUndo(placement);
+  }
+  function getDragManager() {
+    const api = window.wp?.desktop?.dragManager;
+    return api ?? null;
+  }
+  const LAYER_CLASS = "desktop-mode-files-layer";
+  function mountFilesLayer(host, folderId = 0) {
+    const container = document.createElement("div");
+    container.className = LAYER_CLASS;
+    container.setAttribute("role", "list");
+    container.dataset.folderId = String(folderId);
+    host.appendChild(container);
+    let lastFingerprint = "";
+    let selectedId = null;
+    const selectionListeners = /* @__PURE__ */ new Set();
+    const notifySelection = (placement) => {
+      for (const cb of selectionListeners) {
+        try {
+          cb(placement);
+        } catch (err) {
+          console.error(
+            "[desktop-mode] files: selection listener threw:",
+            err
+          );
+        }
+      }
+    };
+    const setSelected = (placement) => {
+      const newId = placement ? placement.id : null;
+      if (newId === selectedId) {
+        return;
+      }
+      container.querySelectorAll(`.${TILE_CLASS}--selected`).forEach((n) => n.removeAttribute("selected"));
+      if (placement) {
+        const tile2 = container.querySelector(
+          `[data-placement-id="${placement.id}"]`
+        );
+        tile2?.setAttribute("selected", "");
+      }
+      selectedId = newId;
+      notifySelection(placement);
+    };
+    const repaint = (state2) => {
+      const raw = state2.placementsByFolder.get(folderId) ?? [];
+      const list2 = raw.slice().sort((a, b) => {
+        const ap = isPinned(a) ? 0 : 1;
+        const bp = isPinned(b) ? 0 : 1;
+        return ap - bp;
+      });
+      const fp = fingerprint(list2);
+      if (fp === lastFingerprint) {
+        return;
+      }
+      lastFingerprint = fp;
+      if (tryPatchPositions(list2, container, host)) {
+        return;
+      }
+      container.replaceChildren();
+      for (const [, deregister] of folderDropDeregisters) {
+        try {
+          deregister();
+        } catch {
+        }
+      }
+      folderDropDeregisters.clear();
+      for (const [, deregister] of tileRejectDeregisters) {
+        try {
+          deregister();
+        } catch {
+        }
+      }
+      tileRejectDeregisters.clear();
+      const pinnedSlots = /* @__PURE__ */ new Map();
+      const occupiedCells = /* @__PURE__ */ new Set();
+      let pinnedIdx = 0;
+      for (const placement of list2) {
+        if (!isPinned(placement)) {
+          continue;
+        }
+        const slot = cellToPos(0, pinnedIdx);
+        pinnedSlots.set(placement.id, { x: slot.x, y: slot.y });
+        occupiedCells.add(cellKey(slot.col, slot.row));
+        pinnedIdx += 1;
+      }
+      const displaced = /* @__PURE__ */ new Map();
+      for (const placement of list2) {
+        if (pinnedSlots.has(placement.id)) {
+          continue;
+        }
+        const target = pointToCell(placement.x, placement.y);
+        const key = cellKey(target.col, target.row);
+        if (!occupiedCells.has(key)) {
+          occupiedCells.add(key);
+          continue;
+        }
+        const free = snapToEmptyCell(
+          placement.x,
+          placement.y,
+          occupiedCells,
+          host
+        );
+        occupiedCells.add(cellKey(free.col, free.row));
+        displaced.set(placement.id, { x: free.x, y: free.y });
+      }
+      for (const placement of list2) {
+        const tile2 = buildTile(placement, folderId);
+        const pinnedSlot = pinnedSlots.get(placement.id);
+        if (pinnedSlot) {
+          setTilePosition(tile2, pinnedSlot.x, pinnedSlot.y);
+          tile2.classList.add(`${TILE_CLASS}--pinned`);
+          attachContextMenu(tile2, placement);
+          attachSelectOnClick(tile2, placement);
+          if (shouldRejectTileDrops(placement)) {
+            const dragManager = getDragManager();
+            if (dragManager) {
+              const deregister = dragManager.registerDropTarget({
+                id: `desktop-mode-files-tile-${placement.id}-reject`,
+                element: tile2,
+                accept: () => false,
+                onDrop: () => {
+                }
+              });
+              tileRejectDeregisters.set(placement.id, deregister);
+            }
+          }
+          container.appendChild(tile2);
+          continue;
+        }
+        const moved = displaced.get(placement.id);
+        if (moved) {
+          setTilePosition(tile2, moved.x, moved.y);
+        }
+        attachTileDrag(tile2, placement, folderId);
+        attachContextMenu(tile2, placement);
+        attachSelectOnClick(tile2, placement);
+        if (placement.file.type === "folder") {
+          const targetFolderId = parseInt(placement.file.ref, 10);
+          if (targetFolderId > 0) {
+            const dragManager = getDragManager();
+            if (dragManager) {
+              const deregister = registerFolderDropTarget(
+                dragManager,
+                tile2,
+                targetFolderId
+              );
+              folderDropDeregisters.set(placement.id, deregister);
+            }
+          }
+        } else if (shouldRejectTileDrops(placement)) {
+          const dragManager = getDragManager();
+          if (dragManager) {
+            const deregister = dragManager.registerDropTarget({
+              id: `desktop-mode-files-tile-${placement.id}-reject`,
+              element: tile2,
+              accept: () => false,
+              onDrop: () => {
+              }
+            });
+            tileRejectDeregisters.set(placement.id, deregister);
+          }
+        }
+        container.appendChild(tile2);
+      }
+      if (selectedId !== null && !container.querySelector(`[data-placement-id="${selectedId}"]`)) {
+        selectedId = null;
+        notifySelection(null);
+      } else if (selectedId !== null) {
+        const tile2 = container.querySelector(
+          `[data-placement-id="${selectedId}"]`
+        );
+        tile2?.setAttribute("selected", "");
+      }
+      doAction("desktop-mode.files.grid-rendered", {
+        folderId,
+        count: list2.length
+      });
+    };
+    const dropTargetDeregisters = [];
+    const folderDropDeregisters = /* @__PURE__ */ new Map();
+    const tileRejectDeregisters = /* @__PURE__ */ new Map();
+    let dropPreviewEl = null;
+    let dropPreviewMoveHandler = null;
+    const installCanvasDropPreview = (session) => {
+      if (dropPreviewEl) {
+        return;
+      }
+      if (session.payload.type !== "desktop-file") {
+        return;
+      }
+      const previewEl = document.createElement("div");
+      previewEl.className = "desktop-mode-files-drop-preview";
+      previewEl.setAttribute("aria-hidden", "true");
+      container.appendChild(previewEl);
+      dropPreviewEl = previewEl;
+      const ghost = session.payload.ghost;
+      const offsetX = ghost?.offsetX ?? 0;
+      const offsetY = ghost?.offsetY ?? 0;
+      const data = session.payload.data;
+      const movingId = data?.placement?.id;
+      const updatePreview = (clientX, clientY) => {
+        const rect = container.getBoundingClientRect();
+        const rawX = Math.max(0, clientX - rect.left - offsetX);
+        const rawY = Math.max(0, clientY - rect.top - offsetY);
+        const peers = store.getState().placementsByFolder.get(folderId) ?? [];
+        const occupied = buildVisualOccupiedSet(peers, movingId);
+        const cell = snapToEmptyCell(rawX, rawY, occupied, host);
+        previewEl.style.transform = `translate3d(${cell.x}px, ${cell.y}px, 0)`;
+      };
+      const sourceRect = session.payload.source.getBoundingClientRect();
+      updatePreview(
+        sourceRect.left + offsetX,
+        sourceRect.top + offsetY
+      );
+      const moveHandler = (ev) => {
+        updatePreview(ev.clientX, ev.clientY);
+      };
+      document.addEventListener("pointermove", moveHandler);
+      dropPreviewMoveHandler = moveHandler;
+    };
+    const teardownCanvasDropPreview = () => {
+      if (dropPreviewMoveHandler) {
+        document.removeEventListener("pointermove", dropPreviewMoveHandler);
+        dropPreviewMoveHandler = null;
+      }
+      if (dropPreviewEl) {
+        dropPreviewEl.remove();
+        dropPreviewEl = null;
+      }
+    };
+    const canvasDropTarget = {
+      id: `desktop-mode-files-canvas-${folderId}`,
+      element: host,
+      accept: (payload) => {
+        if (payload.type !== "desktop-file" && payload.type !== "shortcut") {
+          return false;
+        }
+        if (folderId > 0 && payload.type === "desktop-file") {
+          const data = payload.data;
+          if (data.placement.file?.type === "folder") {
+            const movingFolderId = parseInt(data.placement.file.ref, 10);
+            if (!Number.isNaN(movingFolderId) && wouldCreateFolderCycle(movingFolderId, folderId)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      onEnter: (session) => {
+        host.setAttribute("data-files-drop-active", "");
+        installCanvasDropPreview(session);
+      },
+      onLeave: () => {
+        host.removeAttribute("data-files-drop-active");
+        teardownCanvasDropPreview();
+      },
+      onDrop: (session, ev) => {
+        host.removeAttribute("data-files-drop-active");
+        teardownCanvasDropPreview();
+        const rect = container.getBoundingClientRect();
+        const ghost = session.payload.ghost;
+        const offsetX = ghost?.offsetX ?? 0;
+        const offsetY = ghost?.offsetY ?? 0;
+        const rawX = Math.max(0, ev.clientX - rect.left - offsetX);
+        const rawY = Math.max(0, ev.clientY - rect.top - offsetY);
+        const peers = store.getState().placementsByFolder.get(folderId) ?? [];
+        if (session.payload.type === "desktop-file") {
+          const data = session.payload.data;
+          const occupied = buildVisualOccupiedSet(peers, data.placement.id);
+          const cell = snapToEmptyCell(rawX, rawY, occupied, host);
+          const next = {
+            ...data.placement,
+            x: cell.x,
+            y: cell.y,
+            parentId: folderId
+          };
+          store.upsertPlacement(next);
+          doAction("desktop-mode.files.tile-manually-placed", {
+            folderId,
+            placementId: data.placement.id
+          });
+          if (isSyntheticPlacement(data.placement)) {
+            const dockItemId = readSynthSource(data.placement);
+            if (dockItemId) {
+              persistDockPromotedPosition(
+                dockItemId,
+                cell.x,
+                cell.y
+              );
+            }
+            return;
+          }
+          void updatePlacement(
+            data.placement.id,
+            {
+              x: cell.x,
+              y: cell.y,
+              parentId: folderId
+            },
+            data.placement.updatedAtMs
+          ).then((server) => {
+            store.upsertPlacement(server, "remote");
+          }).catch((err) => {
+            if (isConflict(err)) {
+              showConflictToast(err);
+            } else {
+              console.error(
+                "[desktop-mode] files: drag persist failed",
+                err
+              );
+            }
+            store.upsertPlacement(data.placement);
+          });
+          return;
+        }
+        if (session.payload.type === "shortcut") {
+          const data = session.payload.data;
+          const occupied = buildVisualOccupiedSet(peers);
+          const cell = nextRowMajorCell(occupied, host);
+          void createPlacement({
+            parentId: folderId,
+            type: data.kind,
+            ref: data.ref,
+            x: cell.x,
+            y: cell.y
+          }).then((placement) => {
+            store.upsertPlacement(placement);
+            doAction("desktop-mode.files.shortcut-dropped", {
+              folderId,
+              placement
+            });
+          }).catch((err) => {
+            console.error(
+              "[desktop-mode] shortcut drop failed:",
+              err
+            );
+          });
+        }
+      }
+    };
+    const dragManagerForLayer = getDragManager();
+    if (dragManagerForLayer) {
+      dropTargetDeregisters.push(
+        dragManagerForLayer.registerDropTarget(canvasDropTarget)
+      );
+    }
+    const onCanvasClick = (e) => {
+      if (e.target instanceof Element && e.target.closest(`.${TILE_CLASS}`)) {
+        return;
+      }
+      setSelected(null);
+    };
+    host.addEventListener("click", onCanvasClick);
+    function attachSelectOnClick(tile2, placement) {
+      tile2.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setSelected(placement);
+      });
+    }
+    repaint(store.getState());
+    const off = store.subscribe(repaint);
+    let resolveHydrated = () => void 0;
+    const hydrated = new Promise((resolve2) => {
+      resolveHydrated = resolve2;
+    });
+    if (!store.getState().hydratedFolders.has(folderId)) {
+      void listPlacements(folderId).then((res) => {
+        store.setFolderPlacements(folderId, res.placements);
+      }).catch((err) => {
+        console.error("[desktop-mode] files: failed to hydrate folder", folderId, err);
+      }).finally(() => {
+        resolveHydrated();
+      });
+    } else {
+      queueMicrotask(resolveHydrated);
+    }
+    const colsForWidth = () => {
+      const w = host.clientWidth > 0 ? host.clientWidth : 4 * GRID_CELL_W;
+      return Math.max(1, Math.floor((w - GRID_PADDING) / GRID_CELL_W));
+    };
+    const sortPlacements = (list2, mode) => {
+      const sorted = list2.slice();
+      switch (mode) {
+        case "name-asc":
+          sorted.sort(
+            (a, b) => a.file.title.localeCompare(b.file.title)
+          );
+          break;
+        case "name-desc":
+          sorted.sort(
+            (a, b) => b.file.title.localeCompare(a.file.title)
+          );
+          break;
+        case "date-asc":
+          sorted.sort((a, b) => a.updatedAtMs - b.updatedAtMs);
+          break;
+        case "date-desc":
+          sorted.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+          break;
+      }
+      return sorted;
+    };
+    const sort = (mode) => {
+      const live = store.getState().placementsByFolder.get(folderId);
+      if (!live || live.length === 0) {
+        return;
+      }
+      const pinned = live.filter((p) => isPinned(p));
+      const draggable = live.filter((p) => !isPinned(p));
+      const sorted = sortPlacements(draggable, mode);
+      const cols = colsForWidth();
+      const occupied = /* @__PURE__ */ new Set();
+      for (let i = 0; i < pinned.length; i += 1) {
+        occupied.add(cellKey(0, i));
+      }
+      let idx = 0;
+      const nextCell = () => {
+        while (true) {
+          const row = Math.floor(idx / cols);
+          const col = idx % cols;
+          idx += 1;
+          if (!occupied.has(cellKey(col, row))) {
+            return { col, row };
+          }
+        }
+      };
+      sorted.forEach((p, i) => {
+        const cell = nextCell();
+        const x = GRID_PADDING + cell.col * GRID_CELL_W;
+        const y = GRID_PADDING + cell.row * GRID_CELL_H;
+        const next = {
+          ...p,
+          x,
+          y,
+          sortOrder: i
+        };
+        store.upsertPlacement(next);
+        if (isSyntheticPlacement(p)) {
+          return;
+        }
+        void updatePlacement(p.id, { x, y, sortOrder: i }).catch((err) => {
+          console.error(
+            "[desktop-mode] files: sort persist failed",
+            err
+          );
+        });
+      });
+    };
+    const reflow = () => {
+      const live = store.getState().placementsByFolder.get(folderId);
+      if (!live || live.length === 0) {
+        return;
+      }
+      const w = host.clientWidth > 0 ? host.clientWidth : Infinity;
+      const overflowing = live.some((p) => {
+        const right = p.x + GRID_CELL_W;
+        return right > w;
+      });
+      if (!overflowing) {
+        return;
+      }
+      const cols = colsForWidth();
+      const pinned = live.filter((p) => isPinned(p));
+      const draggable = live.filter((p) => !isPinned(p));
+      const occupied = /* @__PURE__ */ new Set();
+      for (let i = 0; i < pinned.length; i += 1) {
+        occupied.add(cellKey(0, i));
+      }
+      let idx = 0;
+      const nextCell = () => {
+        while (true) {
+          const row = Math.floor(idx / cols);
+          const col = idx % cols;
+          idx += 1;
+          if (!occupied.has(cellKey(col, row))) {
+            return { col, row };
+          }
+        }
+      };
+      for (const p of draggable) {
+        const cell = nextCell();
+        const x = GRID_PADDING + cell.col * GRID_CELL_W;
+        const y = GRID_PADDING + cell.row * GRID_CELL_H;
+        const tile2 = container.querySelector(
+          `[data-placement-id="${p.id}"]`
+        );
+        if (tile2) {
+          setTilePosition(tile2, x, y);
+        }
+      }
+    };
+    let lastWidth = host.clientWidth;
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        const w = host.clientWidth;
+        if (w === lastWidth) {
+          return;
+        }
+        lastWidth = w;
+        reflow();
+      });
+      resizeObserver.observe(host);
+    }
+    return {
+      host,
+      folderId,
+      onSelectionChange(cb) {
+        selectionListeners.add(cb);
+        return () => {
+          selectionListeners.delete(cb);
+        };
+      },
+      sort,
+      reflow,
+      hydrated,
+      dispose() {
+        off();
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        for (const deregister of dropTargetDeregisters) {
+          try {
+            deregister();
+          } catch {
+          }
+        }
+        dropTargetDeregisters.length = 0;
+        for (const deregister of folderDropDeregisters.values()) {
+          try {
+            deregister();
+          } catch {
+          }
+        }
+        folderDropDeregisters.clear();
+        for (const deregister of tileRejectDeregisters.values()) {
+          try {
+            deregister();
+          } catch {
+          }
+        }
+        tileRejectDeregisters.clear();
+        host.removeEventListener("click", onCanvasClick);
+        selectionListeners.clear();
+        container.remove();
+      }
+    };
+  }
+  function fingerprint(list2) {
+    if (list2.length === 0) {
+      return "0";
+    }
+    const parts = [];
+    for (const p of list2) {
+      parts.push(
+        `${p.id}:${p.parentId}:${p.x}:${p.y}:${p.sortOrder}:${p.updatedAtMs}:${p.file.type}:${p.file.ref}:${p.file.title}:${p.file.icon}:${isPinned(p) ? 1 : 0}`
+      );
+    }
+    return parts.join("|");
+  }
+  function isPinned(placement) {
+    return Boolean(placement.file.pinned);
+  }
+  function readSynthSource(placement) {
+    const meta = placement.meta;
+    if (!meta || typeof meta !== "object") {
+      return null;
+    }
+    const v = meta.__synthFromDockItem;
+    return typeof v === "string" && v !== "" ? v : null;
+  }
+  function isSyntheticPlacement(placement) {
+    return placement.id <= 0 || readSynthSource(placement) !== null;
+  }
+  const RECYCLE_BIN_REF = "desktop-mode-recycle-bin";
+  function shouldRejectTileDrops(placement) {
+    if (placement.file?.type === "folder") {
+      return false;
+    }
+    if (placement.file?.ref === RECYCLE_BIN_REF) {
+      return false;
+    }
+    return true;
+  }
+  function buildVisualOccupiedSet(placements, excludeId) {
+    const sorted = placements.slice().sort((a, b) => {
+      const ap = isPinned(a) ? 0 : 1;
+      const bp = isPinned(b) ? 0 : 1;
+      return ap - bp;
+    });
+    const set = /* @__PURE__ */ new Set();
+    let pinnedIdx = 0;
+    for (const p of sorted) {
+      if (excludeId !== void 0 && p.id === excludeId) {
+        continue;
+      }
+      if (isPinned(p)) {
+        set.add(cellKey(0, pinnedIdx));
+        pinnedIdx += 1;
+      } else {
+        const cell = pointToCell(p.x, p.y);
+        set.add(cellKey(cell.col, cell.row));
+      }
+    }
+    return set;
+  }
+  function wouldCreateFolderCycle(movingFolderId, targetParentId) {
+    if (targetParentId <= 0 || movingFolderId <= 0) {
+      return false;
+    }
+    if (movingFolderId === targetParentId) {
+      return true;
+    }
+    const parentByFolderId = /* @__PURE__ */ new Map();
+    const state2 = store.getState();
+    for (const bucket2 of state2.placementsByFolder.values()) {
+      for (const p of bucket2) {
+        if (p.file?.type !== "folder") {
+          continue;
+        }
+        const fid = parseInt(p.file.ref, 10);
+        if (Number.isNaN(fid) || fid <= 0) {
+          continue;
+        }
+        if (!parentByFolderId.has(fid)) {
+          parentByFolderId.set(fid, p.parentId);
+        }
+      }
+    }
+    const visited = /* @__PURE__ */ new Set();
+    let cursor = targetParentId;
+    let maxDepth = 256;
+    while (cursor > 0 && maxDepth-- > 0) {
+      if (cursor === movingFolderId) {
+        return true;
+      }
+      if (visited.has(cursor)) {
+        return true;
+      }
+      visited.add(cursor);
+      const next = parentByFolderId.get(cursor);
+      if (next === void 0) {
+        return false;
+      }
+      cursor = next;
+    }
+    return false;
+  }
+  function persistDockPromotedPosition(dockItemId, x, y) {
+    const api = window.wp?.desktop;
+    if (!api?.getOsSettings || !api?.updateOsSettings) {
+      return;
+    }
+    const current = api.getOsSettings().dockPromotedPositions ?? {};
+    api.updateOsSettings({
+      dockPromotedPositions: {
+        ...current,
+        [dockItemId]: { x, y }
+      }
+    });
+  }
+  function tryPatchPositions(list2, container, host) {
+    const tiles = Array.from(
+      container.querySelectorAll("[data-placement-id]")
+    );
+    if (tiles.length !== list2.length) {
+      return false;
+    }
+    const byId = /* @__PURE__ */ new Map();
+    for (const tile2 of tiles) {
+      const raw = tile2.dataset.placementId ?? "";
+      const id = parseInt(raw, 10);
+      if (raw === "" || Number.isNaN(id) && raw !== "-0") {
+        return false;
+      }
+      byId.set(id, tile2);
+    }
+    for (const placement of list2) {
+      const tile2 = byId.get(placement.id);
+      if (!tile2) {
+        return false;
+      }
+      if (tile2.dataset.fileType !== placement.file.type) {
+        return false;
+      }
+      if (tile2.dataset.fileRef !== placement.file.ref) {
+        return false;
+      }
+      const wasPinned = tile2.classList.contains(`${TILE_CLASS}--pinned`);
+      if (wasPinned !== isPinned(placement)) {
+        return false;
+      }
+    }
+    const pinnedSlots = /* @__PURE__ */ new Map();
+    const occupiedCells = /* @__PURE__ */ new Set();
+    let pinnedIdx = 0;
+    for (const placement of list2) {
+      if (!isPinned(placement)) {
+        continue;
+      }
+      const slot = cellToPos(0, pinnedIdx);
+      pinnedSlots.set(placement.id, { x: slot.x, y: slot.y });
+      occupiedCells.add(cellKey(slot.col, slot.row));
+      pinnedIdx += 1;
+    }
+    const displaced = /* @__PURE__ */ new Map();
+    for (const placement of list2) {
+      if (pinnedSlots.has(placement.id)) {
+        continue;
+      }
+      const target = pointToCell(placement.x, placement.y);
+      const key = cellKey(target.col, target.row);
+      if (!occupiedCells.has(key)) {
+        occupiedCells.add(key);
+        continue;
+      }
+      const free = snapToEmptyCell(
+        placement.x,
+        placement.y,
+        occupiedCells,
+        host
+      );
+      occupiedCells.add(cellKey(free.col, free.row));
+      displaced.set(placement.id, { x: free.x, y: free.y });
+    }
+    for (const placement of list2) {
+      const tile2 = byId.get(placement.id);
+      if (!tile2) {
+        continue;
+      }
+      const pinned = pinnedSlots.get(placement.id);
+      const disp = displaced.get(placement.id);
+      if (pinned) {
+        setTilePosition(tile2, pinned.x, pinned.y);
+      } else if (disp) {
+        setTilePosition(tile2, disp.x, disp.y);
+      } else {
+        setTilePosition(tile2, placement.x, placement.y);
+      }
+    }
+    return true;
+  }
+  function hidePromotedDockItem(dockItemId) {
+    const api = window.wp?.desktop;
+    if (!api?.getOsSettings || !api?.updateOsSettings) {
+      return;
+    }
+    const current = api.getOsSettings().itemVisibility ?? {};
+    const next = { ...current, [dockItemId]: "dock" };
+    api.updateOsSettings({ itemVisibility: next });
+  }
+  function registerFolderDropTarget(dragManager, tile2, targetFolderId, currentFolderId) {
+    const target = {
+      id: `desktop-mode-files-folder-${targetFolderId}-tile-${tile2.dataset.placementId ?? "?"}`,
+      element: tile2,
+      accept: (payload) => {
+        if (payload.type !== "desktop-file" && payload.type !== "shortcut") {
+          return false;
+        }
+        if (payload.type === "desktop-file") {
+          const data = payload.data;
+          if (data.placement.file.type === "folder" && parseInt(data.placement.file.ref, 10) === targetFolderId) {
+            return false;
+          }
+          if (data.placement.parentId === targetFolderId) {
+            return false;
+          }
+          if (isSyntheticPlacement(data.placement)) {
+            return false;
+          }
+          if (data.placement.file.type === "folder") {
+            const movingFolderId = parseInt(data.placement.file.ref, 10);
+            if (!Number.isNaN(movingFolderId) && wouldCreateFolderCycle(movingFolderId, targetFolderId)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      onEnter: () => {
+        tile2.classList.add(`${TILE_CLASS}--drop-target`);
+      },
+      onLeave: () => {
+        tile2.classList.remove(`${TILE_CLASS}--drop-target`);
+      },
+      onDrop: (session) => {
+        tile2.classList.remove(`${TILE_CLASS}--drop-target`);
+        if (session.payload.type === "desktop-file") {
+          const data = session.payload.data;
+          const next = {
+            ...data.placement,
+            parentId: targetFolderId
+          };
+          store.upsertPlacement(next);
+          void updatePlacement(
+            data.placement.id,
+            { parentId: targetFolderId },
+            data.placement.updatedAtMs
+          ).then((server) => {
+            store.upsertPlacement(server, "remote");
+          }).catch((err) => {
+            if (isConflict(err)) {
+              showConflictToast(err);
+            } else {
+              console.error(
+                "[desktop-mode] files: move-into-folder persist failed",
+                err
+              );
+            }
+            store.upsertPlacement(data.placement);
+          });
+          return;
+        }
+        if (session.payload.type === "shortcut") {
+          const data = session.payload.data;
+          const peers = store.getState().placementsByFolder.get(targetFolderId) ?? [];
+          const cell = nextRowMajorCell(buildVisualOccupiedSet(peers));
+          void createPlacement({
+            parentId: targetFolderId,
+            type: data.kind,
+            ref: data.ref,
+            x: cell.x,
+            y: cell.y
+          }).then((placement) => {
+            store.upsertPlacement(placement);
+            doAction("desktop-mode.files.shortcut-dropped", {
+              folderId: targetFolderId,
+              placement
+            });
+          }).catch((err) => {
+            console.error(
+              "[desktop-mode] shortcut drop into folder failed:",
+              err
+            );
+          });
+        }
+      }
+    };
+    return dragManager.registerDropTarget(target);
+  }
+  function attachTileDrag(tile2, placement, folderId) {
+    tile2.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) {
+        return;
+      }
+      const dragManager = getDragManager();
+      if (!dragManager) {
+        return;
+      }
+      const liveBucket = store.getState().placementsByFolder.get(folderId);
+      const livePlacement = liveBucket?.find((p) => p.id === placement.id) ?? placement;
+      parseFloat(tile2.style.left) || livePlacement.x;
+      parseFloat(tile2.style.top) || livePlacement.y;
+      dragManager.start({
+        payload: {
+          type: "desktop-file",
+          source: tile2,
+          data: {
+            placement: livePlacement,
+            sourceFolderId: folderId
+          },
+          ghost: {
+            offsetX: e.clientX - tile2.getBoundingClientRect().left,
+            offsetY: e.clientY - tile2.getBoundingClientRect().top
+          }
+        },
+        origin: e
+        // `onClickOnly` intentionally empty — a tile click is
+        // handled by the dedicated `attachSelectOnClick` listener
+        // below, which fires from the regular `click` event after
+        // a sub-threshold pointerup. The manager won't fire a
+        // `click` itself; the browser does.
+      });
+    });
+  }
+  function attachContextMenu(tile2, placement) {
+    tile2.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items = [
+        {
+          id: "open",
+          label: "Open",
+          icon: "dashicons-external",
+          sort: 10,
+          onClick: () => {
+            const file = resolve(placement.file);
+            void openFile(file);
+          }
+        }
+      ];
+      if (placement.file.type === "post") {
+        items.push({
+          id: "navigate-into",
+          label: "Navigate into",
+          icon: "dashicons-category",
+          sort: 20,
+          onClick: () => {
+            const postId = parseInt(placement.file.ref, 10);
+            if (!postId) {
+              return;
+            }
+            const api = window.wp?.desktop?.myWordpress;
+            const postType = typeof placement.file.postType === "string" ? placement.file.postType : "post";
+            const entityId = postType === "page" ? "pages" : "posts";
+            api?.openDetail({
+              entityId,
+              postId,
+              postTitle: placement.file.title || `#${postId}`
+            });
+          }
+        });
+      }
+      const isFolder = placement.file.type === "folder";
+      if (isFolder) {
+        items.push({
+          id: "rename-folder",
+          label: "Rename…",
+          icon: "dashicons-edit",
+          sort: 30,
+          onClick: () => {
+            const folderId = parseInt(placement.file.ref, 10);
+            if (!folderId) {
+              return;
+            }
+            openCreateFolderDialog({
+              title: "Rename folder",
+              label: "New name",
+              submitLabel: "Rename",
+              initialName: placement.file.title,
+              onSubmit: async (name) => {
+                const trimmed = name.trim();
+                if (!trimmed || trimmed === placement.file.title) {
+                  return;
+                }
+                const previousTitle = placement.file.title;
+                const optimistic = {
+                  ...placement,
+                  file: { ...placement.file, title: trimmed }
+                };
+                store.upsertPlacement(optimistic);
+                try {
+                  const folderUpdatedAtMs = store.getState().folders.get(folderId)?.updatedAtMs ?? 0;
+                  const updated = await updateFolder(
+                    folderId,
+                    { name: trimmed },
+                    folderUpdatedAtMs
+                  );
+                  store.upsertFolder(updated);
+                  const refreshed = await listPlacements(
+                    placement.parentId
+                  );
+                  store.setFolderPlacements(
+                    placement.parentId,
+                    refreshed.placements
+                  );
+                } catch (err) {
+                  console.error(
+                    "[desktop-mode] rename folder failed:",
+                    err
+                  );
+                  store.upsertPlacement({
+                    ...placement,
+                    file: {
+                      ...placement.file,
+                      title: previousTitle
+                    }
+                  });
+                }
+              }
+            });
+          }
+        });
+        if (placement.canTrash !== false) {
+          items.push({
+            id: "delete-folder",
+            label: "Move folder to Trash",
+            icon: "dashicons-trash",
+            sort: 90,
+            danger: true,
+            onClick: () => trashFolderWithUndo(placement)
+          });
+        }
+      } else {
+        const synthFromDockItem = readSynthSource(placement);
+        const isRegisteredIcon = placement.file.type === "shortcut";
+        if (synthFromDockItem || isRegisteredIcon) {
+          const hideId = synthFromDockItem ?? placement.file.ref;
+          items.push({
+            id: "hide-from-desktop",
+            label: "Hide from desktop",
+            icon: "dashicons-hidden",
+            sort: 90,
+            onClick: () => hidePromotedDockItem(hideId)
+          });
+        } else if (placement.canTrash !== false) {
+          items.push({
+            id: "remove",
+            label: "Move to Trash",
+            icon: "dashicons-trash",
+            sort: 90,
+            danger: true,
+            onClick: () => trashPlacementWithUndo(placement)
+          });
+        }
+      }
+      openTileMenu({ x: e.clientX, y: e.clientY }, { placement, items });
+    });
+  }
+  const STATUS_BAR_CLASS = "desktop-mode-folder-status-bar";
+  const ROOT_CLASS$2 = STATUS_BAR_CLASS;
+  function mountFolderStatusBar(host, folderId) {
+    const bar = document.createElement("div");
+    bar.className = ROOT_CLASS$2;
+    bar.setAttribute("role", "status");
+    bar.dataset.folderId = String(folderId);
+    host.appendChild(bar);
+    const repaint = () => {
+      const list2 = getFilesState().placementsByFolder.get(folderId) ?? [];
+      const folders = list2.filter((p) => p.file.type === "folder").length;
+      const files = list2.length - folders;
+      const ctx = {
+        folderId,
+        totals: { files, folders, total: list2.length }
+      };
+      const segments = computeSegments(ctx);
+      render(bar, segments);
+    };
+    repaint();
+    const off = subscribeFilesStore(() => repaint());
+    return {
+      dispose() {
+        off();
+        bar.remove();
+      }
+    };
+  }
+  function computeSegments(ctx) {
+    const { folders, files } = ctx.totals;
+    const builtIns = [
+      {
+        id: "count",
+        label: pluralize(files, "file", "files") + (folders > 0 ? `, ${pluralize(folders, "folder", "folders")}` : ""),
+        align: "start",
+        sort: 10
+      }
+    ];
+    const filtered = applyFilters(
+      "desktop-mode.files.folder-window.status-bar",
+      builtIns,
+      ctx
+    );
+    return Array.isArray(filtered) ? filtered : builtIns;
+  }
+  function render(bar, segments) {
+    const sort = (a, b) => {
+      const sa = typeof a.sort === "number" ? a.sort : 100;
+      const sb = typeof b.sort === "number" ? b.sort : 100;
+      if (sa !== sb) {
+        return sa - sb;
+      }
+      return a.label.localeCompare(b.label);
+    };
+    const start = segments.filter((s) => (s.align ?? "start") === "start").sort(sort);
+    const end = segments.filter((s) => s.align === "end").sort(sort);
+    bar.replaceChildren();
+    bar.appendChild(buildCluster("start", start));
+    bar.appendChild(buildCluster("end", end));
+  }
+  function buildCluster(align, segs) {
+    const cluster = document.createElement("div");
+    cluster.className = `${ROOT_CLASS$2}__cluster ${ROOT_CLASS$2}__cluster--${align}`;
+    for (const seg of segs) {
+      cluster.appendChild(buildSegment(seg));
+    }
+    return cluster;
+  }
+  function buildSegment(seg) {
+    const interactive = typeof seg.onClick === "function";
+    const el = document.createElement(interactive ? "button" : "span");
+    el.className = `${ROOT_CLASS$2}__segment`;
+    el.dataset.segmentId = seg.id;
+    if (interactive) {
+      el.type = "button";
+      el.addEventListener("click", (e) => seg.onClick(e));
+    }
+    if (seg.icon) {
+      const icon = document.createElement("span");
+      icon.className = `${ROOT_CLASS$2}__icon dashicons ${seg.icon.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+      icon.setAttribute("aria-hidden", "true");
+      el.appendChild(icon);
+    }
+    const label = document.createElement("span");
+    label.className = `${ROOT_CLASS$2}__label`;
+    label.textContent = seg.label;
+    el.appendChild(label);
+    return el;
+  }
+  function pluralize(n, singular, plural) {
+    return `${n} ${n === 1 ? singular : plural}`;
+  }
+  const MENU_CLASS$1 = "desktop-mode-icon-canvas-menu";
+  let activeMenu$1 = null;
+  let activeFlyout = null;
+  let activeCanvas = null;
+  let outsideHandler = null;
+  let escHandler = null;
+  function attachIconCanvasMenu(canvas, deps2) {
+    deps2.openOnBackgroundClick !== false;
+    const onContextMenu = (e) => {
+      if (isInsideTile(e.target) || isInsideMenu(e.target)) {
+        return;
+      }
+      e.preventDefault();
+      toggle(e.clientX, e.clientY);
+    };
+    let toggleGen = 0;
+    const toggle = (x, y) => {
+      if (activeCanvas === canvas && activeMenu$1) {
+        closeMenu();
+        return;
+      }
+      const items = buildItems(deps2);
+      const filtered = applyFilters(
+        "desktop-mode.icon-canvas.menu",
+        items,
+        deps2.scope
+      );
+      const finalItems = Array.isArray(filtered) ? filtered : items;
+      const myGen = ++toggleGen;
+      openWithShellOverlays(
+        () => myGen === toggleGen,
+        () => openMenu(finalItems, { x, y }, canvas)
+      );
+    };
+    canvas.addEventListener("contextmenu", onContextMenu);
+    return {
+      dispose: () => {
+        canvas.removeEventListener("contextmenu", onContextMenu);
+        closeMenu();
+      }
+    };
+  }
+  function isInsideTile(target) {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+    return target.closest(".desktop-mode-file-tile") !== null;
+  }
+  function isInsideMenu(target) {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+    return target.closest(`.${MENU_CLASS$1}`) !== null;
+  }
+  function buildItems(deps2) {
+    const sortItem = {
+      id: "sort-by",
+      label: __("Sort by", "desktop-mode"),
+      icon: "dashicons-sort",
+      sort: 10,
+      children: [
+        {
+          id: "sort-name-asc",
+          label: __("Name (A → Z)", "desktop-mode"),
+          sort: 10,
+          onClick: () => deps2.onSort("name-asc")
+        },
+        {
+          id: "sort-name-desc",
+          label: __("Name (Z → A)", "desktop-mode"),
+          sort: 20,
+          onClick: () => deps2.onSort("name-desc")
+        },
+        {
+          id: "sort-date-desc",
+          label: __("Newest first", "desktop-mode"),
+          sort: 30,
+          onClick: () => deps2.onSort("date-desc")
+        },
+        {
+          id: "sort-date-asc",
+          label: __("Oldest first", "desktop-mode"),
+          sort: 40,
+          onClick: () => deps2.onSort("date-asc")
+        }
+      ]
+    };
+    const items = [sortItem];
+    if (Array.isArray(deps2.extraItems)) {
+      items.push(...deps2.extraItems);
+    }
+    return items;
+  }
+  function sortItems(items) {
+    return items.slice().sort((a, b) => {
+      const sa = typeof a.sort === "number" ? a.sort : 100;
+      const sb = typeof b.sort === "number" ? b.sort : 100;
+      if (sa !== sb) {
+        return sa - sb;
+      }
+      return a.label.localeCompare(b.label);
+    });
+  }
+  function openMenu(items, pos, canvas) {
+    closeMenu();
+    if (items.length === 0) {
+      return;
+    }
+    activeCanvas = canvas;
+    const sorted = sortItems(items);
+    const menu = document.createElement("wpd-context-menu");
+    menu.setAttribute("open", "");
+    menu.classList.add(MENU_CLASS$1);
+    menu.style.left = `${pos.x}px`;
+    menu.style.top = `${pos.y}px`;
+    const itemById = /* @__PURE__ */ new Map();
+    for (const item of sorted) {
+      itemById.set(item.id, item);
+      const opt = appendOption(menu, item);
+      if (hasChildren(item)) {
+        opt.addEventListener("mouseenter", () => {
+          openFlyout(item, opt);
+        });
+      }
+    }
+    menu.addEventListener("wpd-context-menu-pick", (e) => {
+      const detail = e.detail;
+      const item = itemById.get(detail.id);
+      if (!item) {
+        return;
+      }
+      if (hasChildren(item)) {
+        e.stopPropagation();
+        const anchor = menu.querySelector(
+          `[data-menu-item-id="${item.id}"]`
+        );
+        if (anchor) {
+          openFlyout(item, anchor);
+        }
+        return;
+      }
+      closeMenu();
+      item.onClick?.();
+    });
+    document.body.appendChild(menu);
+    activeMenu$1 = menu;
+    clampToViewport(menu);
+    queueMicrotask(() => {
+      outsideHandler = (e) => {
+        if (isInsideMenu(e.target)) {
+          return;
+        }
+        closeMenu();
+      };
+      escHandler = (e) => {
+        if (e.key === "Escape") {
+          closeMenu();
+        }
+      };
+      document.addEventListener("mousedown", outsideHandler);
+      document.addEventListener("keydown", escHandler);
+    });
+  }
+  function appendOption(host, item) {
+    const opt = document.createElement("wpd-context-menu-option");
+    opt.dataset.menuItemId = item.id;
+    opt.setAttribute("value", item.id);
+    if (item.heading) {
+      opt.setAttribute("heading", "");
+    }
+    if (item.disabled) {
+      opt.setAttribute("disabled", "");
+    }
+    if (item.icon) {
+      opt.setAttribute("icon", sanitizeClass$1(item.icon));
+    }
+    if (hasChildren(item)) {
+      opt.setAttribute("has-children", "");
+    }
+    opt.textContent = item.label;
+    host.appendChild(opt);
+    return opt;
+  }
+  function openFlyout(parent, anchor) {
+    closeFlyout();
+    if (!hasChildren(parent)) {
+      return;
+    }
+    const fly = document.createElement("wpd-context-menu");
+    fly.setAttribute("open", "");
+    fly.classList.add(MENU_CLASS$1, `${MENU_CLASS$1}--flyout`);
+    const childById = /* @__PURE__ */ new Map();
+    for (const child of sortItems(parent.children ?? [])) {
+      childById.set(child.id, child);
+      appendOption(fly, child);
+    }
+    fly.addEventListener("wpd-context-menu-pick", (e) => {
+      const detail = e.detail;
+      const child = childById.get(detail.id);
+      if (!child) {
+        return;
+      }
+      e.stopPropagation();
+      closeMenu();
+      child.onClick?.();
+    });
+    document.body.appendChild(fly);
+    activeFlyout = fly;
+    positionFlyout(fly, anchor);
+  }
+  function positionFlyout(fly, anchor) {
+    const ar = anchor.getBoundingClientRect();
+    fly.style.position = "fixed";
+    fly.style.left = `${ar.right}px`;
+    fly.style.top = `${ar.top}px`;
+    const fr = fly.getBoundingClientRect();
+    if (fr.right > window.innerWidth) {
+      fly.style.left = `${Math.max(0, ar.left - fr.width)}px`;
+    }
+    if (fr.bottom > window.innerHeight) {
+      fly.style.top = `${Math.max(0, window.innerHeight - fr.height - 8)}px`;
+    }
+  }
+  function clampToViewport(menu) {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${Math.max(0, window.innerWidth - rect.width - 8)}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${Math.max(0, window.innerHeight - rect.height - 8)}px`;
+    }
+  }
+  function hasChildren(item) {
+    return Array.isArray(item.children) && item.children.length > 0;
+  }
+  function closeFlyout() {
+    if (activeFlyout) {
+      activeFlyout.remove();
+      activeFlyout = null;
+    }
+  }
+  function closeMenu() {
+    closeFlyout();
+    if (activeMenu$1) {
+      activeMenu$1.remove();
+      activeMenu$1 = null;
+    }
+    activeCanvas = null;
+    if (outsideHandler) {
+      document.removeEventListener("mousedown", outsideHandler);
+      outsideHandler = null;
+    }
+    if (escHandler) {
+      document.removeEventListener("keydown", escHandler);
+      escHandler = null;
+    }
+  }
+  function sanitizeClass$1(raw) {
+    return raw.replace(/[^a-zA-Z0-9_-]/g, "");
+  }
+  const ROOT_CLASS$1 = "desktop-mode-breadcrumbs";
+  function renderBreadcrumbs(host, segments, opts = {}) {
+    host.replaceChildren();
+    host.classList.add(ROOT_CLASS$1);
+    if (opts.onBack) {
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = `${ROOT_CLASS$1}__back`;
+      back.setAttribute("aria-label", __("Back", "desktop-mode"));
+      back.title = __("Back", "desktop-mode");
+      const arrow = document.createElement("span");
+      arrow.className = "dashicons dashicons-arrow-left-alt2";
+      arrow.setAttribute("aria-hidden", "true");
+      back.appendChild(arrow);
+      if (opts.backDisabled) {
+        back.disabled = true;
+      }
+      const onBack = opts.onBack;
+      back.addEventListener("click", () => {
+        if (back.disabled) {
+          return;
+        }
+        onBack();
+      });
+      host.appendChild(back);
+    }
+    const nav = document.createElement("nav");
+    nav.className = `${ROOT_CLASS$1}__crumbs`;
+    nav.setAttribute("aria-label", __("Breadcrumb", "desktop-mode"));
+    segments.forEach((seg, idx) => {
+      if (idx > 0) {
+        const sep = document.createElement("span");
+        sep.className = `${ROOT_CLASS$1}__sep`;
+        sep.setAttribute("aria-hidden", "true");
+        sep.textContent = "›";
+        nav.appendChild(sep);
+      }
+      if (!seg.onClick) {
+        const here = document.createElement("span");
+        here.className = `${ROOT_CLASS$1}__crumb ${ROOT_CLASS$1}__crumb--current`;
+        here.setAttribute("aria-current", "page");
+        here.textContent = seg.label;
+        nav.appendChild(here);
+        return;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `${ROOT_CLASS$1}__crumb`;
+      btn.textContent = seg.label;
+      const onClick = seg.onClick;
+      btn.addEventListener("click", () => {
+        onClick();
+      });
+      nav.appendChild(btn);
+    });
+    host.appendChild(nav);
+  }
+  async function getJson(url, init2 = {}) {
+    const response = await trackedFetch$1(url, {
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "X-WP-Nonce": readRestNonce(),
+        ...init2.headers ?? {}
+      },
+      ...init2
+    });
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  }
+  function readRestNonce() {
+    const cfg = window.wp?.desktop?.config;
+    return cfg?.restNonce ?? "";
+  }
+  function readRestRoot() {
+    const cfg = window.wp?.desktop?.config;
+    if (cfg?.restUrl) {
+      return cfg.restUrl.endsWith("/") ? cfg.restUrl : cfg.restUrl + "/";
+    }
+    return `${window.location.origin}/wp-json/`;
+  }
+  function restUrl(path) {
+    return joinRestUrl(readRestRoot(), path);
+  }
+  function renderPlacementPreview(placement, host) {
+    const filtered = applyFilters(
+      "desktop-mode.files.preview",
+      null,
+      placement
+    );
+    if (filtered instanceof HTMLElement) {
+      host.replaceChildren(filtered);
+      return;
+    }
+    if (placement.accessGated) {
+      host.replaceChildren(renderAccessGated(placement));
+      return;
+    }
+    host.replaceChildren(renderLoading());
+    void renderByType(placement).then((node) => {
+      host.replaceChildren(node);
+    }).catch((err) => {
+      host.replaceChildren(renderError(err));
+    });
+  }
+  function renderAccessGated(placement) {
+    const wrap = document.createElement("div");
+    wrap.className = "desktop-mode-files__access-gated";
+    const ring = document.createElement("div");
+    ring.className = "desktop-mode-files__access-gated-ring";
+    const glyph = document.createElement("span");
+    glyph.className = "dashicons dashicons-lock desktop-mode-files__access-gated-glyph";
+    glyph.setAttribute("aria-hidden", "true");
+    ring.appendChild(glyph);
+    wrap.appendChild(ring);
+    const title = document.createElement("h2");
+    title.className = "desktop-mode-files__access-gated-title";
+    title.textContent = "No permission to view";
+    wrap.appendChild(title);
+    const sub = document.createElement("p");
+    sub.className = "desktop-mode-files__access-gated-sub";
+    const target = placement.file.title || placement.file.type;
+    sub.textContent = `You don’t have access to "${target}". The folder owner shared this folder with you, but your role doesn’t include permission to open this item.`;
+    wrap.appendChild(sub);
+    const hint = document.createElement("p");
+    hint.className = "desktop-mode-files__access-gated-hint";
+    hint.textContent = "Ask the owner to grant access on the underlying item, or to remove it from the shared folder.";
+    wrap.appendChild(hint);
+    return wrap;
+  }
+  async function renderByType(placement) {
+    const file = placement.file;
+    switch (file.type) {
+      case "post":
+        return renderPostPreview(file.ref, file);
+      case "folder":
+        return renderFolderPreview(file);
+      case "shortcut":
+        return renderShortcutPreview(file);
+      case "attachment":
+        return renderAttachmentPreview(file.ref, file);
+      case "user":
+        return renderUserSummary(file.ref, file);
+      case "term":
+        return renderTermSummary(file);
+      case "comment":
+        return renderCommentSummary(file.ref, file);
+      case "bookmark":
+        return renderBookmarkPreview(file);
+      default:
+        return renderGenericPreview(file);
+    }
+  }
+  async function renderPostPreview(ref, file) {
+    const id = parseInt(ref, 10);
+    if (!id) {
+      return renderGenericPreview(file);
+    }
+    let data = null;
+    for (const path of ["wp/v2/posts", "wp/v2/pages"]) {
+      try {
+        data = await getJson(
+          restUrl(
+            `${path}/${id}?_fields=id,title,content,date,link,status`
+          )
+        );
+        break;
+      } catch {
+      }
+    }
+    if (!data) {
+      return renderGenericPreview(file);
+    }
+    const wrap = articleShell();
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = stripTags(data.title.rendered) || file.title || `#${id}`;
+    wrap.appendChild(h);
+    const meta = document.createElement("p");
+    meta.className = "desktop-mode-my-wordpress__article-meta";
+    const parts = [];
+    parts.push(formatDate(data.date));
+    if (data.status && data.status !== "publish") {
+      parts.push(data.status);
+    }
+    meta.textContent = parts.join(" · ");
+    wrap.appendChild(meta);
+    if (data.content?.rendered) {
+      const body = document.createElement("div");
+      body.className = "desktop-mode-my-wordpress__article-content";
+      body.innerHTML = data.content.rendered;
+      wrap.appendChild(body);
+    }
+    const footer = document.createElement("footer");
+    footer.className = "desktop-mode-my-wordpress__article-footer";
+    const myWordpressApi = window.wp?.desktop?.myWordpress;
+    if (myWordpressApi) {
+      const exploreBtn = document.createElement("wpd-button");
+      exploreBtn.setAttribute("variant", "secondary");
+      exploreBtn.textContent = __("Explore details", "desktop-mode");
+      exploreBtn.title = __(
+        "See author, comments, categories, tags, attached media, and revisions for this entry.",
+        "desktop-mode"
+      );
+      exploreBtn.addEventListener("click", () => {
+        const postType = typeof file.postType === "string" ? file.postType : "post";
+        myWordpressApi.openDetail({
+          entityId: postType === "page" ? "pages" : "posts",
+          postId: id,
+          postTitle: stripTags(data.title.rendered) || `#${id}`
+        });
+      });
+      footer.appendChild(exploreBtn);
+    }
+    const editBtn = document.createElement("wpd-button");
+    editBtn.setAttribute("variant", "primary");
+    editBtn.textContent = __("Open in editor", "desktop-mode");
+    editBtn.addEventListener("click", () => {
+      const adminUrl = window.wp?.desktop?.config?.adminUrl;
+      if (!adminUrl) {
+        return;
+      }
+      const editUrl = `${adminUrl}post.php?post=${id}&action=edit`;
+      const wm = window.wp?.desktop?.windowManager;
+      const postType = typeof file.postType === "string" ? file.postType : "post";
+      const entityId = postType === "page" ? "pages" : "posts";
+      wm?.open({
+        id: `${entityId}-edit-${id}`,
+        url: editUrl,
+        title: stripTags(data.title.rendered),
+        icon: file.icon
+      });
+    });
+    footer.appendChild(editBtn);
+    wrap.appendChild(footer);
+    return wrap;
+  }
+  async function renderUserSummary(ref, file) {
+    const id = parseInt(ref, 10);
+    if (!id) {
+      return renderGenericPreview(file);
+    }
+    let data = null;
+    try {
+      data = await getJson(
+        restUrl(`desktop-mode/v1/user-stats/${id}`)
+      );
+    } catch {
+      return renderGenericPreview(file);
+    }
+    const wrap = articleShell("desktop-mode-my-wordpress__user");
+    const header = document.createElement("header");
+    header.className = "desktop-mode-my-wordpress__user-header";
+    if (data.profile.avatarUrl) {
+      const img = document.createElement("img");
+      img.className = "desktop-mode-my-wordpress__user-avatar";
+      img.src = data.profile.avatarUrl;
+      img.alt = "";
+      header.appendChild(img);
+    }
+    const head = document.createElement("div");
+    head.className = "desktop-mode-my-wordpress__user-headline";
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = data.profile.name || file.title || `#${id}`;
+    head.appendChild(h);
+    if (data.profile.roleLabels && data.profile.roleLabels.length > 0) {
+      const roles = document.createElement("div");
+      roles.className = "desktop-mode-my-wordpress__user-roles";
+      for (const r of data.profile.roleLabels) {
+        const badge = document.createElement("span");
+        badge.className = "desktop-mode-my-wordpress__user-role";
+        badge.textContent = r;
+        roles.appendChild(badge);
+      }
+      head.appendChild(roles);
+    }
+    header.appendChild(head);
+    wrap.appendChild(header);
+    if (data.profile.description) {
+      const bio = document.createElement("div");
+      bio.className = "desktop-mode-my-wordpress__user-bio";
+      bio.textContent = data.profile.description;
+      wrap.appendChild(bio);
+    }
+    const cards = document.createElement("div");
+    cards.className = "desktop-mode-my-wordpress__user-stats";
+    cards.appendChild(
+      statCard(
+        data.counts.posts.total.toLocaleString(),
+        __("Posts", "desktop-mode")
+      )
+    );
+    cards.appendChild(
+      statCard(
+        data.counts.pages.total.toLocaleString(),
+        __("Pages", "desktop-mode")
+      )
+    );
+    cards.appendChild(
+      statCard(
+        data.counts.commentsReceived.toLocaleString(),
+        __("Comments received", "desktop-mode")
+      )
+    );
+    wrap.appendChild(cards);
+    return wrap;
+  }
+  async function renderTermSummary(file) {
+    const id = parseInt(file.ref, 10);
+    const taxonomy = typeof file.taxonomy === "string" && file.taxonomy ? file.taxonomy : "category";
+    if (!id) {
+      return renderGenericPreview(file);
+    }
+    let data = null;
+    try {
+      data = await getJson(
+        restUrl(`desktop-mode/v1/term-stats/${taxonomy}/${id}`)
+      );
+    } catch {
+      return renderGenericPreview(file);
+    }
+    const wrap = articleShell();
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = data.profile.name || file.title || `#${id}`;
+    wrap.appendChild(h);
+    const meta = document.createElement("p");
+    meta.className = "desktop-mode-my-wordpress__article-meta";
+    meta.textContent = data.profile.taxonomyLabel || data.profile.taxonomy;
+    wrap.appendChild(meta);
+    if (data.profile.description) {
+      const desc = document.createElement("div");
+      desc.className = "desktop-mode-my-wordpress__article-content";
+      desc.innerHTML = data.profile.description;
+      wrap.appendChild(desc);
+    }
+    const cards = document.createElement("div");
+    cards.className = "desktop-mode-my-wordpress__user-stats";
+    cards.appendChild(
+      statCard(
+        data.counts.posts.total.toLocaleString(),
+        __("Posts", "desktop-mode")
+      )
+    );
+    cards.appendChild(
+      statCard(
+        data.counts.commentsReceived.toLocaleString(),
+        __("Comments", "desktop-mode")
+      )
+    );
+    cards.appendChild(
+      statCard(
+        data.counts.distinctAuthors.toLocaleString(),
+        __("Authors", "desktop-mode")
+      )
+    );
+    wrap.appendChild(cards);
+    return wrap;
+  }
+  async function renderCommentSummary(ref, file) {
+    const id = parseInt(ref, 10);
+    if (!id) {
+      return renderGenericPreview(file);
+    }
+    let data = null;
+    try {
+      data = await getJson(
+        restUrl(`desktop-mode/v1/comment-stats/${id}`)
+      );
+    } catch {
+      return renderGenericPreview(file);
+    }
+    const wrap = articleShell();
+    const header = document.createElement("header");
+    header.className = "desktop-mode-my-wordpress__user-header";
+    if (data.author.avatarUrl) {
+      const img = document.createElement("img");
+      img.className = "desktop-mode-my-wordpress__user-avatar";
+      img.src = data.author.avatarUrl;
+      img.alt = "";
+      header.appendChild(img);
+    }
+    const head = document.createElement("div");
+    head.className = "desktop-mode-my-wordpress__user-headline";
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = data.author.name;
+    head.appendChild(h);
+    const sub = document.createElement("p");
+    sub.className = "desktop-mode-my-wordpress__article-meta";
+    sub.textContent = `${formatDate(data.comment.date)} · ${data.comment.status}`;
+    head.appendChild(sub);
+    header.appendChild(head);
+    wrap.appendChild(header);
+    const body = document.createElement("div");
+    body.className = "desktop-mode-my-wordpress__article-content";
+    body.innerHTML = data.comment.rendered;
+    wrap.appendChild(body);
+    if (data.post) {
+      const card = document.createElement("div");
+      card.className = "desktop-mode-my-wordpress__comment-post";
+      const link = document.createElement("a");
+      link.className = "desktop-mode-my-wordpress__comment-post-title";
+      link.href = data.post.link;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = data.post.title;
+      card.appendChild(link);
+      wrap.appendChild(card);
+    }
+    return wrap;
+  }
+  async function renderAttachmentPreview(ref, file) {
+    const id = parseInt(ref, 10);
+    if (!id) {
+      return renderGenericPreview(file);
+    }
+    let data = null;
+    try {
+      data = await getJson(
+        restUrl(
+          `wp/v2/media/${id}?_fields=id,title,source_url,mime_type,alt_text,media_details`
+        )
+      );
+    } catch {
+      return renderGenericPreview(file);
+    }
+    const wrap = articleShell();
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = stripTags(data.title.rendered) || file.title || `#${id}`;
+    wrap.appendChild(h);
+    const meta = document.createElement("p");
+    meta.className = "desktop-mode-my-wordpress__article-meta";
+    meta.textContent = data.mime_type;
+    wrap.appendChild(meta);
+    if (data.mime_type.startsWith("image/")) {
+      const img = document.createElement("img");
+      img.className = "desktop-mode-my-wordpress__article-hero";
+      const sizes = data.media_details?.sizes;
+      img.src = sizes?.large?.source_url ?? sizes?.medium?.source_url ?? data.source_url;
+      img.alt = data.alt_text ?? "";
+      wrap.appendChild(img);
+    } else {
+      const p = document.createElement("p");
+      const a = document.createElement("a");
+      a.href = data.source_url;
+      a.textContent = data.source_url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      p.appendChild(a);
+      wrap.appendChild(p);
+    }
+    return wrap;
+  }
+  function renderFolderPreview(file) {
+    const wrap = articleShell();
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = file.title || __("(folder)", "desktop-mode");
+    wrap.appendChild(h);
+    const meta = document.createElement("p");
+    meta.className = "desktop-mode-my-wordpress__article-meta";
+    meta.textContent = __("Double-click to open.", "desktop-mode");
+    wrap.appendChild(meta);
+    return wrap;
+  }
+  function renderShortcutPreview(file) {
+    const wrap = articleShell();
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = file.title || __("Shortcut", "desktop-mode");
+    wrap.appendChild(h);
+    const meta = document.createElement("p");
+    meta.className = "desktop-mode-my-wordpress__article-meta";
+    meta.textContent = __("Plugin shortcut. Double-click to open.", "desktop-mode");
+    wrap.appendChild(meta);
+    return wrap;
+  }
+  function renderBookmarkPreview(file) {
+    const wrap = articleShell();
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = file.title || __("Bookmark", "desktop-mode");
+    wrap.appendChild(h);
+    const url = typeof file.url === "string" ? file.url : "";
+    if (url) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.textContent = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      wrap.appendChild(a);
+    }
+    return wrap;
+  }
+  function renderGenericPreview(file) {
+    const wrap = articleShell();
+    const h = document.createElement("h2");
+    h.className = "desktop-mode-my-wordpress__article-title";
+    h.textContent = file.title || file.type;
+    wrap.appendChild(h);
+    const meta = document.createElement("p");
+    meta.className = "desktop-mode-my-wordpress__article-meta";
+    meta.textContent = sprintf(
+      // translators: %s is a file-type slug.
+      __("Type: %s", "desktop-mode"),
+      file.type
+    );
+    wrap.appendChild(meta);
+    if (!file.exists) {
+      const warn2 = document.createElement("p");
+      warn2.className = "desktop-mode-my-wordpress__article-meta";
+      warn2.textContent = __(
+        "The underlying entity is no longer available.",
+        "desktop-mode"
+      );
+      wrap.appendChild(warn2);
+    }
+    return wrap;
+  }
+  function articleShell(extraClass = "") {
+    const article = document.createElement("article");
+    article.className = "desktop-mode-my-wordpress__article" + (extraClass ? " " + extraClass : "");
+    return article;
+  }
+  function statCard(value, label) {
+    const card = document.createElement("div");
+    card.className = "desktop-mode-my-wordpress__user-stat";
+    const v = document.createElement("span");
+    v.className = "desktop-mode-my-wordpress__user-stat-value";
+    v.textContent = value;
+    card.appendChild(v);
+    const l = document.createElement("span");
+    l.className = "desktop-mode-my-wordpress__user-stat-label";
+    l.textContent = label;
+    card.appendChild(l);
+    return card;
+  }
+  function renderLoading() {
+    const wrap = document.createElement("div");
+    wrap.className = "desktop-mode-my-wordpress__preview-loading";
+    const spinner = document.createElement("wpd-spinner");
+    wrap.appendChild(spinner);
+    return wrap;
+  }
+  function renderError(err) {
+    const wrap = document.createElement("div");
+    wrap.className = "desktop-mode-my-wordpress__error";
+    wrap.textContent = err instanceof Error ? err.message : __("Unknown error.", "desktop-mode");
+    return wrap;
+  }
+  function stripTags(html2) {
+    const div = document.createElement("div");
+    div.innerHTML = html2;
+    return (div.textContent ?? "").trim();
+  }
+  function formatDate(iso) {
+    if (!iso) {
+      return "";
+    }
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  }
+  function renderPreviewEmpty() {
+    const wrap = document.createElement("div");
+    wrap.className = "desktop-mode-my-wordpress__preview-empty";
+    wrap.textContent = __(
+      "Select an item to preview it here.",
+      "desktop-mode"
+    );
+    return wrap;
+  }
+  const ID_PREFIX = "desktop-mode-embed-";
+  const DEFAULT_W = 800;
+  const DEFAULT_H = 600;
+  const MIN_W = 360;
+  const MIN_H = 240;
+  const PADDING = 16;
+  const lastPersisted = /* @__PURE__ */ new Map();
+  function openEmbedWindow(file, ctx) {
+    const url = file.ref();
+    if (!url) {
+      return;
+    }
+    const wm = window.wp?.desktop?.windowManager;
+    if (!wm) {
+      return;
+    }
+    const placement = ctx?.placement;
+    const meta = placement?.meta ?? null;
+    const windowId = placement ? `${ID_PREFIX}${placement.id}` : `${ID_PREFIX}anon-${hash(url)}`;
+    const customName = meta?.name?.trim() ?? "";
+    const title = customName !== "" ? customName : file.title();
+    const cfg = {
+      id: windowId,
+      baseId: windowId,
+      url,
+      title,
+      icon: file.icon(),
+      minWidth: MIN_W,
+      minHeight: MIN_H
+    };
+    const saved = meta?.window;
+    const area = document.getElementById("desktop-mode-area");
+    const aw = area?.clientWidth ?? window.innerWidth;
+    const ah = area?.clientHeight ?? window.innerHeight;
+    if (saved && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {
+      const { x, y, width, height } = clampGeometry(saved, aw, ah);
+      cfg.x = x;
+      cfg.y = y;
+      cfg.width = width;
+      cfg.height = height;
+    } else {
+      cfg.width = Math.min(DEFAULT_W, Math.max(MIN_W, aw - PADDING * 2));
+      cfg.height = Math.min(DEFAULT_H, Math.max(MIN_H, ah - PADDING * 2));
+    }
+    if (placement) {
+      if (saved) {
+        lastPersisted.set(windowId, { ...saved });
+      }
+    }
+    wm.open(cfg);
+  }
+  let installed = false;
+  function installEmbedPersistence() {
+    if (installed) {
+      return;
+    }
+    installed = true;
+    const onChange = (payload) => {
+      const p = payload;
+      const id = p?.windowId;
+      if (!id || !id.startsWith(ID_PREFIX)) {
+        return;
+      }
+      const placementIdStr = id.slice(ID_PREFIX.length);
+      const placementId = parseInt(placementIdStr, 10);
+      if (!placementId) {
+        return;
+      }
+      const wm = window.wp?.desktop?.windowManager;
+      const win = wm?.getById?.(id);
+      const el = win?.element;
+      if (!el) {
+        return;
+      }
+      const next = {
+        x: el.offsetLeft,
+        y: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight
+      };
+      const prev = lastPersisted.get(id);
+      if (prev && prev.x === next.x && prev.y === next.y && prev.width === next.width && prev.height === next.height) {
+        return;
+      }
+      lastPersisted.set(id, next);
+      void persist(placementId, next);
+    };
+    addAction(HOOKS.WINDOW_DRAG_END, "desktop-mode-embed-persist", onChange);
+    addAction(HOOKS.WINDOW_RESIZE_END, "desktop-mode-embed-persist", onChange);
+  }
+  async function persist(placementId, geo) {
+    try {
+      const list2 = await listPlacements(0);
+      const row = list2.placements.find((p) => p.id === placementId);
+      const prevMeta = row?.meta ?? {};
+      const nextMeta = {
+        ...prevMeta,
+        window: geo
+      };
+      await updatePlacement(placementId, { meta: nextMeta });
+    } catch (err) {
+      console.warn("[desktop-mode] embed window persist failed:", err);
+    }
+  }
+  function clampGeometry(g, areaW, areaH) {
+    const width = Math.max(MIN_W, Math.min(g.width, areaW - PADDING));
+    const height = Math.max(MIN_H, Math.min(g.height, areaH - PADDING));
+    const x = Math.max(0, Math.min(g.x, Math.max(0, areaW - width)));
+    const y = Math.max(0, Math.min(g.y, Math.max(0, areaH - height)));
+    return { x, y, width, height };
+  }
+  function hash(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = (Math.imul(h, 31) + s.charCodeAt(i)) % 2147483647;
+    }
+    return Math.abs(h).toString(36);
+  }
+  function adminBase() {
+    const cfg = window.wp?.desktop?.config;
+    const url = cfg?.adminUrl ?? "/wp-admin/";
+    return url.endsWith("/") ? url : `${url}/`;
+  }
+  function registerBuiltInFileOpeners() {
+    registerOpener({
+      id: "wp-post-editor",
+      label: "Block Editor",
+      types: ["post"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "url",
+        url: (file) => `${adminBase()}post.php?post=${encodeURIComponent(file.ref())}&action=edit`
+      }
+    });
+    registerOpener({
+      id: "wp-media-editor",
+      label: "Media editor",
+      types: ["attachment"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "url",
+        url: (file) => `${adminBase()}post.php?post=${encodeURIComponent(file.ref())}&action=edit`
+      }
+    });
+    registerOpener({
+      id: "wp-user-profile",
+      label: "User profile",
+      types: ["user"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "url",
+        url: (file) => `${adminBase()}user-edit.php?user_id=${encodeURIComponent(file.ref())}`
+      }
+    });
+    registerOpener({
+      id: "wp-term-editor",
+      label: "Term editor",
+      types: ["term"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "url",
+        url: (file) => {
+          const [taxonomy, termId] = file.ref().split(":");
+          return `${adminBase()}term.php?taxonomy=${encodeURIComponent(taxonomy ?? "")}&tag_ID=${encodeURIComponent(termId ?? "")}`;
+        }
+      }
+    });
+    registerOpener({
+      id: "wp-comment-editor",
+      label: "Comment editor",
+      types: ["comment"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "url",
+        url: (file) => `${adminBase()}comment.php?action=editcomment&c=${encodeURIComponent(file.ref())}`
+      }
+    });
+    registerOpener({
+      id: "desktop-mode-folder-window",
+      label: "Open folder",
+      types: ["folder"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "js",
+        open: (file) => {
+          const folderId = parseInt(file.ref(), 10);
+          if (!folderId) {
+            return;
+          }
+          const wm = window.wp?.desktop?.windowManager;
+          if (!wm) {
+            return;
+          }
+          const id = `desktop-mode-folder-${folderId}`;
+          const folderRow = store.getState().folders.get(folderId);
+          const viewerId2 = Number(window.desktopModeConfig?.currentUserId ?? 0);
+          const isRecipient = !!folderRow && folderRow.ownerId > 0 && folderRow.ownerId !== viewerId2;
+          const baseTitle = file.title();
+          const titleWithCue = isRecipient ? `${baseTitle} · Shared` : baseTitle;
+          wm.open({
+            id,
+            baseId: id,
+            url: `#folder-${folderId}`,
+            title: titleWithCue,
+            icon: file.icon(),
+            native: true,
+            render: (body) => {
+              body.replaceChildren();
+              body.classList.add("desktop-mode-folder-window");
+              const routes = [
+                { folderId, title: file.title() }
+              ];
+              let currentDispose = null;
+              const breadcrumbsHost = document.createElement("header");
+              body.appendChild(breadcrumbsHost);
+              const bodyHost = document.createElement("div");
+              bodyHost.style.cssText = "flex:1 1 auto;min-height:0;display:flex;flex-direction:column;";
+              body.appendChild(bodyHost);
+              const paintBreadcrumbs = () => {
+                const segments = routes.map(
+                  (route, idx) => {
+                    const isCurrent = idx === routes.length - 1;
+                    if (isCurrent) {
+                      return { label: route.title };
+                    }
+                    return {
+                      label: route.title,
+                      onClick: () => {
+                        routes.length = idx + 1;
+                        mountCurrent();
+                      }
+                    };
+                  }
+                );
+                renderBreadcrumbs(breadcrumbsHost, segments, {
+                  onBack: () => {
+                    if (routes.length <= 1) {
+                      return;
+                    }
+                    routes.pop();
+                    mountCurrent();
+                  },
+                  backDisabled: routes.length <= 1
+                });
+              };
+              const mountCurrent = () => {
+                currentDispose?.();
+                currentDispose = null;
+                bodyHost.replaceChildren();
+                const split = document.createElement("div");
+                split.className = "desktop-mode-folder-window__split";
+                bodyHost.appendChild(split);
+                const layerHost = document.createElement("div");
+                layerHost.className = "desktop-mode-folder-window__layer";
+                split.appendChild(layerHost);
+                const previewPane = document.createElement("div");
+                previewPane.className = "desktop-mode-folder-window__preview";
+                previewPane.appendChild(renderPreviewEmpty());
+                split.appendChild(previewPane);
+                const route = routes[routes.length - 1];
+                const layer = mountFilesLayer(
+                  layerHost,
+                  route.folderId
+                );
+                const offSelection = layer.onSelectionChange(
+                  (placement) => {
+                    if (!placement) {
+                      previewPane.replaceChildren(
+                        renderPreviewEmpty()
+                      );
+                      return;
+                    }
+                    renderPlacementPreview(
+                      placement,
+                      previewPane
+                    );
+                  }
+                );
+                const dblClickHandler = (e) => {
+                  if (!(e.target instanceof Element)) {
+                    return;
+                  }
+                  const tile2 = e.target.closest(
+                    ".desktop-mode-file-tile"
+                  );
+                  if (!tile2) {
+                    return;
+                  }
+                  if (tile2.dataset.fileType !== "folder") {
+                    return;
+                  }
+                  const subId = parseInt(
+                    tile2.dataset.fileRef ?? "",
+                    10
+                  );
+                  if (!subId) {
+                    return;
+                  }
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const subTitle = tile2.querySelector(
+                    ".desktop-mode-file-tile__label"
+                  )?.textContent ?? `#${subId}`;
+                  routes.push({
+                    folderId: subId,
+                    title: subTitle
+                  });
+                  mountCurrent();
+                };
+                layerHost.addEventListener(
+                  "dblclick",
+                  dblClickHandler,
+                  true
+                );
+                const menu = attachIconCanvasMenu(layerHost, {
+                  scope: `desktop-mode-folder:${route.folderId}`,
+                  onSort: (mode) => layer.sort(mode),
+                  extraItems: [
+                    {
+                      id: "new-folder",
+                      label: "New folder",
+                      icon: "dashicons-portfolio",
+                      sort: 5,
+                      onClick: () => {
+                        openCreateFolderDialog({
+                          onSubmit: async (name) => {
+                            const folder = await createFolder({
+                              name
+                            });
+                            const peers = store.getState().placementsByFolder.get(
+                              route.folderId
+                            ) ?? [];
+                            const occupied = buildOccupiedSet(peers);
+                            const cell = snapToEmptyCell(
+                              GRID_PADDING,
+                              GRID_PADDING,
+                              occupied,
+                              layerHost
+                            );
+                            const placement = await createPlacement({
+                              type: "folder",
+                              ref: String(folder.id),
+                              parentId: route.folderId,
+                              x: cell.x,
+                              y: cell.y
+                            });
+                            store.upsertFolder(folder);
+                            store.upsertPlacement(
+                              placement
+                            );
+                          }
+                        });
+                      }
+                    }
+                  ]
+                });
+                const status = mountFolderStatusBar(
+                  bodyHost,
+                  route.folderId
+                );
+                currentDispose = () => {
+                  offSelection();
+                  menu.dispose();
+                  status.dispose();
+                  layerHost.removeEventListener(
+                    "dblclick",
+                    dblClickHandler,
+                    true
+                  );
+                  layer.dispose();
+                };
+                paintBreadcrumbs();
+              };
+              mountCurrent();
+            },
+            width: 720,
+            height: 480,
+            minWidth: 360,
+            minHeight: 240
+          });
+        }
+      }
+    });
+    registerOpener({
+      id: "desktop-mode-shortcut-opener",
+      label: "Open shortcut",
+      types: ["shortcut"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "js",
+        open: (file) => {
+          const extras = file.shape;
+          const wp = window.wp?.desktop;
+          if (!wp) {
+            return;
+          }
+          if (extras.shortcutWindow && wp.openWindow) {
+            wp.openWindow(extras.shortcutWindow);
+            return;
+          }
+          if (extras.shortcutUrl && wp.windowManager) {
+            try {
+              const u = new URL(extras.shortcutUrl, window.location.origin);
+              if (u.origin !== window.location.origin) {
+                window.open(u.toString(), "_blank", "noopener,noreferrer");
+                return;
+              }
+              const id = `desktop-icon-${file.ref()}`;
+              wp.windowManager.open({
+                id,
+                baseId: id,
+                url: u.toString(),
+                title: file.title(),
+                icon: file.icon()
+              });
+            } catch {
+            }
+          }
+        }
+      }
+    });
+    registerOpener({
+      id: "browser-navigate",
+      label: "Open in browser",
+      types: ["bookmark"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "js",
+        open: (file) => {
+          const url = file.ref();
+          if (!url) {
+            return;
+          }
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      }
+    });
+    registerOpener({
+      id: "desktop-mode-link-opener",
+      label: "Open in browser",
+      types: ["link"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "js",
+        open: (file) => {
+          const url = file.ref();
+          if (!url) {
+            return;
+          }
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      }
+    });
+    registerOpener({
+      id: "desktop-mode-embed-opener",
+      label: "Open as window",
+      types: ["embed"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "js",
+        open: (file, ctx) => {
+          openEmbedWindow(file, ctx);
+        }
+      }
+    });
+  }
+  const TAB_ID = "desktop-mode-file-associations";
+  function registerFileAssociationsTab() {
+    registerSettingsTab({
+      id: TAB_ID,
+      label: "File Associations",
+      order: 50,
+      render(body) {
+        renderTab(body);
+      }
+    });
+  }
+  function renderTab(body) {
+    body.replaceChildren();
+    const types = getTypes();
+    if (types.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "desktop-mode-file-associations__empty";
+      empty.textContent = "No file types are registered.";
+      body.appendChild(empty);
+      return;
+    }
+    const intro = document.createElement("p");
+    intro.className = "desktop-mode-file-associations__intro";
+    intro.textContent = "Pick which app opens each kind of file when you double-click it on the desktop.";
+    body.appendChild(intro);
+    const associations = getUserAssociations();
+    const list2 = document.createElement("div");
+    list2.className = "desktop-mode-file-associations__list";
+    list2.setAttribute("role", "list");
+    for (const type of types) {
+      list2.appendChild(buildRow(type.type, type.label, associations));
+    }
+    body.appendChild(list2);
+  }
+  function buildRow(typeSlug, typeLabel, associations) {
+    const row = document.createElement("div");
+    row.className = "desktop-mode-file-associations__row";
+    row.setAttribute("role", "listitem");
+    row.dataset.fileType = typeSlug;
+    const label = document.createElement("label");
+    label.className = "desktop-mode-file-associations__label";
+    label.textContent = typeLabel;
+    row.appendChild(label);
+    const candidates = getOpenersForType(typeSlug);
+    if (candidates.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "desktop-mode-file-associations__none";
+      empty.textContent = "No app available";
+      row.appendChild(empty);
+      return row;
+    }
+    const resolved = resolveOpener(typeSlug);
+    const currentId = associations[typeSlug] ?? resolved?.id ?? "";
+    const select = document.createElement("wpd-select");
+    select.setAttribute("value", currentId);
+    select.setAttribute("aria-label", `Default app for ${typeLabel}`);
+    select.className = "desktop-mode-file-associations__select";
+    label.htmlFor = `assoc-${typeSlug}`;
+    select.id = `assoc-${typeSlug}`;
+    for (const o of candidates) {
+      const opt = document.createElement("wpd-option");
+      opt.setAttribute("value", o.id);
+      opt.textContent = o.isDefault ? `${o.label} (default)` : o.label;
+      select.appendChild(opt);
+    }
+    select.addEventListener("wpd-pick", (e) => {
+      const next = e.detail?.value;
+      if (!next) {
+        return;
+      }
+      const merged = { ...getUserAssociations(), [typeSlug]: next };
+      setUserAssociations(merged);
+      void saveAssociations(merged).catch((err) => {
+        console.error("[desktop-mode] saveAssociations failed:", err);
+      });
+    });
+    row.appendChild(select);
+    return row;
+  }
+  let _store$1 = null;
+  function sharesStore() {
+    if (!_store$1) {
+      _store$1 = createSharedStore("desktop-files/shares", () => ({
+        byFolder: /* @__PURE__ */ new Map(),
+        pending: [],
+        sharesVersion: 0,
+        deniedFolders: /* @__PURE__ */ new Set()
+      }));
+    }
+    return _store$1;
+  }
+  function setSharesForFolder(folderId, shares) {
+    const s = sharesStore();
+    s.state.byFolder.set(folderId, shares);
+    s.notify();
+  }
+  function upsertShare(share) {
+    if (!share || typeof share.folderId !== "number") {
+      return;
+    }
+    const s = sharesStore();
+    const existing = s.state.byFolder.get(share.folderId) ?? [];
+    const next = existing.filter((r) => r.id !== share.id);
+    next.push(share);
+    s.state.byFolder.set(share.folderId, next);
+    s.notify();
+  }
+  function removeShare(folderId, shareId) {
+    const s = sharesStore();
+    const existing = s.state.byFolder.get(folderId) ?? [];
+    s.state.byFolder.set(
+      folderId,
+      existing.filter((r) => r.id !== shareId)
+    );
+    s.notify();
+  }
+  function inviteEquals(a, b) {
+    return a.id === b.id && a.folderId === b.folderId && a.capability === b.capability && a.invitedAtMs === b.invitedAtMs && a.folderName === b.folderName && a.ownerName === b.ownerName;
+  }
+  function ingestPendingInvites(invites) {
+    const s = sharesStore();
+    const existingById = new Map(s.state.pending.map((p) => [p.id, p]));
+    let mutated = false;
+    for (const inv of invites) {
+      if (s.state.deniedFolders.has(inv.folderId)) {
+        continue;
+      }
+      const existing = existingById.get(inv.id);
+      if (existing) {
+        if (inviteEquals(existing, inv)) {
+          continue;
+        }
+        s.state.pending = s.state.pending.map((p) => p.id === inv.id ? inv : p);
+      } else {
+        s.state.pending.push(inv);
+      }
+      if (inv.invitedAtMs > s.state.sharesVersion) {
+        s.state.sharesVersion = inv.invitedAtMs;
+      }
+      mutated = true;
+    }
+    if (mutated) {
+      s.notify();
+    }
+  }
+  function dropPending(shareId, opts = {}) {
+    const s = sharesStore();
+    s.state.pending = s.state.pending.filter((p) => p.id !== shareId);
+    if (opts.denied && typeof opts.folderId === "number") {
+      s.state.deniedFolders.add(opts.folderId);
+    }
+    s.notify();
+  }
+  const modalStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000}:host( [ open ] ){display:flex}.dialog{max-width:92vw;max-height:90vh;background:var( --wpd-modal-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-modal-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );display:flex;flex-direction:column;overflow:hidden}:host( [ size='sm' ] ) .dialog{width:min( 360px,92vw )}:host(:not( [ size ] ) ) .dialog,:host( [ size='md' ] ) .dialog{width:min( 540px,92vw )}:host( [ size='lg' ] ) .dialog{width:min( 760px,94vw )}.header{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;border-bottom:1px solid rgba( 255,255,255,0.06 )}.title{margin:0;flex:1;font-size:15px;font-weight:600}.header-actions{display:flex;gap:6px}.header-actions::slotted( * ){margin-inline-start:6px}.close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;cursor:pointer;opacity:0.7}.close:hover{opacity:1;background:rgba( 255,255,255,0.08 )}.body{padding:16px 20px;overflow:auto;flex:1 1 auto;font-size:13px;line-height:1.5}.footer{padding:12px 20px 16px;border-top:1px solid rgba( 255,255,255,0.06 )}.footer slot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}:host( [ mandatory ] ) .close{display:none}`;
+  const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const _WpdModal = class _WpdModal extends Component {
+    constructor() {
+      super(...arguments);
+      this._prevFocus = null;
+      this._onKey = (e) => {
+        if (e.key === "Escape" && !this.hasAttribute("mandatory")) {
+          e.preventDefault();
+          this._cancel();
+          return;
+        }
+        if (e.key === "Tab") {
+          const f = this._focusables();
+          if (f.length === 0) {
+            return;
+          }
+          const first = f[0];
+          const last = f[f.length - 1];
+          const doc = this.ownerDocument;
+          const fallback = doc ? doc.activeElement : null;
+          const active2 = e.composedPath()[0] || fallback;
+          if (e.shiftKey && active2 === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && active2 === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      };
+      this._onBackdrop = (e) => {
+        if (this.hasAttribute("mandatory")) {
+          return;
+        }
+        const path = e.composedPath();
+        const original = path.length > 0 ? path[0] : e.target;
+        if (original === this) {
+          this._cancel();
+        }
+      };
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      this.setAttribute("role", "dialog");
+      this.setAttribute("aria-modal", "true");
+      this.addEventListener("keydown", this._onKey);
+      this.addEventListener("click", this._onBackdrop);
+    }
+    disconnectedCallback() {
+      this.removeEventListener("keydown", this._onKey);
+      this.removeEventListener("click", this._onBackdrop);
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+      super.attributeChangedCallback?.(name, oldValue, newValue);
+      if (name === "open") {
+        if (newValue !== null) {
+          const doc = this.ownerDocument;
+          this._prevFocus = doc ? doc.activeElement : null;
+          queueMicrotask(() => this._focusFirst());
+        } else if (this._prevFocus) {
+          try {
+            this._prevFocus.focus();
+          } catch (e) {
+          }
+          this._prevFocus = null;
+        }
+      }
+    }
+    showModal() {
+      this.setAttribute("open", "");
+    }
+    hideModal() {
+      this.removeAttribute("open");
+    }
+    _focusables() {
+      const root = this.shadowRoot;
+      if (!root) {
+        return [];
+      }
+      const slotted = Array.from(this.querySelectorAll(FOCUSABLE));
+      const inShadow = Array.from(root.querySelectorAll(FOCUSABLE));
+      return [...slotted, ...inShadow].filter((el) => el.offsetParent !== null || el.tagName === "BUTTON");
+    }
+    _focusFirst() {
+      const f = this._focusables();
+      if (f.length > 0) {
+        f[0].focus();
+      } else {
+        const inner = this.shadowRoot?.querySelector(".dialog");
+        inner?.focus?.();
+      }
+    }
+    _cancel() {
+      const ev = new CustomEvent("wpd-modal-cancel", {
+        bubbles: true,
+        cancelable: true,
+        composed: true
+      });
+      const allowed = this.dispatchEvent(ev);
+      if (allowed) {
+        this.hideModal();
+      }
+    }
+    render() {
+      const title = this.getAttribute("title") ?? "";
+      const mandatory = this.hasAttribute("mandatory");
+      return html`
+			<div class="dialog" tabindex="-1">
+				${title ? html`
+						<div class="header">
+							<h2 class="title">${title}</h2>
+							<div class="header-actions">
+								<slot name="header-actions"></slot>
+								${mandatory ? html`` : html`<button
+										type="button"
+										class="close"
+										aria-label="Close"
+										@click=${() => this._cancel()}
+									>×</button>`}
+							</div>
+						</div>
+					` : html``}
+				<div class="body">
+					<slot></slot>
+				</div>
+				<div class="footer">
+					<slot name="footer"></slot>
+				</div>
+			</div>
+		`;
+    }
+  };
+  _WpdModal.props = ["open", "title", "size", "mandatory"];
+  _WpdModal.styles = [modalStyles];
+  _WpdModal.help = {
+    title: "Modal overlay",
+    summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm.",
+    status: "experimental",
+    since: "0.18.0",
+    props: [
+      { name: "open", type: "boolean attribute", description: "Mounts the dialog visible." },
+      { name: "title", type: "string", description: "Heading shown at the top of the dialog." },
+      { name: "size", type: "'sm' | 'md' | 'lg'", default: "md", description: "Width preset." },
+      {
+        name: "mandatory",
+        type: "boolean attribute",
+        description: "Disables ESC, click-outside and the close button."
+      }
+    ],
+    slots: [
+      { name: "(default)", description: "Body content." },
+      { name: "footer", description: "Footer button row, right-aligned." },
+      { name: "header-actions", description: "Extra actions next to the close button." }
+    ],
+    events: [
+      {
+        name: "wpd-modal-cancel",
+        description: "Fires when the user dismisses the modal (ESC, click-outside, close button). Cancelable; calling `preventDefault()` keeps the modal open."
+      }
+    ]
+  };
+  let WpdModal = _WpdModal;
+  defineComponent("wpd-modal", WpdModal);
+  const userSearchStyles = css`:host{display:block;position:relative;font-size:13px}.input{width:100%;padding:8px 10px;background:var( --wpd-input-bg,rgba( 255,255,255,0.06 ) );color:inherit;border:1px solid rgba( 255,255,255,0.12 );border-radius:6px;font:inherit;box-sizing:border-box}.input:focus{outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:-1px}.dropdown{background:var( --desktop-mode-bg,#1d2327 );color:var( --desktop-mode-fg,#fff );border:1px solid rgba( 255,255,255,0.18 );border-radius:6px;overflow:auto;z-index:11000;box-shadow:0 12px 32px rgba( 0,0,0,0.5 )}.empty.error{color:#ff8080}.item{display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border:0;background:transparent;color:inherit;width:100%;text-align:start;font:inherit}.item:hover,.item:focus{background:rgba( 255,255,255,0.06 );outline:none}.avatar{width:24px;height:24px;border-radius:50%;flex:0 0 auto;background:rgba( 255,255,255,0.1 )}.name{font-weight:500}.slug{opacity:0.6;font-size:12px}.empty{padding:12px;color:rgba( 255,255,255,0.5 );font-size:12px}`;
+  const _WpdUserSearch = class _WpdUserSearch extends Component {
+    constructor() {
+      super(...arguments);
+      this._timer = null;
+      this._abort = null;
+      this._results = [];
+      this._query = "";
+      this._open = false;
+      this._phase = "idle";
+      this._error = "";
+      this._dropdownStyle = "";
+      this._onScrollOrResize = () => void 0;
+      this._onInput = (e) => {
+        const value = e.target.value;
+        this._query = value;
+        this._scheduleSearch(value);
+      };
+      this._onFocus = () => {
+        if (this._results.length === 0 && this._phase === "idle") {
+          this._scheduleSearch(this._query);
+          return;
+        }
+        this._open = true;
+        this._positionDropdown();
+        this.requestUpdate();
+      };
+      this._onBlur = () => {
+        setTimeout(() => {
+          this._open = false;
+          this.requestUpdate();
+        }, 150);
+      };
+      this._pick = (user) => {
+        this.emit("wpd-user-pick", { user });
+        this._results = [];
+        this._open = false;
+        this._phase = "idle";
+        this._query = "";
+        const input = this.shadowRoot?.querySelector(".input");
+        if (input) {
+          input.value = "";
+        }
+        this.requestUpdate();
+      };
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      this._onScrollOrResize = () => {
+        if (this._open) {
+          this._positionDropdown();
+          this.requestUpdate();
+        }
+      };
+      window.addEventListener("resize", this._onScrollOrResize);
+      window.addEventListener("scroll", this._onScrollOrResize, true);
+    }
+    disconnectedCallback() {
+      if (this._timer) {
+        clearTimeout(this._timer);
+      }
+      if (this._abort) {
+        this._abort.abort();
+      }
+      window.removeEventListener("resize", this._onScrollOrResize);
+      window.removeEventListener("scroll", this._onScrollOrResize, true);
+    }
+    _endpoint() {
+      const attr = this.getAttribute("endpoint");
+      if (attr) {
+        return attr;
+      }
+      return window.desktopModeConfig?.filesUsersSearchUrl || "";
+    }
+    _scheduleSearch(q) {
+      if (this._timer) {
+        clearTimeout(this._timer);
+      }
+      this._phase = "loading";
+      this._open = true;
+      this._positionDropdown();
+      this.requestUpdate();
+      this._timer = setTimeout(() => this._runSearch(q), 200);
+    }
+    async _runSearch(q) {
+      const url = this._endpoint();
+      if (!url) {
+        this._phase = "error";
+        this._error = "Search endpoint is not configured.";
+        this._results = [];
+        this._open = true;
+        this.requestUpdate();
+        return;
+      }
+      if (this._abort) {
+        this._abort.abort();
+      }
+      const ctrl = new AbortController();
+      this._abort = ctrl;
+      const exclude = this.getAttribute("exclude") || "";
+      const full = url + "?q=" + encodeURIComponent(q) + "&exclude=" + encodeURIComponent(exclude);
+      try {
+        const init2 = {
+          signal: ctrl.signal,
+          credentials: "same-origin"
+        };
+        const res = await trackedFetch$1(full, init2, {
+          source: "desktop-mode/files-user-search",
+          silent: true
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const json = await res.json();
+        this._results = json && Array.isArray(json.users) ? json.users : [];
+        this._phase = "ready";
+        this._error = "";
+        this._open = true;
+      } catch (e) {
+        if (e.name === "AbortError") {
+          return;
+        }
+        this._results = [];
+        this._phase = "error";
+        this._error = e.message || "Search failed.";
+        this._open = true;
+      }
+      this._positionDropdown();
+      this.requestUpdate();
+    }
+    _positionDropdown() {
+      const input = this.shadowRoot?.querySelector(".input");
+      if (!input) {
+        return;
+      }
+      const rect = input.getBoundingClientRect();
+      const top = rect.bottom + 4;
+      const left = rect.left;
+      const width = rect.width;
+      const viewportH = window.innerHeight;
+      const spaceBelow = viewportH - rect.bottom;
+      const spaceAbove = rect.top;
+      const maxHeight = Math.max(120, Math.min(280, Math.max(spaceBelow, spaceAbove) - 16));
+      if (spaceBelow < 200 && spaceAbove > spaceBelow) {
+        this._dropdownStyle = [
+          "position:fixed",
+          `left:${left}px`,
+          `top:${rect.top - 4 - maxHeight}px`,
+          `width:${width}px`,
+          `max-height:${maxHeight}px`
+        ].join(";");
+      } else {
+        this._dropdownStyle = [
+          "position:fixed",
+          `left:${left}px`,
+          `top:${top}px`,
+          `width:${width}px`,
+          `max-height:${maxHeight}px`
+        ].join(";");
+      }
+    }
+    _dropdownContent() {
+      if (this._phase === "loading") {
+        return html`<div class="empty">Searching…</div>`;
+      }
+      if (this._phase === "error") {
+        return html`<div class="empty error">${this._error}</div>`;
+      }
+      if (this._results.length === 0) {
+        const message = this._query ? "No matches." : "No users available.";
+        return html`<div class="empty">${message}</div>`;
+      }
+      return this._results.map(
+        (u) => html`
+				<button
+					type="button"
+					class="item"
+					role="option"
+					@mousedown=${(e) => e.preventDefault()}
+					@click=${() => this._pick(u)}
+				>
+					<img class="avatar" src=${u.avatarUrl} alt="" />
+					<div>
+						<div class="name">${u.name}</div>
+						<div class="slug">${u.slug}</div>
+					</div>
+				</button>
+			`
+      );
+    }
+    render() {
+      const placeholder = this.getAttribute("placeholder") || "Search users…";
+      return html`
+			<input
+				class="input"
+				type="search"
+				placeholder=${placeholder}
+				autocomplete="off"
+				@input=${this._onInput}
+				@focus=${this._onFocus}
+				@blur=${this._onBlur}
+				.value=${this._query}
+			/>
+			${this._open ? html`
+					<div class="dropdown" role="listbox" style=${this._dropdownStyle}>
+						${this._dropdownContent()}
+					</div>
+				` : html``}
+		`;
+    }
+  };
+  _WpdUserSearch.props = ["placeholder", "exclude", "endpoint"];
+  _WpdUserSearch.styles = [userSearchStyles];
+  _WpdUserSearch.help = {
+    title: "User autocomplete",
+    summary: "Debounced autocomplete over /desktop-mode/v1/files/users/search. Emits wpd-user-pick { user } when a row is chosen. Dropdown anchors as position: fixed so it escapes overflow:auto ancestors.",
+    status: "experimental",
+    since: "0.18.0",
+    props: [
+      { name: "placeholder", type: "string", description: "Input placeholder text." },
+      {
+        name: "exclude",
+        type: "csv user ids",
+        description: "Already-picked user ids to suppress in results."
+      },
+      {
+        name: "endpoint",
+        type: "URL",
+        description: "Override the search URL (defaults to desktopModeConfig.filesUsersSearchUrl)."
+      }
+    ],
+    events: [
+      { name: "wpd-user-pick", description: "Emitted on pick. Detail: `{ user: SearchUser }`." }
+    ]
+  };
+  let WpdUserSearch = _WpdUserSearch;
+  defineComponent("wpd-user-search", WpdUserSearch);
+  const rolePickerStyles = css`:host{display:flex;flex-wrap:wrap;gap:6px;font-size:13px}.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba( 255,255,255,0.06 );color:inherit;border:1px solid rgba( 255,255,255,0.12 );cursor:pointer;font:inherit}.chip:hover{background:rgba( 255,255,255,0.12 )}.chip[ aria-pressed='true' ]{background:var( --wp-admin-theme-color,#2271b1 );border-color:var( --wp-admin-theme-color,#2271b1 );color:#fff}.empty{color:rgba( 255,255,255,0.5 );font-size:12px}`;
+  const _WpdRolePicker = class _WpdRolePicker extends Component {
+    constructor() {
+      super(...arguments);
+      this._onToggle = (slug) => {
+        const selected = !this._selectedSet().has(slug);
+        this.emit("wpd-role-toggle", { slug, selected });
+      };
+    }
+    _selectedSet() {
+      const raw = this.getAttribute("selected") || "";
+      return new Set(
+        raw.split(",").map((s) => s.trim()).filter((s) => s !== "")
+      );
+    }
+    _roles() {
+      const attr = this.getAttribute("roles");
+      if (attr) {
+        try {
+          const parsed = JSON.parse(attr);
+          if (Array.isArray(parsed)) {
+            return parsed;
+          }
+        } catch (e) {
+        }
+      }
+      return window.desktopModeConfig?.shareEligibleRoles || [];
+    }
+    render() {
+      const roles = this._roles();
+      if (roles.length === 0) {
+        return html`<span class="empty">No eligible roles.</span>`;
+      }
+      const set = this._selectedSet();
+      return html`
+			${roles.map((r) => {
+        const isSelected = set.has(r.slug);
+        return html`
+					<button
+						type="button"
+						class="chip"
+						aria-pressed=${isSelected ? "true" : "false"}
+						@click=${() => this._onToggle(r.slug)}
+					>${r.name}</button>
+				`;
+      })}
+		`;
+    }
+  };
+  _WpdRolePicker.props = ["selected", "roles"];
+  _WpdRolePicker.styles = [rolePickerStyles];
+  _WpdRolePicker.help = {
+    title: "Role picker",
+    summary: "Chip multi-select for WordPress roles. Reads eligible roles from desktopModeConfig.shareEligibleRoles; emits wpd-role-toggle { slug, selected } on every change.",
+    status: "experimental",
+    since: "0.18.0",
+    props: [
+      {
+        name: "selected",
+        type: "csv role slugs",
+        description: "Comma-separated role slugs that are currently selected."
+      },
+      {
+        name: "roles",
+        type: "JSON",
+        description: "Override the source of eligible roles (defaults to the global config)."
+      }
+    ],
+    events: [
+      {
+        name: "wpd-role-toggle",
+        description: "Emitted on every click. Detail: `{ slug, selected }`."
+      }
+    ]
+  };
+  let WpdRolePicker = _WpdRolePicker;
+  defineComponent("wpd-role-picker", WpdRolePicker);
+  const segmentedStyles = css`:host{display:inline-flex;padding:3px;background:var( --wpd-segmented-bg,rgba( 0,0,0,0.05 ) );border-radius:7px;gap:2px}`;
+  const segmentStyles = css`:host{flex:1 1 auto;min-width:0}button{appearance:none;display:block;width:100%;padding:8px 12px;background:transparent;border:0;font:inherit;font-size:13px;color:var( --desktop-mode-muted,#646970 );cursor:pointer;border-radius:5px;transition:background-color 0.12s ease,color 0.12s ease;white-space:nowrap}:host( [ aria-checked='true' ] ) button{background:var( --desktop-mode-window-bg,#fff );color:var( --desktop-mode-text,#1d2327 );box-shadow:0 1px 3px rgba( 0,0,0,0.12 );font-weight:500}`;
+  const _WpdSegment = class _WpdSegment extends Component {
+    render() {
+      this.setAttribute("role", "radio");
+      return html`
+			<button type="button" @click=${() => this._onPick()}>
+				<slot></slot>
+			</button>
+		`;
+    }
+    _onPick() {
+      this.emit("wpd-segment-pick", {
+        value: this.value
+      });
+    }
+  };
+  _WpdSegment.props = ["value"];
+  _WpdSegment.styles = [segmentStyles];
+  _WpdSegment.help = {
+    title: "Segment",
+    summary: "Single pill inside a <wpd-segmented> group. Value identifies it for selection; aria-checked is mirrored by the parent.",
+    status: "stable",
+    since: "0.9.0",
+    props: [
+      {
+        name: "value",
+        type: "string",
+        description: "Identifier this segment contributes to the parent group selection."
+      }
+    ],
+    slots: [
+      { name: "(default)", description: "Visible segment label." }
+    ],
+    events: [
+      {
+        name: "wpd-segment-pick",
+        description: "Internal event bubbled to the parent <wpd-segmented>. Consumers should listen for wpd-pick on the group instead.",
+        detail: "{ value: string }"
+      }
+    ]
+  };
+  let WpdSegment = _WpdSegment;
+  defineComponent("wpd-segment", WpdSegment);
+  const _WpdSegmented = class _WpdSegmented extends Component {
+    connectedCallback() {
+      super.connectedCallback();
+      this.addEventListener("wpd-segment-pick", (e) => {
+        const detail = e.detail;
+        e.stopPropagation();
+        this.value = detail.value;
+        this.emit("wpd-pick", { value: detail.value });
+      });
+    }
+    /**
+     * Declarative item-list setter. Replaces the existing
+     * `<wpd-segment>` children with a fresh set built from a
+     * `{ value, label }` array; preserves the current selection
+     * when the value still matches an entry, otherwise falls back
+     * to the first item.
+     *
+     * Collapses the pre-0.11 imperative dance (clear children,
+     * `createElement`, set `textContent`, `appendChild`, then
+     * `setAttribute('value', …)` on the group — order matters) to
+     * a single assignment:
+     *
+     * ```js
+     * segmented.items = [
+     *   { value: 'm',  label: 'm' },
+     *   { value: 'km', label: 'km' },
+     * ];
+     * ```
+     *
+     * @since 0.11.0
+     */
+    set items(list2) {
+      const existing = this.querySelectorAll(":scope > wpd-segment");
+      for (const el of Array.from(existing)) {
+        el.remove();
+      }
+      for (const item of list2) {
+        const seg = document.createElement("wpd-segment");
+        seg.setAttribute("value", item.value);
+        seg.textContent = item.label;
+        this.appendChild(seg);
+      }
+      const current = this.value;
+      const stillValid = current !== null && list2.some((i) => i.value === current);
+      if (!stillValid && list2.length > 0) {
+        this.value = list2[0].value;
+      } else {
+        this.requestUpdate();
+      }
+    }
+    render() {
+      const label = this.label || "";
+      if (label) {
+        this.setAttribute("aria-label", label);
+      }
+      this.setAttribute("role", "radiogroup");
+      const current = this.value;
+      queueMicrotask(() => {
+        const segs = this.querySelectorAll("wpd-segment");
+        for (const seg of Array.from(segs)) {
+          const v = seg.getAttribute("value");
+          seg.setAttribute(
+            "aria-checked",
+            v === current ? "true" : "false"
+          );
+        }
+      });
+      return html`<slot></slot>`;
+    }
+  };
+  _WpdSegmented.props = ["value", "label"];
+  _WpdSegmented.styles = [segmentedStyles];
+  _WpdSegmented.help = {
+    title: "Segmented",
+    summary: "iOS-style segmented radio group. Pill-shaped bar of equal-width <wpd-segment> children where exactly one is active.",
+    status: "stable",
+    since: "0.9.0",
+    props: [
+      {
+        name: "value",
+        type: "string",
+        description: "Currently selected segment value. Mirrored onto child aria-checked."
+      },
+      {
+        name: "label",
+        type: "string",
+        description: "aria-label for the radiogroup."
+      }
+    ],
+    slots: [
+      { name: "(default)", description: '<wpd-segment value="…"> children.' }
+    ],
+    events: [
+      {
+        name: "wpd-pick",
+        description: "Fires when the selected segment changes.",
+        detail: "{ value: string }"
+      }
+    ],
+    cssProps: [
+      { name: "--desktop-mode-window-bg", description: "Pill background." },
+      { name: "--desktop-mode-text", description: "Active label colour." },
+      { name: "--desktop-mode-muted", description: "Inactive label colour." }
+    ],
+    example: html`
+			<wpd-segmented value="md" label="Dock size">
+				<wpd-segment value="sm">Small</wpd-segment>
+				<wpd-segment value="md">Medium</wpd-segment>
+				<wpd-segment value="lg">Large</wpd-segment>
+			</wpd-segmented>
+		`
+  };
+  let WpdSegmented = _WpdSegmented;
+  defineComponent("wpd-segmented", WpdSegmented);
+  const styles$1 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const _WpdButton = class _WpdButton extends Component {
+    render() {
+      const disabled = this.disabled !== null;
+      const type = this.type || "button";
+      return html`
+			<button part="button" type=${type} ?disabled=${disabled}>
+				<slot></slot>
+			</button>
+		`;
+    }
+  };
+  _WpdButton.props = ["variant", "disabled", "type", "busy", "fill-cell"];
+  _WpdButton.styles = [styles$1];
+  _WpdButton.help = {
+    title: "Button",
+    summary: "Thin wrapper around <button> with consistent variant styling and a slot for the label.",
+    status: "stable",
+    since: "0.9.0",
+    props: [
+      {
+        name: "variant",
+        type: "'primary' | 'secondary' | 'ghost' | 'danger' | 'link'",
+        default: "ghost",
+        description: "Visual weight of the button. Use primary for the single attention-grabbing action per surface."
+      },
+      {
+        name: "disabled",
+        type: "boolean attribute",
+        description: "Disable pointer + keyboard interaction and dim the chrome."
+      },
+      {
+        name: "type",
+        type: "'button' | 'submit' | 'reset'",
+        default: "button",
+        description: "Forwarded to the underlying native <button>."
+      },
+      {
+        name: "busy",
+        type: "boolean attribute",
+        description: "Marks the button as in-progress (e.g., awaiting a fetch)."
+      },
+      {
+        name: "fill-cell",
+        type: "boolean attribute",
+        description: "Grow to fill the parent flex/grid cell. Useful for tiled keypads."
+      }
+    ],
+    slots: [{ name: "(default)", description: "Button label." }],
+    parts: [{ name: "button", description: "Underlying <button> element." }],
+    cssProps: [
+      { name: "--wpd-button-bg", description: "Background color." },
+      { name: "--wpd-button-fg", description: "Text color." },
+      { name: "--wpd-button-border", description: "Border shorthand." },
+      { name: "--wpd-button-border-radius", default: "6px" },
+      { name: "--wpd-button-padding", default: "6px 12px" },
+      {
+        name: "--wpd-button-min-height",
+        description: "Minimum height when fill-cell is set."
+      }
+    ],
+    example: html`
+			<wpd-cluster gap="8">
+				<wpd-button variant="primary">Primary</wpd-button>
+				<wpd-button variant="secondary">Secondary</wpd-button>
+				<wpd-button variant="ghost">Ghost</wpd-button>
+				<wpd-button variant="danger">Danger</wpd-button>
+				<wpd-button variant="link">Link</wpd-button>
+			</wpd-cluster>
+		`
+  };
+  let WpdButton = _WpdButton;
+  defineComponent("wpd-button", WpdButton);
+  const containerStyles = css`:host{position:fixed;top:calc( var( --wp-admin--admin-bar--height,32px ) + 16px );inset-inline-end:16px;display:flex;flex-direction:column;gap:8px;z-index:calc( var( --desktop-mode-z-fullscreen,99999 ) + 10 );pointer-events:none}`;
+  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:8px;box-shadow:0 8px 24px rgba( 0,0,0,0.2 ),0 2px 6px rgba( 0,0,0,0.1 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
+  const _WpdToastContainer = class _WpdToastContainer extends Component {
+    connectedCallback() {
+      super.connectedCallback();
+      this.setAttribute("aria-live", "polite");
+    }
+    render() {
+      return html`<slot></slot>`;
+    }
+  };
+  _WpdToastContainer.styles = [containerStyles];
+  _WpdToastContainer.help = {
+    title: "Toast container",
+    summary: "Singleton stack beneath <body> that hosts transient <wpd-toast> notifications in the top-right. Created lazily by showToast(); authors rarely place one themselves.",
+    status: "stable",
+    since: "0.9.0",
+    slots: [
+      { name: "(default)", description: "<wpd-toast> children, stacked vertically." }
+    ],
+    cssProps: [
+      { name: "--desktop-mode-z-fullscreen", description: "z-index base — toasts sit above fullscreen windows." }
+    ],
+    example: html`
+			<wpd-toast-container>
+				<wpd-toast state="in">Settings saved.</wpd-toast>
+				<wpd-toast state="in" action="Undo">Theme changed.</wpd-toast>
+			</wpd-toast-container>
+		`
+  };
+  let WpdToastContainer = _WpdToastContainer;
+  defineComponent("wpd-toast-container", WpdToastContainer);
+  const _WpdToast = class _WpdToast extends Component {
+    connectedCallback() {
+      super.connectedCallback();
+      if (!this.hasAttribute("role")) {
+        this.setAttribute("role", "status");
+      }
+    }
+    render() {
+      const action = this.action || "";
+      return html`
+			<span class="wpd-toast__label"><slot></slot></span>
+			<button
+				type="button"
+				?hidden=${!action}
+				@click=${(e) => this._onAction(e)}
+			>
+				${action}
+			</button>
+		`;
+    }
+    _onAction(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.emit("wpd-toast-action", {});
+    }
+  };
+  _WpdToast.props = ["action", "state"];
+  _WpdToast.styles = [toastStyles];
+  _WpdToast.help = {
+    title: "Toast",
+    summary: 'Single transient notification. Message is slotted; fade-in / fade-out is CSS-driven by flipping the state attribute between "in" and "out". Usually created via the showToast() helper rather than authored by hand.',
+    status: "stable",
+    since: "0.9.0",
+    props: [
+      {
+        name: "action",
+        type: "string",
+        description: "Optional action button label. When set, a button renders on the right and emits wpd-toast-action on click."
+      },
+      {
+        name: "state",
+        type: "'in' | 'out'",
+        description: 'Drives the CSS fade transition. Set to "in" when rendered, flip to "out" before removal.'
+      }
+    ],
+    slots: [
+      { name: "(default)", description: "Message text." }
+    ],
+    events: [
+      {
+        name: "wpd-toast-action",
+        description: "Fires when the action button is clicked.",
+        detail: "{}"
+      }
+    ],
+    example: html`
+			<wpd-toast state="in" action="Undo">Post moved to trash.</wpd-toast>
+		`
+  };
+  let WpdToast = _WpdToast;
+  defineComponent("wpd-toast", WpdToast);
+  function buildCapSegmented(initial, onChange) {
+    const segmented = document.createElement("wpd-segmented");
+    segmented.setAttribute("value", initial);
+    segmented.setAttribute("label", "Capability");
+    segmented.style.setProperty("--wpd-segmented-bg", "rgba(255,255,255,0.06)");
+    segmented.style.setProperty(
+      "--desktop-mode-window-bg",
+      "var(--wp-admin-theme-color, #2271b1)"
+    );
+    segmented.style.setProperty("--desktop-mode-text", "#fff");
+    segmented.style.setProperty("--desktop-mode-muted", "rgba(255,255,255,0.65)");
+    const segRead = document.createElement("wpd-segment");
+    segRead.setAttribute("value", "read");
+    segRead.textContent = "Read";
+    segmented.appendChild(segRead);
+    const segWrite = document.createElement("wpd-segment");
+    segWrite.setAttribute("value", "write");
+    segWrite.textContent = "Read + Write";
+    segmented.appendChild(segWrite);
+    segmented.addEventListener("wpd-pick", (e) => {
+      const detail = e.detail;
+      onChange(detail.value);
+    });
+    return segmented;
+  }
+  function buildIconButton(label, onClick, opts = {}) {
+    const btn = document.createElement("wpd-button");
+    btn.setAttribute("variant", "ghost");
+    btn.setAttribute("aria-label", opts.danger ? "Remove" : "Dismiss");
+    btn.textContent = label;
+    const fg = opts.danger ? "#ff8080" : "rgba(255,255,255,0.75)";
+    const border = opts.danger ? "1px solid rgba(255,128,128,0.45)" : "1px solid rgba(255,255,255,0.18)";
+    btn.style.setProperty("--wpd-button-fg", fg);
+    btn.style.setProperty("--wpd-button-border", border);
+    btn.style.setProperty("--wpd-button-padding", "6px 12px");
+    btn.style.setProperty("--wpd-button-border-radius", "7px");
+    btn.style.setProperty("--wpd-button-min-height", "34px");
+    btn.style.minWidth = "34px";
+    btn.style.fontSize = "18px";
+    btn.style.lineHeight = "1";
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+  async function openShareSettingsModal(opts) {
+    const modal = document.createElement("wpd-modal");
+    modal.setAttribute("open", "");
+    modal.setAttribute("size", "lg");
+    modal.setAttribute("title", `Share "${opts.folderName}"`);
+    document.body.appendChild(modal);
+    let shares = [];
+    let pendingPicks = [];
+    const renderBody = () => {
+      modal.innerHTML = "";
+      const owner = document.createElement("div");
+      owner.style.cssText = "opacity:0.7;margin-bottom:14px;font-size:12px;";
+      owner.textContent = opts.ownerName ? `Owner: ${opts.ownerName} — cannot be changed` : "Owner cannot be changed";
+      modal.appendChild(owner);
+      const addPeople = document.createElement("div");
+      addPeople.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-bottom:14px;";
+      const addPeopleLabel = document.createElement("div");
+      addPeopleLabel.textContent = "Add people";
+      addPeopleLabel.style.cssText = "font-weight:600;";
+      addPeople.appendChild(addPeopleLabel);
+      const userSearch = document.createElement("wpd-user-search");
+      const excludedUserIds = shares.filter((s) => s.principalType === "user").map((s) => s.principalRef).concat(pendingPicks.filter((p) => p.kind === "user").map((p) => p.ref));
+      userSearch.setAttribute("exclude", excludedUserIds.join(","));
+      userSearch.setAttribute("placeholder", "Search users…");
+      userSearch.addEventListener("wpd-user-pick", (e) => {
+        const detail = e.detail;
+        pendingPicks.push({
+          kind: "user",
+          ref: String(detail.user.id),
+          label: detail.user.name,
+          cap: "read"
+        });
+        renderBody();
+      });
+      addPeople.appendChild(userSearch);
+      modal.appendChild(addPeople);
+      const addRoles = document.createElement("div");
+      addRoles.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-bottom:14px;";
+      const addRolesLabel = document.createElement("div");
+      addRolesLabel.textContent = "Add roles";
+      addRolesLabel.style.cssText = "font-weight:600;";
+      addRoles.appendChild(addRolesLabel);
+      const rolePicker = document.createElement("wpd-role-picker");
+      const grantedRoles = shares.filter((s) => s.principalType === "role").map((s) => s.principalRef);
+      const pickedRoles = pendingPicks.filter((p) => p.kind === "role").map((p) => p.ref);
+      rolePicker.setAttribute("selected", [...grantedRoles, ...pickedRoles].join(","));
+      rolePicker.addEventListener("wpd-role-toggle", (e) => {
+        const detail = e.detail;
+        const existing = shares.find(
+          (s) => s.principalType === "role" && s.principalRef === detail.slug
+        );
+        if (existing) {
+          if (!detail.selected) {
+            void revoke(existing);
+          }
+          return;
+        }
+        if (detail.selected) {
+          const eligible = (window.desktopModeConfig?.shareEligibleRoles ?? []).find(
+            (r) => r.slug === detail.slug
+          );
+          pendingPicks.push({
+            kind: "role",
+            ref: detail.slug,
+            label: eligible ? eligible.name : detail.slug,
+            cap: "read"
+          });
+        } else {
+          pendingPicks = pendingPicks.filter(
+            (p) => !(p.kind === "role" && p.ref === detail.slug)
+          );
+        }
+        renderBody();
+      });
+      addRoles.appendChild(rolePicker);
+      modal.appendChild(addRoles);
+      if (pendingPicks.length > 0) {
+        const pendingBlock = document.createElement("div");
+        pendingBlock.style.cssText = "border:1px dashed rgba(255,255,255,0.18);border-radius:8px;padding:10px;margin-bottom:14px;";
+        const pendingTitle = document.createElement("div");
+        pendingTitle.textContent = "New invites (not sent yet)";
+        pendingTitle.style.cssText = "font-weight:600;margin-bottom:6px;font-size:12px;";
+        pendingBlock.appendChild(pendingTitle);
+        for (const pick of pendingPicks) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;";
+          const tag = document.createElement("span");
+          tag.textContent = pick.kind === "role" ? `Role: ${pick.label}` : pick.label;
+          tag.style.flex = "1";
+          row.appendChild(tag);
+          const capSeg = buildCapSegmented(pick.cap, (next) => {
+            pick.cap = next;
+          });
+          row.appendChild(capSeg);
+          const removeBtn = buildIconButton("×", () => {
+            pendingPicks = pendingPicks.filter(
+              (p) => !(p.kind === pick.kind && p.ref === pick.ref)
+            );
+            renderBody();
+          });
+          row.appendChild(removeBtn);
+          pendingBlock.appendChild(row);
+        }
+        const sendBtn = document.createElement("wpd-button");
+        sendBtn.setAttribute("variant", "primary");
+        sendBtn.textContent = `Send ${pendingPicks.length} invite${pendingPicks.length === 1 ? "" : "s"}`;
+        sendBtn.style.marginTop = "8px";
+        sendBtn.addEventListener("click", async () => {
+          if (pendingPicks.length === 0) {
+            return;
+          }
+          sendBtn.setAttribute("busy", "");
+          sendBtn.setAttribute("disabled", "");
+          const snapshot = pendingPicks.slice();
+          let succeeded = 0;
+          let firstError = null;
+          for (const pick of snapshot) {
+            try {
+              await inviteShare(opts.folderId, {
+                principalType: pick.kind,
+                principalRef: pick.ref,
+                capability: pick.cap
+              });
+              succeeded++;
+            } catch (err) {
+              firstError = err;
+              break;
+            }
+          }
+          if (succeeded > 0) {
+            pendingPicks = pendingPicks.slice(succeeded);
+          }
+          try {
+            await refresh();
+          } catch (_e) {
+          }
+          if (firstError) {
+            showToast({
+              message: `Could not send invites: ${firstError.message}`
+            });
+          } else {
+            showToast({
+              message: 1 === succeeded ? "Invite sent." : `${succeeded} invites sent.`
+            });
+          }
+          sendBtn.removeAttribute("busy");
+          sendBtn.removeAttribute("disabled");
+          renderBody();
+        });
+        pendingBlock.appendChild(sendBtn);
+        modal.appendChild(pendingBlock);
+      }
+      const listTitle = document.createElement("div");
+      listTitle.textContent = "Who has access";
+      listTitle.style.cssText = "font-weight:600;margin:8px 0 6px;";
+      modal.appendChild(listTitle);
+      if (shares.length === 0) {
+        const empty = document.createElement("div");
+        empty.textContent = "Only you can see this folder.";
+        empty.style.cssText = "opacity:0.6;font-size:12px;";
+        modal.appendChild(empty);
+      } else {
+        for (const s of shares) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);";
+          const label = document.createElement("div");
+          label.style.flex = "1";
+          label.textContent = s.principalType === "role" ? `Role: ${s.displayName}` : s.displayName;
+          if (s.state === "pending") {
+            const tag = document.createElement("span");
+            tag.textContent = " · pending";
+            tag.style.cssText = "opacity:0.6;font-size:12px;";
+            label.appendChild(tag);
+          } else if (s.state === "denied") {
+            const tag = document.createElement("span");
+            tag.textContent = " · denied";
+            tag.style.cssText = "color:#d63638;font-size:12px;";
+            label.appendChild(tag);
+          }
+          row.appendChild(label);
+          const cap = s.capability === "write" ? "write" : "read";
+          const capSeg = buildCapSegmented(cap, (next) => {
+            void changeCap(s, next);
+          });
+          row.appendChild(capSeg);
+          const removeBtn = buildIconButton(
+            "×",
+            () => {
+              void revoke(s);
+            },
+            { danger: true }
+          );
+          row.appendChild(removeBtn);
+          modal.appendChild(row);
+        }
+      }
+      const footer = document.createElement("div");
+      footer.setAttribute("slot", "footer");
+      footer.style.display = "flex";
+      footer.style.justifyContent = "flex-end";
+      footer.style.gap = "10px";
+      footer.style.flexWrap = "wrap";
+      const doneBtn = document.createElement("wpd-button");
+      doneBtn.setAttribute("variant", "secondary");
+      doneBtn.textContent = "Done";
+      doneBtn.addEventListener("click", () => modal.remove());
+      footer.appendChild(doneBtn);
+      modal.appendChild(footer);
+    };
+    const refresh = async () => {
+      try {
+        const res = await listShares(opts.folderId);
+        shares = res.shares;
+        setSharesForFolder(opts.folderId, shares);
+      } catch (err) {
+        showToast({
+          message: `Could not load shares: ${err.message}`
+        });
+      }
+      renderBody();
+    };
+    const revoke = async (s) => {
+      try {
+        await revokeShare(opts.folderId, s.id);
+        removeShare(opts.folderId, s.id);
+        await refresh();
+        showToast({ message: "Access revoked." });
+      } catch (err) {
+        showToast({
+          message: `Could not revoke: ${err.message}`
+        });
+      }
+    };
+    const changeCap = async (s, cap) => {
+      try {
+        const next = await updateShareCapability(opts.folderId, s.id, cap);
+        upsertShare(next);
+        await refresh();
+      } catch (err) {
+        showToast({
+          message: `Could not update capability: ${err.message}`
+        });
+      }
+    };
+    modal.addEventListener("wpd-modal-cancel", () => modal.remove());
+    renderBody();
+    await refresh();
+  }
+  function openPendingInviteModal(invite) {
+    return new Promise((resolve2) => {
+      const modal = document.createElement("wpd-modal");
+      modal.setAttribute("open", "");
+      modal.setAttribute("title", invite.folderName ? `${invite.ownerName ?? "Someone"} shared "${invite.folderName}" with you` : "Folder shared with you");
+      const body = document.createElement("div");
+      const capLabel = invite.capability === "write" ? "Read + Write" : "Read";
+      body.innerHTML = `
+			<p style="margin: 0 0 12px;">Accept the invite to add this folder to your desktop.</p>
+			<p style="margin: 0; opacity: 0.75;">Access level: <strong>${capLabel}</strong></p>
+		`;
+      modal.appendChild(body);
+      const footer = document.createElement("div");
+      footer.setAttribute("slot", "footer");
+      footer.style.display = "flex";
+      footer.style.justifyContent = "flex-end";
+      footer.style.gap = "10px";
+      footer.style.flexWrap = "wrap";
+      const laterBtn = document.createElement("wpd-button");
+      laterBtn.setAttribute("variant", "secondary");
+      laterBtn.textContent = "Decide later";
+      laterBtn.addEventListener("click", () => {
+        modal.remove();
+        resolve2("dismissed");
+      });
+      const denyBtn = document.createElement("wpd-button");
+      denyBtn.setAttribute("variant", "danger");
+      denyBtn.textContent = "Deny";
+      denyBtn.addEventListener("click", async () => {
+        denyBtn.setAttribute("busy", "");
+        denyBtn.setAttribute("disabled", "");
+        try {
+          await denyShare(invite.folderId, invite.id);
+          sharesStore().state.deniedFolders.add(invite.folderId);
+          sharesStore().notify();
+          modal.remove();
+          resolve2("denied");
+        } catch (err) {
+          showToast({
+            message: `Could not deny: ${err.message}`
+          });
+          denyBtn.removeAttribute("busy");
+          denyBtn.removeAttribute("disabled");
+        }
+      });
+      const acceptBtn = document.createElement("wpd-button");
+      acceptBtn.setAttribute("variant", "primary");
+      acceptBtn.textContent = "Accept";
+      acceptBtn.addEventListener("click", async () => {
+        acceptBtn.setAttribute("busy", "");
+        acceptBtn.setAttribute("disabled", "");
+        try {
+          await acceptShare(invite.folderId, invite.id);
+          try {
+            const res = await listPlacements(0);
+            setFolderPlacements(0, res.placements);
+          } catch (_e) {
+          }
+          modal.remove();
+          resolve2("accepted");
+        } catch (err) {
+          showToast({
+            message: `Could not accept: ${err.message}`
+          });
+          acceptBtn.removeAttribute("busy");
+          acceptBtn.removeAttribute("disabled");
+        }
+      });
+      footer.appendChild(laterBtn);
+      footer.appendChild(denyBtn);
+      footer.appendChild(acceptBtn);
+      modal.appendChild(footer);
+      modal.addEventListener("wpd-modal-cancel", () => {
+        modal.remove();
+        resolve2("dismissed");
+      });
+      document.body.appendChild(modal);
+    });
+  }
+  function viewerId() {
+    return Number(window.desktopModeConfig?.currentUserId ?? 0);
+  }
+  function sharingEnabled$1() {
+    const settings = window.wp?.desktop?.getOsSettings?.();
+    if (!settings) {
+      return true;
+    }
+    return settings.foldersSharingEnabled !== false;
+  }
+  function folderOwnerId(folderId) {
+    const folder = getFilesState().folders.get(folderId);
+    return folder ? Number(folder.ownerId) : 0;
+  }
+  function folderIdFromBaseId(baseId) {
+    if (typeof baseId !== "string") {
+      return null;
+    }
+    const m = /^desktop-mode-folder-(\d+)$/.exec(baseId);
+    return m ? Number(m[1]) : null;
+  }
+  function placementFolderId(placement) {
+    if (placement.file.type !== "folder") {
+      return null;
+    }
+    const ref = Number(placement.file.ref);
+    if (!Number.isFinite(ref) || ref <= 0) {
+      return null;
+    }
+    return ref;
+  }
+  function placementOwnerId(placement) {
+    return Number(placement.file.ownerId ?? 0);
+  }
+  function installShareMenuItems() {
+    addFilter(
+      "desktop-mode.files.tile-menu",
+      "desktop-mode/folder-share",
+      (items, placement) => {
+        if (!sharingEnabled$1()) {
+          return items;
+        }
+        const folderId = placementFolderId(placement);
+        if (folderId === null) {
+          return items;
+        }
+        const ownerId = folderOwnerId(folderId) || placementOwnerId(placement);
+        const viewer = viewerId();
+        if (ownerId === viewer) {
+          const shared = !!placement.file.shareSummary?.shared;
+          const label = shared ? "Manage sharing…" : "Share folder…";
+          items.push({
+            id: "desktop-mode/folder-share",
+            label,
+            icon: "dashicons-share",
+            sort: 30,
+            onClick: () => {
+              void openShareSettingsModal({
+                folderId,
+                folderName: placement.file.title || `Folder ${folderId}`
+              });
+            }
+          });
+        } else if (ownerId > 0) {
+          items.push({
+            id: "desktop-mode/folder-leave",
+            label: "Leave shared folder",
+            icon: "dashicons-exit",
+            sort: 80,
+            danger: true,
+            onClick: async () => {
+              const ok = await wpdConfirm$1({
+                title: "Leave this folder?",
+                message: "The folder will be removed from your desktop. The original and its contents are not deleted; the owner keeps them.",
+                confirmLabel: "Leave",
+                danger: true
+              });
+              if (!ok) {
+                return;
+              }
+              try {
+                await leaveShare(folderId);
+                removePlacement(placement.id);
+                try {
+                  const res = await listPlacements(0);
+                  setFolderPlacements(0, res.placements);
+                } catch (_e) {
+                }
+                const winId = `desktop-mode-folder-${folderId}`;
+                const mgr = window.desktopMode?.windowManager;
+                mgr?.close?.(winId);
+                showToast({ message: "You left the shared folder." });
+              } catch (err) {
+                showToast({
+                  message: `Could not leave: ${err.message}`
+                });
+              }
+            }
+          });
+        }
+        return items;
+      }
+    );
+    registerTitleBarButton({
+      id: "desktop-mode/folder-share",
+      label: "Share folder",
+      icon: "dashicons-share",
+      placement: "right",
+      order: 50,
+      match: (w) => {
+        if (!sharingEnabled$1()) {
+          return false;
+        }
+        const base = w.config.baseId ?? w.id;
+        const folderId = folderIdFromBaseId(base);
+        if (folderId === null) {
+          return false;
+        }
+        return folderOwnerId(folderId) === viewerId();
+      },
+      onClick: (w) => {
+        const base = w.config.baseId ?? w.id;
+        const folderId = folderIdFromBaseId(base);
+        if (folderId === null) {
+          return;
+        }
+        void openShareSettingsModal({
+          folderId,
+          folderName: w.config.title || `Folder ${folderId}`
+        });
+      }
+    });
+    addAction(
+      "desktop-mode.files.tile-rendered",
+      "desktop-mode/folder-share",
+      (payload) => {
+        const { tile: tile2, placement } = payload;
+        if (placement.file.type !== "folder") {
+          return;
+        }
+        const summary = placement.file.shareSummary;
+        if (!summary?.shared) {
+          return;
+        }
+        if (tile2.querySelector(".desktop-mode-file-tile__share-badge")) {
+          return;
+        }
+        const badge = document.createElement("span");
+        badge.className = "desktop-mode-file-tile__share-badge dashicons dashicons-share";
+        badge.setAttribute("aria-label", "Shared folder");
+        badge.title = "Shared folder";
+        badge.style.cssText = [
+          "position:absolute",
+          "top:6px",
+          "inset-inline-end:6px",
+          "background:rgba(0,0,0,0.55)",
+          "color:#fff",
+          "border-radius:50%",
+          "width:18px",
+          "height:18px",
+          "font-size:12px",
+          "line-height:18px",
+          "text-align:center",
+          "pointer-events:none"
+        ].join(";");
+        tile2.appendChild(badge);
+      }
+    );
+  }
+  const prompted = /* @__PURE__ */ new Set();
+  function sharingEnabled() {
+    const settings = window.wp?.desktop?.getOsSettings?.();
+    if (!settings) {
+      return true;
+    }
+    return settings.foldersSharingEnabled !== false;
+  }
+  function installShareInviteBanner() {
+    const store2 = sharesStore();
+    const handle = (state2) => {
+      if (!sharingEnabled()) {
+        return;
+      }
+      for (const invite of state2.pending) {
+        if (prompted.has(invite.id)) {
+          continue;
+        }
+        prompted.add(invite.id);
+        void openPendingInviteModal({
+          id: invite.id,
+          folderId: invite.folderId,
+          folderName: invite.folderName,
+          ownerName: invite.ownerName,
+          capability: invite.capability
+        }).then((decision) => {
+          if (decision === "accepted") {
+            dropPending(invite.id);
+          } else if (decision === "denied") {
+            dropPending(invite.id, { denied: true, folderId: invite.folderId });
+          }
+        });
+      }
+    };
+    store2.subscribe(handle);
+    handle(store2.state);
+  }
+  registerBuiltInFileTypes();
+  registerBuiltInFileOpeners();
+  installEmbedPersistence();
+  registerFileAssociationsTab();
+  installShareMenuItems();
+  const seededPending = window.desktopModeConfig?.serverPendingShares;
+  if (Array.isArray(seededPending) && seededPending.length > 0) {
+    ingestPendingInvites(seededPending);
+  }
+  installShareInviteBanner();
+  const filesApi = {
+    DesktopFile,
+    registerType,
+    unregisterType,
+    getType,
+    getTypes,
+    resolve,
+    subscribe,
+    registerOpener,
+    unregisterOpener,
+    getOpener,
+    getOpeners,
+    getOpenersForType,
+    resolveOpener,
+    subscribeOpeners,
+    getUserAssociations,
+    open: openFile,
+    rest: filesRest,
+    store: {
+      get: getFilesStore,
+      getState: getFilesState,
+      subscribe: subscribeFilesStore,
+      setFolderPlacements,
+      upsertPlacement,
+      removePlacement,
+      setFolders,
+      upsertFolder,
+      removeFolder
+    }
+  };
+  const SYNTH_META_KEY = "__synthFromDockItem";
+  function hashToNegativeId(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = (h * 31 + s.charCodeAt(i)) % 2147483647;
+    }
+    return -(h + 1);
+  }
+  function buildSyntheticPlacement(item, persistedPositions) {
+    const saved = persistedPositions[item.id];
+    return {
+      id: hashToNegativeId(item.id),
+      parentId: 0,
+      x: saved ? saved.x : 0,
+      y: saved ? saved.y : 0,
+      sortOrder: 9999,
+      updatedAtMs: Date.now(),
+      meta: { [SYNTH_META_KEY]: item.id },
+      file: {
+        type: "shortcut",
+        ref: `dock-promoted:${item.id}`,
+        title: item.title,
+        icon: item.icon,
+        previewUrl: "",
+        exists: true,
+        // The shortcut opener (built-in-openers.ts) reads these
+        // off the file shape — `shortcutUrl` is what a dock-item
+        // promotion naturally has.
+        shortcutUrl: item.url
+      }
+    };
+  }
+  function readDockItems() {
+    const api = window.wp?.desktop;
+    if (api?.getMenuItems) {
+      const items = api.getMenuItems();
+      return items.map((i) => ({
+        id: i.id,
+        title: i.title,
+        icon: i.icon,
+        url: i.url,
+        badge: i.badge ?? 0,
+        submenu: i.submenu ?? []
+      }));
+    }
+    const cfg = window.desktopModeConfig;
+    return cfg?.dockItems ?? [];
+  }
+  function readServerIcons() {
+    const cfg = window.desktopModeConfig;
+    return cfg?.desktopIcons ?? [];
+  }
+  let reentrant = false;
+  const removedServerPlacementsByRef = /* @__PURE__ */ new Map();
+  function syncShortcutsWithVisibility(visibility, positions = {}) {
+    if (reentrant) {
+      return;
+    }
+    reentrant = true;
+    try {
+      const dockItems = readDockItems();
+      const serverIcons = readServerIcons();
+      const state2 = filesApi.store.getState();
+      const root = state2.placementsByFolder.get(0) ?? [];
+      const currentSynth = /* @__PURE__ */ new Map();
+      for (const p of root) {
+        const sourceId = (p.meta ?? null) && typeof p.meta === "object" ? p.meta[SYNTH_META_KEY] : null;
+        if (typeof sourceId === "string") {
+          currentSynth.set(sourceId, p);
+        }
+      }
+      const realByRef = /* @__PURE__ */ new Map();
+      const registeredIconIds = new Set(
+        serverIcons.map((i) => i.id)
+      );
+      for (const p of root) {
+        const ref = p?.file?.ref;
+        if (typeof ref === "string" && registeredIconIds.has(ref)) {
+          realByRef.set(ref, p);
+        }
+      }
+      const desiredSynth = /* @__PURE__ */ new Set();
+      for (const item of dockItems) {
+        const placement = visibility[item.id];
+        if (placement === "desktop" || placement === "both") {
+          desiredSynth.add(item.id);
+          if (!currentSynth.has(item.id)) {
+            filesApi.store.upsertPlacement(
+              buildSyntheticPlacement(item, positions)
+            );
+          }
+        }
+      }
+      for (const [sourceId, p] of currentSynth) {
+        if (!desiredSynth.has(sourceId)) {
+          filesApi.store.removePlacement(p.id);
+        }
+      }
+      for (const icon of serverIcons) {
+        const placement = visibility[icon.id];
+        const inStore = realByRef.get(icon.id);
+        if (placement === "dock" || placement === "hidden") {
+          if (inStore) {
+            removedServerPlacementsByRef.set(icon.id, inStore);
+            filesApi.store.removePlacement(inStore.id);
+          }
+          continue;
+        }
+        if (!inStore) {
+          const cached = removedServerPlacementsByRef.get(icon.id);
+          if (cached) {
+            filesApi.store.upsertPlacement(cached);
+            removedServerPlacementsByRef.delete(icon.id);
+          }
+        }
+      }
+    } finally {
+      reentrant = false;
+    }
+  }
+  function installShortcutsSync(getVisibility, getPositions = () => ({})) {
+    queueMicrotask(
+      () => syncShortcutsWithVisibility(getVisibility(), getPositions())
+    );
+    const off = filesApi.store.subscribe(() => {
+      syncShortcutsWithVisibility(getVisibility(), getPositions());
+    });
+    return off;
+  }
+  const clock = {
+    id: "clock",
+    // Labels/descriptions on built-in defs stay string-literal at
+    // module-eval time so the extract-pot pass picks them up. The
+    // values are wrapped in `__()` so they translate at runtime.
+    get label() {
+      return __("Clock");
+    },
+    get description() {
+      return __("Local time and date, refreshed every second.");
+    },
+    icon: "dashicons-clock",
+    mount: (container) => {
+      container.classList.add("desktop-mode-widget-clock");
+      const time = document.createElement("div");
+      time.className = "desktop-mode-widget-clock__time";
+      container.appendChild(time);
+      const date = document.createElement("div");
+      date.className = "desktop-mode-widget-clock__date";
+      container.appendChild(date);
+      const render2 = () => {
+        const now = /* @__PURE__ */ new Date();
+        time.textContent = now.toLocaleTimeString(void 0, {
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+        date.textContent = now.toLocaleDateString(void 0, {
+          weekday: "long",
+          month: "short",
+          day: "numeric"
+        });
+      };
+      render2();
+      const msUntilNextSecond = 1e3 - Date.now() % 1e3;
+      let interval = null;
+      const kickoff = window.setTimeout(() => {
+        render2();
+        interval = window.setInterval(render2, 1e3);
+      }, msUntilNextSecond);
+      return () => {
+        window.clearTimeout(kickoff);
+        if (interval !== null) {
+          window.clearInterval(interval);
+        }
+      };
+    }
+  };
+  function registerBuiltInWidgets() {
+    register(clock);
+  }
+  function createWidgetRegistrySync(deps2) {
+    const { layer } = deps2;
+    const registered = /* @__PURE__ */ new Set();
+    const loadedScripts = /* @__PURE__ */ new Set();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedScripts.has(entry.scriptUrl)) {
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "widget-script-load",
+          id: entry.id,
+          error: err
+        });
+      }
+      loadedScripts.add(entry.scriptUrl);
+    };
+    const buildDefFromEntry = (entry) => {
+      const globals = window.desktopModeWidgets || {};
+      const mount = globals[entry.id];
+      if (!mount) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "widget-missing-mount",
+          id: entry.id,
+          error: new Error(
+            `[desktop-mode] No mount callback on window.desktopModeWidgets["${entry.id}"]. Plugin script loaded but didn't register. Check the plugin's enqueue + global assignment.`
+          )
+        });
+        return null;
+      }
+      return {
+        id: entry.id,
+        label: entry.label,
+        description: entry.description,
+        icon: entry.icon,
+        movable: entry.movable,
+        resizable: entry.resizable,
+        minWidth: entry.minWidth || void 0,
+        minHeight: entry.minHeight || void 0,
+        maxWidth: entry.maxWidth || void 0,
+        maxHeight: entry.maxHeight || void 0,
+        defaultWidth: entry.defaultWidth || void 0,
+        defaultHeight: entry.defaultHeight || void 0,
+        mount
+      };
+    };
+    const registerEntry = async (entry) => {
+      if (registered.has(entry.id)) {
+        return;
+      }
+      await ensureScript(entry);
+      const def = buildDefFromEntry(entry);
+      if (!def) {
+        return;
+      }
+      try {
+        register(def);
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "widget-register",
+          id: entry.id,
+          error: err
+        });
+        return;
+      }
+      registered.add(entry.id);
+      refreshWidgetPicker();
+      if (layer) {
+        layer.mountIfEnabled(entry.id);
+      }
+    };
+    const unregisterEntry = (id) => {
+      if (!registered.has(id)) {
+        return;
+      }
+      layer?.unmount(id);
+      unregister(id);
+      registered.delete(id);
+      refreshWidgetPicker();
+    };
+    return async (list2) => {
+      const incoming = /* @__PURE__ */ new Set();
+      for (const entry of list2) {
+        incoming.add(entry.id);
+      }
+      for (const id of Array.from(registered)) {
+        if (!incoming.has(id)) {
+          unregisterEntry(id);
+        }
+      }
+      for (const entry of list2) {
+        if (!registered.has(entry.id)) {
+          await registerEntry(entry);
+        }
+      }
+    };
+  }
+  const WPD_COMPONENT_TAGS = [
+    "wpd-section",
+    "wpd-button",
+    "wpd-swatch",
+    "wpd-swatch-grid",
+    "wpd-segmented",
+    "wpd-segment",
+    "wpd-select",
+    "wpd-option",
+    "wpd-multiselect",
+    "wpd-color-field",
+    "wpd-range-field",
+    "wpd-text-field",
+    "wpd-number-field",
+    "wpd-checkbox",
+    "wpd-checkbox-label",
+    "wpd-toast",
+    "wpd-toast-container",
+    "wpd-tabs",
+    "wpd-tab",
+    "wpd-tabpanel",
+    "wpd-window-button",
+    "wpd-menu",
+    "wpd-menu-item",
+    "wpd-context-menu",
+    "wpd-context-menu-option",
+    "wpd-confirm-dialog",
+    "wpd-modal",
+    "wpd-user-search",
+    "wpd-role-picker",
+    "wpd-flyout",
+    "wpd-tab-chip",
+    "wpd-stack",
+    "wpd-cluster",
+    "wpd-icon",
+    "wpd-body",
+    "wpd-panel",
+    "wpd-row",
+    "wpd-grid",
+    "wpd-display",
+    "wpd-empty-state",
+    "wpd-key",
+    "wpd-code",
+    "wpd-badge",
+    "wpd-log",
+    "wpd-steps",
+    "wpd-step",
+    "wpd-table",
+    "wpd-spinner",
+    "wpd-relative-time",
+    "wpd-avatar",
+    "wpd-textarea",
+    "wpd-chip",
+    "wpd-tag-input",
+    "wpd-form",
+    "wpd-save-status",
+    "wpd-category-picker",
+    "wpd-crumb-chain",
+    "wpd-card",
+    "wpd-notice"
+  ];
+  const KNOWN = new Set(WPD_COMPONENT_TAGS);
+  const WARN_GRACE_MS = 2e3;
+  const warnedTags = /* @__PURE__ */ new Set();
+  const observedRoots = /* @__PURE__ */ new WeakSet();
+  let started$2 = false;
+  function distance(a, b) {
+    const m = a.length;
+    const n = b.length;
+    if (m === 0) {
+      return n;
+    }
+    if (n === 0) {
+      return m;
+    }
+    const dp = new Array(n + 1);
+    for (let j = 0; j <= n; j++) {
+      dp[j] = j;
+    }
+    for (let i = 1; i <= m; i++) {
+      let prev = dp[0];
+      dp[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const tmp = dp[j];
+        dp[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[j], dp[j - 1]);
+        prev = tmp;
+      }
+    }
+    return dp[n];
+  }
+  function suggest(tag) {
+    let best = null;
+    let bestD = Infinity;
+    for (const known of KNOWN) {
+      const d = distance(tag, known);
+      if (d < bestD) {
+        bestD = d;
+        best = known;
+      }
+    }
+    return bestD > 0 && bestD <= 3 ? best : null;
+  }
+  function folderFor(tag) {
+    return tag.startsWith("wpd-") ? tag.slice(4) : tag;
+  }
+  function warnFor(tag, sample) {
+    if (warnedTags.has(tag)) {
+      return;
+    }
+    warnedTags.add(tag);
+    const isKnown = KNOWN.has(tag);
+    if (isKnown) {
+      const folder = folderFor(tag);
+      console.error(
+        `[wp.desktop] <${tag}> is in the DOM but its module was never imported, so the tag will not upgrade and the component will render as inert HTML.
+
+Fix — side-effect-import the component module from wherever you render it:
+
+    import '<rel>/ui/components/${folder}/${folder}';
+
+Or pull every wpd-* component in one go (heavier — only do this from an entry bundle):
+
+    import '<rel>/ui/components';
+
+See docs/components-reference.md for the full list.`,
+        "\nFirst offending element:",
+        sample
+      );
+      return;
+    }
+    const guess = suggest(tag);
+    if (guess) {
+      console.error(
+        `[wp.desktop] <${tag}> is not a registered wpd-* component. Did you mean <${guess}>?
+
+If the typo is in your template, update it. If you meant to ship a new component, register it via 'src/ui/components/<name>/<name>.ts' and add it to 'src/ui/components/tags.ts' + 'src/ui/components/index.ts'.`,
+        "\nFirst offending element:",
+        sample
+      );
+      return;
+    }
+    console.error(
+      `[wp.desktop] <${tag}> looks like a wpd-* tag but no component by that name exists.
+
+See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canonical list. If you intended to register a new component, add it to 'tags.ts' and side-effect-import its module.`,
+      "\nFirst offending element:",
+      sample
+    );
+  }
+  function checkElement(el) {
+    const tag = el.tagName.toLowerCase();
+    if (!tag.startsWith("wpd-")) {
+      return;
+    }
+    if (warnedTags.has(tag)) {
+      return;
+    }
+    if (customElements.get(tag)) {
+      return;
+    }
+    let settled = false;
+    customElements.whenDefined(tag).then(() => {
+      settled = true;
+    });
+    setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      if (customElements.get(tag)) {
+        return;
+      }
+      warnFor(tag, el);
+    }, WARN_GRACE_MS);
+  }
+  function walk(root) {
+    if (root instanceof Element) {
+      checkElement(root);
+      if (root.shadowRoot) {
+        observeRoot(root.shadowRoot);
+      }
+    }
+    const all2 = root.querySelectorAll("*");
+    for (let i = 0; i < all2.length; i++) {
+      const el = all2[i];
+      checkElement(el);
+      if (el.shadowRoot) {
+        observeRoot(el.shadowRoot);
+      }
+    }
+  }
+  function observeRoot(root) {
+    if (observedRoots.has(root)) {
+      return;
+    }
+    observedRoots.add(root);
+    walk(root);
+    const mo = new MutationObserver((records) => {
+      for (let i = 0; i < records.length; i++) {
+        const added = records[i].addedNodes;
+        for (let j = 0; j < added.length; j++) {
+          const node = added[j];
+          if (node.nodeType === 1) {
+            walk(node);
+          }
+        }
+      }
+    });
+    mo.observe(root, { childList: true, subtree: true });
+  }
+  function patchAttachShadow() {
+    const proto = Element.prototype;
+    const original = proto.attachShadow;
+    if (original.__wpdPatched) {
+      return;
+    }
+    const patched = function(init2) {
+      const root = original.call(this, init2);
+      if (root.mode === "open") {
+        observeRoot(root);
+      }
+      return root;
+    };
+    patched.__wpdPatched = true;
+    proto.attachShadow = patched;
+  }
+  function startMissingImportWarner() {
+    if (started$2) {
+      return;
+    }
+    if (typeof document === "undefined") {
+      return;
+    }
+    started$2 = true;
+    patchAttachShadow();
+    observeRoot(document);
+  }
+  const TRASH_DROP_ACTIVE_ATTR = "data-desktop-mode-trash-drop-active";
+  const RECYCLE_BIN_WINDOW_ID = "desktop-mode-recycle-bin";
+  const BIN_TILE_SELECTORS = [
+    `.desktop-mode-file-tile[data-file-ref="${RECYCLE_BIN_WINDOW_ID}"]`,
+    `[data-icon-id="${RECYCLE_BIN_WINDOW_ID}"]`,
+    `[data-system-id="${RECYCLE_BIN_WINDOW_ID}"]`
+  ];
+  function findBinTile() {
+    for (const sel of BIN_TILE_SELECTORS) {
+      const el = document.querySelector(sel);
+      if (el instanceof HTMLElement) {
+        return el;
+      }
+    }
+    return null;
+  }
+  let _installed = false;
+  let _dockDeregister = null;
+  let _windowDeregister = null;
+  let _binMutationObserver = null;
+  function isDesktopFilePayload(session) {
+    return session.payload.type === "desktop-file";
+  }
+  function registerOn(dragManager, id, el) {
+    return dragManager.registerDropTarget({
+      id,
+      element: el,
+      // Reject the drop UP FRONT when the viewer can't trash the
+      // payload's placement (e.g. an item inside a read-only
+      // shared folder, or someone else's tile in a shared
+      // namespace). `accept` flipping to `false` means the
+      // drop-active highlight never lights up + onDrop never
+      // fires + the drag manager surfaces a `rejected` outcome.
+      // The user sees the icon snap back instead of attempting a
+      // REST call that would 403 and only log to the console.
+      accept: (payload) => {
+        if (payload.type !== "desktop-file") {
+          return false;
+        }
+        const data = payload.data;
+        const placement = data?.placement;
+        if (!placement) {
+          return false;
+        }
+        if (placement.file?.ref === RECYCLE_BIN_WINDOW_ID) {
+          return false;
+        }
+        return placement.canTrash !== false;
+      },
+      onEnter: () => {
+        el.setAttribute(TRASH_DROP_ACTIVE_ATTR, "");
+      },
+      onLeave: () => {
+        el.removeAttribute(TRASH_DROP_ACTIVE_ATTR);
+      },
+      onDrop: (session) => {
+        el.removeAttribute(TRASH_DROP_ACTIVE_ATTR);
+        if (!isDesktopFilePayload(session)) {
+          return;
+        }
+        const placement = session.payload.data.placement;
+        void trashByFileType(placement);
+      }
+    });
+  }
+  function installRecycleBinDropTargets(dragManager) {
+    if (_installed) {
+      return;
+    }
+    _installed = true;
+    const reprobeTile = () => {
+      const el = findBinTile();
+      if (!el) {
+        _dockDeregister?.();
+        _dockDeregister = null;
+        return;
+      }
+      if (_dockDeregister && getRegisteredElementId(dragManager) === el) {
+        return;
+      }
+      _dockDeregister?.();
+      _dockDeregister = registerOn(dragManager, "recycle-bin-dock", el);
+    };
+    reprobeTile();
+    document.addEventListener("desktop-mode-files-changed", reprobeTile);
+    document.addEventListener("desktop-mode-desktop-icons-rendered", reprobeTile);
+    addAction(
+      HOOKS.DOCK_AFTER_RENDER,
+      "desktop-mode/files/recycle-bin-dock-target",
+      reprobeTile
+    );
+    if (typeof MutationObserver !== "undefined") {
+      _binMutationObserver = new MutationObserver(() => {
+        reprobeTile();
+      });
+      const desktopArea = document.getElementById("desktop-mode-area") ?? document.body;
+      _binMutationObserver.observe(desktopArea, {
+        childList: true,
+        subtree: true
+      });
+    }
+    addAction(
+      HOOKS.WINDOW_OPENED,
+      "desktop-mode/files/recycle-bin-window-target",
+      (detail) => {
+        if (detail.windowId !== RECYCLE_BIN_WINDOW_ID) {
+          return;
+        }
+        _windowDeregister?.();
+        _windowDeregister = null;
+        const el = document.querySelector(
+          "[data-desktop-mode-recycle-bin-root]"
+        );
+        if (el instanceof HTMLElement) {
+          _windowDeregister = registerOn(
+            dragManager,
+            "recycle-bin-window",
+            el
+          );
+        }
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_CLOSED,
+      "desktop-mode/files/recycle-bin-window-cleanup",
+      (detail) => {
+        if (detail.windowId !== RECYCLE_BIN_WINDOW_ID) {
+          return;
+        }
+        _windowDeregister?.();
+        _windowDeregister = null;
+      }
+    );
+  }
+  function getRegisteredElementId(dragManager) {
+    const t = dragManager.debug().listTargets().find((target) => target.id === "recycle-bin-dock");
+    return t ? t.element : null;
+  }
+  let started$1 = false;
+  let highWaterMs = 0;
+  function startFilesHeartbeat() {
+    if (started$1) {
+      return;
+    }
+    started$1 = true;
+    heartbeat.contribute("desktop_mode_files_subscribe", () => {
+      const state2 = getFilesState();
+      const folderVersions = {};
+      for (const [id, folder] of state2.folders) {
+        folderVersions[String(id)] = folder.updatedAtMs;
+      }
+      return {
+        folderVersions,
+        placementsVersion: highWaterMs,
+        sharesVersion: sharesStore().state.sharesVersion
+      };
+    });
+    heartbeat.subscribe("desktop_mode_files", (payload) => {
+      applyDelta(payload);
+    });
+  }
+  function applyDelta(payload) {
+    const folders = payload.folders ?? [];
+    for (const folder of folders) {
+      upsertFolder(folder, "remote");
+      if (folder.updatedAtMs > highWaterMs) {
+        highWaterMs = folder.updatedAtMs;
+      }
+    }
+    const placements = payload.placements ?? [];
+    for (const placement of placements) {
+      upsertPlacement(placement, "remote");
+      if (placement.updatedAtMs > highWaterMs) {
+        highWaterMs = placement.updatedAtMs;
+      }
+    }
+    const removed = payload.removed ?? {};
+    for (const id of removed.folders ?? []) {
+      removeFolder(id, "remote");
+    }
+    for (const id of removed.placements ?? []) {
+      removePlacement(id, "remote");
+    }
+    if (typeof payload.serverTimeMs === "number" && payload.serverTimeMs > highWaterMs) {
+      highWaterMs = payload.serverTimeMs;
+    }
+    const pending2 = payload.shares?.pending;
+    if (Array.isArray(pending2) && pending2.length > 0) {
+      ingestPendingInvites(pending2);
+    }
+    if (payload.truncated) {
+      const hydrated = Array.from(getFilesState().hydratedFolders);
+      for (const folderId of hydrated) {
+        void listPlacements(folderId).then((res) => {
+          setFolderPlacements(folderId, res.placements);
+        }).catch(() => {
+        });
+      }
+    }
+  }
+  let started = false;
+  const unsubscribers = [];
+  function startFilesRestoreSync() {
+    if (started) {
+      return;
+    }
+    started = true;
+    const onChange = (payload) => {
+      const detail = payload;
+      if (!detail || detail.action !== "untrashed") {
+        return;
+      }
+      resyncFromServer();
+    };
+    unsubscribers.push(
+      subscribe$2("desktop-mode.placement.changed", onChange),
+      subscribe$2("desktop-mode.shortcut.changed", onChange),
+      subscribe$2("desktop-mode.folder.changed", onChange)
+    );
+  }
+  function resyncFromServer() {
+    void listFolders().then((res) => {
+      setFolders(res.folders);
+    }).catch((err) => {
+      console.error(
+        "[desktop-mode] files restore-sync: listFolders failed",
+        err
+      );
+    });
+    const hydrated = Array.from(getFilesState().hydratedFolders);
+    for (const folderId of hydrated) {
+      void listPlacements(folderId).then((res) => {
+        setFolderPlacements(folderId, res.placements);
+      }).catch((err) => {
+        console.error(
+          "[desktop-mode] files restore-sync: listPlacements failed for",
+          folderId,
+          err
+        );
+      });
+    }
+  }
+  const MENU_CLASS = "desktop-mode-wallpaper-menu";
+  let activeMenu = null;
+  function isWallpaperMenuOpen() {
+    return activeMenu !== null;
+  }
+  let openGeneration = 0;
+  function openWallpaperMenu(host, pos, items, options = {}) {
+    closeWallpaperMenu();
+    const myGen = ++openGeneration;
+    openWithShellOverlays(
+      () => myGen === openGeneration,
+      () => openWallpaperMenuImmediate(host, pos, items, options)
+    );
+  }
+  function openWallpaperMenuImmediate(host, pos, items, options = {}) {
+    if (items.length === 0) {
+      return;
+    }
+    items = items.slice().sort((a, b) => {
+      const sa = typeof a.sort === "number" ? a.sort : 100;
+      const sb = typeof b.sort === "number" ? b.sort : 100;
+      if (sa !== sb) {
+        return sa - sb;
+      }
+      return a.label.localeCompare(b.label);
+    });
+    const menu = document.createElement("wpd-context-menu");
+    menu.setAttribute("open", "");
+    menu.classList.add(MENU_CLASS);
+    menu.style.left = `${pos.x}px`;
+    menu.style.top = `${pos.y}px`;
+    const itemById = /* @__PURE__ */ new Map();
+    let activeFlyout2 = null;
+    let activeFlyoutParent = null;
+    const closeActiveFlyout = () => {
+      if (activeFlyout2) {
+        activeFlyout2.remove();
+        activeFlyout2 = null;
+        activeFlyoutParent = null;
+      }
+    };
+    for (const item of items) {
+      itemById.set(item.id, item);
+      const opt = document.createElement("wpd-context-menu-option");
+      opt.dataset.menuItemId = item.id;
+      opt.setAttribute("value", item.id);
+      if (item.heading) {
+        opt.setAttribute("heading", "");
+      }
+      if (item.disabled) {
+        opt.setAttribute("disabled", "");
+      }
+      if (item.icon) {
+        opt.setAttribute("icon", sanitizeClass(item.icon));
+      }
+      const hasChildren2 = Array.isArray(item.children) && item.children.length > 0;
+      if (hasChildren2) {
+        opt.setAttribute("has-children", "");
+      }
+      opt.textContent = item.label;
+      opt.addEventListener("mouseenter", () => {
+        if (hasChildren2) {
+          openFlyout2(item, opt);
+          return;
+        }
+        closeActiveFlyout();
+      });
+      menu.appendChild(opt);
+    }
+    menu.addEventListener("wpd-context-menu-pick", (e) => {
+      const detail = e.detail;
+      const item = itemById.get(detail.id) ?? null;
+      if (!item) {
+        return;
+      }
+      if (Array.isArray(item.children) && item.children.length > 0) {
+        e.stopPropagation();
+        if (activeFlyoutParent && activeFlyoutParent.id === item.id) {
+          closeActiveFlyout();
+          return;
+        }
+        const anchor = menu.querySelector(
+          `[data-menu-item-id="${item.id}"]`
+        );
+        if (anchor) {
+          openFlyout2(item, anchor);
+        }
+        return;
+      }
+      closeWallpaperMenu();
+      void item.onClick(new MouseEvent("click"));
+    });
+    function openFlyout2(parent, anchor) {
+      closeActiveFlyout();
+      const fly = document.createElement("wpd-context-menu");
+      fly.setAttribute("open", "");
+      fly.classList.add(MENU_CLASS, `${MENU_CLASS}--flyout`);
+      fly.dataset.parentId = parent.id;
+      const sortedKids = (parent.children ?? []).slice().sort((a, b) => {
+        const sa = typeof a.sort === "number" ? a.sort : 100;
+        const sb = typeof b.sort === "number" ? b.sort : 100;
+        if (sa !== sb) {
+          return sa - sb;
+        }
+        return a.label.localeCompare(b.label);
+      });
+      for (const child of sortedKids) {
+        const kopt = document.createElement("wpd-context-menu-option");
+        kopt.dataset.menuItemId = child.id;
+        kopt.setAttribute("value", child.id);
+        if (child.icon) {
+          kopt.setAttribute("icon", sanitizeClass(child.icon));
+        }
+        if (child.disabled) {
+          kopt.setAttribute("disabled", "");
+        }
+        if (child.checked) {
+          kopt.setAttribute("checked", "");
+        }
+        kopt.textContent = child.label;
+        kopt.addEventListener("wpd-context-menu-pick", (e) => {
+          e.stopPropagation();
+          closeWallpaperMenu();
+          void child.onClick(new MouseEvent("click"));
+        });
+        fly.appendChild(kopt);
+      }
+      document.body.appendChild(fly);
+      activeFlyout2 = fly;
+      activeFlyoutParent = parent;
+      positionFlyout2(fly, anchor);
+    }
+    function positionFlyout2(fly, anchor) {
+      const ar = anchor.getBoundingClientRect();
+      fly.style.position = "fixed";
+      fly.style.left = `${ar.right}px`;
+      fly.style.top = `${ar.top}px`;
+      const fr = fly.getBoundingClientRect();
+      if (fr.right > window.innerWidth) {
+        fly.style.left = `${Math.max(0, ar.left - fr.width)}px`;
+      }
+      if (fr.bottom > window.innerHeight) {
+        fly.style.top = `${Math.max(0, window.innerHeight - fr.height - 8)}px`;
+      }
+    }
+    host.appendChild(menu);
+    activeMenu = menu;
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${Math.max(0, window.innerWidth - rect.width - 8)}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${Math.max(0, window.innerHeight - rect.height - 8)}px`;
+    }
+    const detach = attachDismissable(menu, {
+      close: () => closeWallpaperMenu(),
+      siblingSelectors: [`.${MENU_CLASS}--flyout`],
+      excludeOutsideTarget: options.excludeOutsideTarget
+    });
+    menu.addEventListener("wallpaper-menu-closed", detach);
+    doAction("desktop-mode.wallpaper-menu.opened", { items: items.map((i) => i.id) });
+  }
+  function closeWallpaperMenu() {
+    if (!activeMenu) {
+      return;
+    }
+    document.querySelectorAll(`.${MENU_CLASS}--flyout`).forEach((el) => el.remove());
+    activeMenu.dispatchEvent(new CustomEvent("wallpaper-menu-closed"));
+    activeMenu.remove();
+    activeMenu = null;
+    doAction("desktop-mode.wallpaper-menu.closed", {});
+  }
+  function buildMenuItems(deps2) {
+    const builtIn = [
+      {
+        id: "create-folder",
+        label: deps2.labels.createFolder,
+        icon: "dashicons-portfolio",
+        sort: 10,
+        onClick: () => deps2.createFolder()
+      },
+      {
+        id: "new-url",
+        label: deps2.labels.newUrl,
+        icon: "dashicons-admin-links",
+        sort: 12,
+        onClick: () => deps2.createUrl()
+      },
+      {
+        id: "sort-by",
+        label: deps2.labels.sortHeading,
+        icon: "dashicons-sort",
+        sort: 16,
+        onClick: () => void 0,
+        children: [
+          {
+            id: "sort-name-asc",
+            label: deps2.labels.sortNameAsc,
+            sort: 10,
+            checked: deps2.currentSortMode === "name-asc",
+            onClick: () => deps2.sortIcons("name-asc")
+          },
+          {
+            id: "sort-name-desc",
+            label: deps2.labels.sortNameDesc,
+            sort: 20,
+            checked: deps2.currentSortMode === "name-desc",
+            onClick: () => deps2.sortIcons("name-desc")
+          },
+          {
+            id: "sort-date-desc",
+            label: deps2.labels.sortDateDesc,
+            sort: 30,
+            checked: deps2.currentSortMode === "date-desc",
+            onClick: () => deps2.sortIcons("date-desc")
+          },
+          {
+            id: "sort-date-asc",
+            label: deps2.labels.sortDateAsc,
+            sort: 40,
+            checked: deps2.currentSortMode === "date-asc",
+            onClick: () => deps2.sortIcons("date-asc")
+          }
+        ]
+      },
+      ...deps2.includeShowDesktop === false ? [] : [
+        {
+          id: "show-desktop",
+          label: deps2.labels.showDesktop,
+          icon: "dashicons-desktop",
+          sort: 20,
+          onClick: () => deps2.toggleShowDesktop()
+        }
+      ],
+      {
+        id: "os-settings",
+        label: deps2.labels.osSettings,
+        icon: "dashicons-admin-generic",
+        sort: 30,
+        onClick: () => deps2.openOsSettings()
+      }
+    ];
+    const serverItems = (deps2.serverItems ?? []).map(
+      (s) => serverItemToMenuItem(s, deps2)
+    );
+    const merged = [...builtIn, ...serverItems];
+    const filtered = applyFilters(
+      "desktop-mode.wallpaper-context-menu",
+      merged
+    );
+    return Array.isArray(filtered) ? filtered : merged;
+  }
+  function serverItemToMenuItem(server, deps2) {
+    return {
+      id: server.id,
+      label: server.label,
+      icon: server.icon,
+      sort: server.sort,
+      disabled: server.disabled,
+      onClick: () => {
+        if (server.callbackId) {
+          const cb = deps2.serverCallbacks?.[server.callbackId];
+          if (typeof cb === "function") {
+            return cb();
+          }
+        }
+        doAction("desktop-mode.wallpaper-context-menu.activated", {
+          id: server.id,
+          callbackId: server.callbackId ?? ""
+        });
+      }
+    };
+  }
+  function sanitizeClass(raw) {
+    return raw.replace(/[^a-zA-Z0-9_-]/g, "");
+  }
+  const ROOT_CLASS = "desktop-mode-url-dialog";
+  let active = null;
+  function closeUrlDialog() {
+    if (!active) {
+      return;
+    }
+    active.dispatchEvent(new CustomEvent("url-dialog-closed"));
+    active.remove();
+    active = null;
+    doAction("desktop-mode.files.url-dialog.closed", {});
+  }
+  function openUrlDialog(options) {
+    closeUrlDialog();
+    const decision = applyFilters(
+      "desktop-mode.files.url-dialog",
+      null,
+      options
+    );
+    if (decision === false) {
+      return;
+    }
+    const overlay = document.createElement("div");
+    overlay.className = `${ROOT_CLASS}__overlay desktop-mode-create-folder-dialog__overlay`;
+    overlay.setAttribute("role", "presentation");
+    const dialog2 = document.createElement("div");
+    dialog2.className = `${ROOT_CLASS} desktop-mode-create-folder-dialog`;
+    dialog2.setAttribute("role", "dialog");
+    dialog2.setAttribute("aria-modal", "true");
+    dialog2.setAttribute("aria-labelledby", `${ROOT_CLASS}-title`);
+    const title = document.createElement("h2");
+    title.id = `${ROOT_CLASS}-title`;
+    title.className = "desktop-mode-create-folder-dialog__title";
+    title.textContent = options.title;
+    dialog2.appendChild(title);
+    if (options.description) {
+      const desc = document.createElement("p");
+      desc.className = `${ROOT_CLASS}__description`;
+      desc.textContent = options.description;
+      dialog2.appendChild(desc);
+    }
+    const nameField = document.createElement("wpd-text-field");
+    nameField.setAttribute("label", options.nameLabel ?? "Name");
+    nameField.setAttribute("value", options.initialName ?? "");
+    nameField.setAttribute("placeholder", "My web app");
+    nameField.setAttribute("autocomplete", "off");
+    dialog2.appendChild(nameField);
+    const urlField = document.createElement("wpd-text-field");
+    urlField.setAttribute("label", options.urlLabel ?? "URL");
+    urlField.setAttribute("value", options.initialUrl ?? "https://");
+    urlField.setAttribute("placeholder", "https://example.com");
+    urlField.setAttribute("type", "url");
+    urlField.setAttribute("autocomplete", "off");
+    dialog2.appendChild(urlField);
+    const error = document.createElement("p");
+    error.className = "desktop-mode-create-folder-dialog__error";
+    error.hidden = true;
+    error.setAttribute("role", "alert");
+    dialog2.appendChild(error);
+    const actions = document.createElement("div");
+    actions.className = "desktop-mode-create-folder-dialog__actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "desktop-mode-create-folder-dialog__btn desktop-mode-create-folder-dialog__btn--secondary";
+    cancel.textContent = "Cancel";
+    const submit = document.createElement("button");
+    submit.type = "button";
+    submit.className = "desktop-mode-create-folder-dialog__btn desktop-mode-create-folder-dialog__btn--primary";
+    submit.textContent = options.submitLabel ?? "Create";
+    actions.appendChild(cancel);
+    actions.appendChild(submit);
+    dialog2.appendChild(actions);
+    overlay.appendChild(dialog2);
+    document.body.appendChild(overlay);
+    active = overlay;
+    queueMicrotask(() => {
+      const input = nameField.shadowRoot?.querySelector("input");
+      input?.focus();
+      input?.select();
+    });
+    doAction("desktop-mode.files.url-dialog.opened", {});
+    const readValue = (field) => {
+      const v = field.value;
+      if (typeof v === "string") {
+        return v;
+      }
+      return field.shadowRoot?.querySelector("input")?.value ?? "";
+    };
+    const setBusy = (busy) => {
+      nameField.disabled = busy;
+      urlField.disabled = busy;
+      cancel.disabled = busy;
+      submit.disabled = busy;
+      dialog2.classList.toggle("desktop-mode-create-folder-dialog--busy", busy);
+    };
+    const showError = (msg) => {
+      error.textContent = msg;
+      error.hidden = false;
+    };
+    const doCancel = () => {
+      closeUrlDialog();
+      options.onCancel?.();
+    };
+    const doSubmit = async () => {
+      const url = readValue(urlField).trim();
+      if (!url) {
+        showError("Please enter a URL.");
+        return;
+      }
+      const finalUrl = /^[a-z][a-z0-9+\-.]*:/i.test(url) ? url : `https://${url}`;
+      try {
+        new URL(finalUrl);
+      } catch {
+        showError("That doesn't look like a valid URL.");
+        return;
+      }
+      const name = readValue(nameField).trim();
+      error.hidden = true;
+      setBusy(true);
+      try {
+        await options.onSubmit({ name, url: finalUrl });
+        closeUrlDialog();
+      } catch (err) {
+        setBusy(false);
+        showError(err instanceof Error ? err.message : "Could not save.");
+      }
+    };
+    cancel.addEventListener("click", () => doCancel());
+    submit.addEventListener("click", () => void doSubmit());
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        doCancel();
+      }
+    });
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        doCancel();
+      } else if (e.key === "Enter" && !e.isComposing) {
+        e.preventDefault();
+        void doSubmit();
+      }
+    };
+    dialog2.addEventListener("keydown", onKey);
+    overlay.addEventListener("url-dialog-closed", () => {
+      dialog2.removeEventListener("keydown", onKey);
+    });
+  }
+  const _earlyReadyQueue = [];
+  let _earlyReady = false;
+  (function installEarlyDesktopShim() {
+    const w = window;
+    if (!w.wp) {
+      w.wp = {};
+    }
+    if (w.wp.desktop) {
+      return;
+    }
+    const shim = {
+      whenReady(cb) {
+        if (typeof cb !== "function") {
+          return;
+        }
+        if (_earlyReady) {
+          Promise.resolve().then(cb);
+          return;
+        }
+        _earlyReadyQueue.push(cb);
+      },
+      ready(cb) {
+        shim.whenReady(cb);
+      },
+      isReady() {
+        return _earlyReady;
+      }
+    };
+    w.wp.desktop = shim;
+  })();
+  const OS_SETTINGS_WINDOW_ID = "desktop-mode-os-settings";
+  function init() {
+    const config = window.desktopModeConfig;
+    if (!config) {
+      return;
+    }
+    const desktopArea = document.getElementById("desktop-mode-area");
+    if (!desktopArea) {
+      return;
+    }
+    const manager = new WindowManager(desktopArea);
+    const wallpaperEl = document.getElementById("desktop-mode-wallpaper");
+    const pluginUrl = config.pluginUrl || "";
+    let wallpaperLayer = null;
+    if (wallpaperEl) {
+      wallpaperLayer = new WallpaperLayer(wallpaperEl, pluginUrl);
+    }
+    const widgetsEl = document.getElementById("desktop-mode-widgets");
+    let widgetLayer = null;
+    registerBuiltInWidgets();
+    installDefaultDockRailRenderer();
+    if (widgetsEl) {
+      widgetLayer = new WidgetLayer(widgetsEl, pluginUrl);
+    }
+    registerModule({
+      id: "pixijs",
+      url: `${pluginUrl}/assets/vendor/pixi.min.js`,
+      isReady: () => typeof window.PIXI !== "undefined"
+    });
+    const osSettings = new OsSettings(
+      {
+        mediaUrl: config.mediaUrl,
+        restNonce: config.restNonce,
+        canUpload: !!config.canUpload,
+        isAdmin: !!config.currentUserIsAdmin,
+        aiPlatformSettings: config.aiPlatformSettings ?? null,
+        aiPlatformSettingsUrl: config.aiPlatformSettingsUrl ?? "",
+        extendedOptions: config.extendedOptions ?? null,
+        extendedOptionsUrl: config.extendedOptionsUrl ?? "",
+        osSettingsPanelBundleUrl: config.osSettingsPanelBundleUrl ?? ""
+      },
+      wallpaperLayer ?? new WallpaperLayer(document.createElement("div"), pluginUrl)
+    );
+    osSettings.apply();
+    const aiAssistant = new AiAssistantStub(
+      {
+        aiSearchUrl: config.aiSearchUrl ?? "",
+        aiSearchStreamUrl: config.aiSearchStreamUrl ?? "",
+        restNonce: config.restNonce,
+        // Transport picker lives in OS Settings → AI Settings. Read
+        // live (not captured at construction) so a change applies on
+        // the next search without a page reload.
+        getTransport: () => osSettings.getOsSettingsSnapshot().ai.transport
+      },
+      config.aiAssistantBundleUrl ?? ""
+    );
+    aiAssistant.attachAsk(
+      createAsk({
+        config: () => config,
+        fallbackContext: () => ({
+          close: () => aiAssistant.close(),
+          openInWindow: (url, title, icon) => {
+            manager.open({
+              url,
+              title,
+              icon: icon ?? "dashicons-admin-generic"
+            });
+          },
+          confirm: (msg) => wpdConfirm({ message: msg })
+        })
+      })
+    );
+    const dragBridge = new DragBridge();
+    const dragManager = new DragManager();
+    registerPalette({
+      id: "desktop-mode-ai-assistant",
+      label: "AI Assistant",
+      open: () => aiAssistant.open(),
+      close: () => aiAssistant.close(),
+      isOpen: () => aiAssistant.isOpen
+    });
+    installPaletteShortcut();
+    installWindowSwitcherShortcut(manager);
+    installDesktopArrowShortcuts(manager);
+    new IframeCommandBridge({
+      manager,
+      adminUrl: config.adminUrl
+    }).install();
+    new ShellCommandHarvester({
+      manager,
+      adminUrl: config.adminUrl
+    }).install();
+    document.addEventListener("desktop-mode-open-ai", () => {
+      openPaletteOnly("desktop-mode-ai-assistant");
+    });
+    const bottomDockEl = document.getElementById("desktop-mode-dock");
+    const shellEl = document.getElementById("desktop-mode-shell");
+    const shellBody = shellEl?.querySelector(
+      ".desktop-mode-shell__body"
+    );
+    let layoutDispatcher = null;
+    const nativeWindows = createNativeWindowSync({
+      manager,
+      appendSystemTile: (item) => layoutDispatcher?.appendSystemTile(item),
+      removeSystemTile: (id) => layoutDispatcher?.removeSystemTile(id)
+    });
+    const syncNativeWindows = nativeWindows.sync;
+    bindNativeUrlRemap({
+      getSnapshot: () => osSettings.getOsSettingsSnapshot(),
+      openById: (id) => nativeWindows.openById(id),
+      adminUrl: config.adminUrl
+    });
+    const findDockEntryForUrl2 = (url) => {
+      const targetSlug = deriveWindowId(url, config.adminUrl);
+      const items = layoutDispatcher ? layoutDispatcher.getMenuItems() : config.dockItems ?? [];
+      for (const item of items) {
+        if (deriveWindowId(item.url, config.adminUrl) === targetSlug) {
+          return {
+            title: item.title,
+            icon: item.icon,
+            url: item.url,
+            submenu: item.submenu,
+            multi: item.multi
+          };
+        }
+        for (const sub of item.submenu ?? []) {
+          if (deriveWindowId(sub.url, config.adminUrl) === targetSlug) {
+            return {
+              title: sub.title,
+              // Sub-menu entries inherit the parent tile's
+              // icon — that's the dock's own convention and
+              // avoids painting a generic glyph on a window
+              // the user knows by its parent's identity.
+              icon: item.icon,
+              // `url` holds the PARENT tile's landing page, so
+              // the new window's synthetic "back to parent"
+              // tab links to the dock URL (themes.php) rather
+              // than to the sub-page itself.
+              url: item.url,
+              multi: item.multi
+            };
+          }
+        }
+      }
+      return null;
+    };
+    bindAdminLinkDispatch({
+      adminUrl: config.adminUrl,
+      deriveSlug: (url) => deriveWindowId(url, config.adminUrl),
+      openWindow: (windowConfig) => {
+        void manager.open(windowConfig);
+      },
+      findDockEntry: findDockEntryForUrl2
+    });
+    registerNativeUrlRemap({
+      id: "desktop-mode-posts",
+      nativeWindowId: "desktop-mode-posts",
+      matches: (_url, parsed) => {
+        if (!parsed.pathname.endsWith("/edit.php")) {
+          return false;
+        }
+        const postType = parsed.searchParams.get("post_type");
+        return !postType || postType === "post";
+      },
+      enabled: (snapshot) => snapshot.nativePostsEnabled === true
+    });
+    registerNativeUrlRemap({
+      id: "desktop-mode-pages",
+      nativeWindowId: "desktop-mode-pages",
+      matches: (_url, parsed) => {
+        if (!parsed.pathname.endsWith("/edit.php")) {
+          return false;
+        }
+        return parsed.searchParams.get("post_type") === "page";
+      },
+      enabled: (snapshot) => snapshot.nativePagesEnabled === true
+    });
+    registerNativeUrlRemap({
+      id: "desktop-mode-users",
+      nativeWindowId: "desktop-mode-users",
+      matches: (_url, parsed) => parsed.pathname.endsWith("/users.php"),
+      enabled: (snapshot) => snapshot.nativeUsersEnabled === true
+    });
+    registerNativeUrlRemap({
+      id: "desktop-mode-user-edit",
+      nativeWindowId: "desktop-mode-user-edit",
+      matches: (_url, parsed) => {
+        const path = parsed.pathname;
+        if (path.endsWith("/profile.php")) {
+          return true;
+        }
+        if (path.endsWith("/user-edit.php")) {
+          return parsed.searchParams.has("user_id");
+        }
+        return false;
+      },
+      enabled: (snapshot) => snapshot.nativeUsersEnabled === true,
+      onMatch: (_url, parsed) => {
+        const userId = parseInt(
+          parsed.searchParams.get("user_id") ?? "0",
+          10
+        );
+        if (userId > 0) {
+          setUserEditTarget(userId);
+        }
+      }
+    });
+    registerNativeUrlRemap({
+      id: "desktop-mode-comments",
+      nativeWindowId: "desktop-mode-comments",
+      matches: (_url, parsed) => parsed.pathname.endsWith("/edit-comments.php"),
+      enabled: (snapshot) => snapshot.nativeCommentsEnabled === true
+    });
+    registerNativeUrlRemap({
+      id: "desktop-mode-plugins",
+      nativeWindowId: "desktop-mode-plugins",
+      matches: (_url, parsed) => {
+        const path = parsed.pathname;
+        return path.endsWith("/plugins.php") || path.endsWith("/plugin-install.php");
+      },
+      enabled: (snapshot) => snapshot.nativePluginsEnabled === true,
+      onMatch: (_url, parsed) => {
+        const tab = parsed.pathname.endsWith("/plugin-install.php") ? "browse" : "installed";
+        void Promise.resolve().then(() => tabTarget).then((m) => {
+          m.setPluginsWindowTab(tab);
+        });
+      }
+    });
+    if (bottomDockEl && shellEl && shellBody && config.dockItems) {
+      desktopArea.classList.add("desktop-mode-area--with-dock");
+      const initialLayout = osSettings.getOsSettingsSnapshot().desktopLayout;
+      const renderIcons2 = (icons) => {
+        renderDesktopIcons(desktopArea, icons, {
+          openWindow: nativeWindows.openById,
+          manager
+        });
+      };
+      layoutDispatcher = createLayoutDispatcher(
+        {
+          shellRoot: shellEl,
+          shellBody,
+          bottomDockEl,
+          desktopArea,
+          windowManager: manager,
+          adminUrl: config.adminUrl,
+          renderIcons: renderIcons2,
+          getSettings: () => {
+            const snap = osSettings.getOsSettingsSnapshot();
+            return {
+              itemVisibility: snap.itemVisibility,
+              dockOrder: snap.dockOrder
+            };
+          }
+        },
+        initialLayout,
+        config.dockItems,
+        config.desktopIcons
+      );
+      layoutDispatcher.appendSystemTile(
+        {
+          id: OS_SETTINGS_WINDOW_ID,
+          title: "OS Settings",
+          icon: "dashicons-desktop",
+          // "Open" for the dock dot means "open on the currently
+          // active desktop." OS Settings on another desktop
+          // shouldn't paint the dot on the active view.
+          isOpen: () => {
+            const win = manager.getById(OS_SETTINGS_WINDOW_ID);
+            if (!win) {
+              return false;
+            }
+            return (win.config.desktopId || manager.getActiveDesktopId()) === manager.getActiveDesktopId();
+          },
+          onOpen: openOsSettings
+        },
+        "core"
+      );
+      if (!isStandaloneDisplay()) {
+        layoutDispatcher.appendSystemTile(
+          getInstallTileDef(
+            config.pwa?.appName || "WordPress",
+            showToast
+          ),
+          "core"
+        );
+      }
+      window.matchMedia("(display-mode: standalone)").addEventListener("change", (e) => {
+        if (e.matches) {
+          layoutDispatcher?.removeSystemTile(
+            "desktop-mode-pwa-install"
+          );
+        }
+      });
+      void isLikelyInstalled().then((installed2) => {
+        if (installed2) {
+          layoutDispatcher?.removeSystemTile(
+            "desktop-mode-pwa-install"
+          );
+        }
+      });
+    }
+    function openOsSettings() {
+      void manager.open({
+        id: OS_SETTINGS_WINDOW_ID,
+        baseId: OS_SETTINGS_WINDOW_ID,
+        url: "#os-settings",
+        title: "OS Settings",
+        icon: "dashicons-desktop",
+        native: true,
+        render: (body) => osSettings.renderPanel(body),
+        width: 820,
+        height: 720,
+        minWidth: 560,
+        minHeight: 480
+      });
+    }
+    function openBugReport() {
+      void manager.open({
+        id: BUG_REPORT_WINDOW_ID,
+        baseId: BUG_REPORT_WINDOW_ID,
+        url: `#${BUG_REPORT_WINDOW_ID}`,
+        title: "Report a bug",
+        icon: "dashicons-buddicons-replies",
+        native: true,
+        render: (body) => renderBugReport(body),
+        width: 560,
+        height: 620,
+        minWidth: 420,
+        minHeight: 480
+      });
+    }
+    document.addEventListener("desktop-mode-open-bug-report", () => {
+      openBugReport();
+    });
+    if (layoutDispatcher) {
+      layoutDispatcher.appendSystemTile(
+        {
+          id: BUG_REPORT_WINDOW_ID,
+          title: "Report a bug",
+          icon: "dashicons-buddicons-replies",
+          isOpen: () => {
+            const win = manager.getById(BUG_REPORT_WINDOW_ID);
+            if (!win) {
+              return false;
+            }
+            return (win.config.desktopId || manager.getActiveDesktopId()) === manager.getActiveDesktopId();
+          },
+          onOpen: openBugReport
+        },
+        "core"
+      );
+      layoutDispatcher.appendSystemTile(
+        getExitDesktopModeTileDef(),
+        "core"
+      );
+    }
+    const dock = layoutDispatcher?.getPrimary() ?? null;
+    void syncNativeWindows(
+      Array.isArray(config.nativeWindows) ? config.nativeWindows : []
+    );
+    const hasSession = !!(config.session && config.session.windows && config.session.windows.length > 0);
+    const sessionRestore = hasSession ? restoreSession(manager, config, desktopArea).catch((err) => {
+      if (typeof console !== "undefined") {
+        console.error("[desktop-mode] session restore failed:", err);
+      }
+    }) : Promise.resolve();
+    const defaultEnabled = config.defaultWindow?.enabled !== false;
+    const defaultUrlEarly = config.defaultWindow?.url ?? "";
+    const isNativeDefault = typeof defaultUrlEarly === "string" && defaultUrlEarly.startsWith("native:");
+    if (shouldAutoOpenCurrentPage({
+      fromPortal: config.fromPortal,
+      fromPortalIntent: config.fromPortalIntent,
+      hasSession,
+      defaultEnabled,
+      isNativeDefault
+    })) {
+      void sessionRestore.then(
+        () => openCurrentPage(manager, config).catch((err) => {
+          if (typeof console !== "undefined") {
+            console.error("[desktop-mode] openCurrentPage failed:", err);
+          }
+        })
+      );
+    }
+    const saveSession = createSessionSaver(manager, config);
+    wireSessionEvents(saveSession);
+    const setDefaultWindow = async (url) => {
+      try {
+        const response = await trackedFetch(
+          manager,
+          config.defaultWindowUrl,
+          {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "X-WP-Nonce": config.restNonce
+            },
+            body: JSON.stringify({ url })
+          },
+          { source: "desktop-mode/default-window" }
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        config.defaultWindow = data;
+        document.dispatchEvent(
+          new CustomEvent("desktop-mode-default-window-changed", {
+            detail: data
+          })
+        );
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, { scope: "default-window-save", error: err });
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] Failed to save default window:",
+            err
+          );
+        }
+      }
+    };
+    manager.onToggleStartupRequested = (win) => {
+      const currentPref = config.defaultWindow;
+      const isNative = !!win.config.native;
+      const winValue = isNative ? `native:${win.id}` : win.getCurrentUrl();
+      const matchesCurrent = isNative ? currentPref?.url === winValue : urlMatchKey(currentPref?.url ?? "") === urlMatchKey(winValue);
+      const alreadyDefault = !!currentPref?.enabled && matchesCurrent;
+      void setDefaultWindow(alreadyDefault ? null : winValue);
+    };
+    if (config.defaultWindow?.enabled && config.fromPortal && !config.fromPortalIntent && !hasSession && isNativeDefault) {
+      const nativeId = defaultUrlEarly.slice("native:".length);
+      queueMicrotask(() => {
+        if (nativeId === OS_SETTINGS_WINDOW_ID) {
+          openOsSettings();
+          return;
+        }
+        void nativeWindows.openById(nativeId);
+      });
+    }
+    const placeSystemTile = (item) => {
+      layoutDispatcher?.appendSystemTile(item);
+    };
+    const syncServerWidgets = createWidgetRegistrySync({
+      layer: widgetLayer
+    });
+    void syncServerWidgets(
+      Array.isArray(config.serverWidgets) ? config.serverWidgets : []
+    );
+    const syncServerWallpapers = createWallpaperRegistrySync({
+      osSettings
+    });
+    void syncServerWallpapers(
+      Array.isArray(config.serverWallpapers) ? config.serverWallpapers : []
+    );
+    const syncServerCommands = createCommandRegistrySync();
+    void syncServerCommands(
+      Array.isArray(config.serverCommandScripts) ? config.serverCommandScripts : [],
+      Array.isArray(config.serverCommands) ? config.serverCommands : []
+    );
+    const syncServerSettingsTabs = createSettingsTabRegistrySync();
+    void syncServerSettingsTabs(
+      Array.isArray(config.serverSettingsTabScripts) ? config.serverSettingsTabScripts : [],
+      Array.isArray(config.serverSettingsTabs) ? config.serverSettingsTabs : []
+    );
+    const syncServerTitleBarButtons = createTitleBarButtonRegistrySync();
+    void syncServerTitleBarButtons(
+      Array.isArray(config.serverTitleBarButtonScripts) ? config.serverTitleBarButtonScripts : []
+    );
+    const syncServerDockRailRenderers = createDockRailRendererSync();
+    void syncServerDockRailRenderers(
+      Array.isArray(config.serverDockRailRendererScripts) ? config.serverDockRailRendererScripts : []
+    );
+    const syncServerWindowThemes = createWindowThemeRegistrySync();
+    void syncServerWindowThemes(
+      Array.isArray(config.serverWindowThemeScripts) ? config.serverWindowThemeScripts : [],
+      Array.isArray(config.serverWindowThemes) ? config.serverWindowThemes : []
+    );
+    registerBuiltInControls();
+    const syncServerWindowControls = createWindowControlRegistrySync();
+    void syncServerWindowControls(
+      Array.isArray(config.serverWindowControlScripts) ? config.serverWindowControlScripts : [],
+      Array.isArray(config.serverWindowControls) ? config.serverWindowControls : []
+    );
+    const syncServerWindowSlots = createWindowSlotRegistrySync();
+    void syncServerWindowSlots(
+      Array.isArray(config.serverWindowSlotScripts) ? config.serverWindowSlotScripts : [],
+      Array.isArray(config.serverWindowSlots) ? config.serverWindowSlots : []
+    );
+    applyServerWindowNotices(
+      Array.isArray(config.serverWindowNotices) ? config.serverWindowNotices : []
+    );
+    const syncServerWindowChromes = createWindowChromeRegistrySync();
+    void syncServerWindowChromes(
+      Array.isArray(config.serverWindowChromeScripts) ? config.serverWindowChromeScripts : [],
+      Array.isArray(config.serverWindowChromes) ? config.serverWindowChromes : []
+    );
+    const connectionBridge = createConnectionBridge(manager);
+    attachBroadcastBus(manager);
+    installBroadcastReceiver();
+    installWindowLoadingTransitions();
+    addAction(
+      "desktop-mode.shell.toast",
+      "desktop-mode/shell-toast",
+      (payload) => {
+        if (!payload || typeof payload.message !== "string") {
+          return;
+        }
+        showToast({
+          message: payload.message,
+          action: payload.action,
+          duration: payload.duration
+        });
+      }
+    );
+    const cfgWithBin = config;
+    const cfgCountRaw = cfgWithBin.recycleBinCount;
+    startRecycleBinBadge(
+      Number(cfgCountRaw) || 0,
+      typeof cfgWithBin.recycleBinCountUrl === "string" ? cfgWithBin.recycleBinCountUrl : ""
+    );
+    registerBuiltInPeekRenderers({
+      getRecycleBinCount: _currentRecycleBinBadge
+    });
+    window.__desktopModeConnectionBridge = connectionBridge;
+    addAction(HOOKS.WINDOW_CLOSED, "desktop-mode/connection-cleanup", (e) => {
+      if (e?.windowId) {
+        connectionBridge.onWindowClosed(e.windowId);
+      }
+    });
+    addAction(HOOKS.IFRAME_READY, "desktop-mode/connection-rearm", (e) => {
+      if (e?.windowId) {
+        connectionBridge.onIframeReady(e.windowId);
+      }
+    });
+    const registerWindow = createRegisterWindow(manager);
+    const renderIcons = (icons) => {
+      if (layoutDispatcher) {
+        layoutDispatcher.applyDesktopIcons(icons);
+        return;
+      }
+      renderDesktopIcons(desktopArea, icons, {
+        openWindow: nativeWindows.openById,
+        manager
+      });
+    };
+    const refreshMenu = bindMenuRefresh({
+      layoutDispatcher,
+      config,
+      syncNativeWindows,
+      syncServerWidgets,
+      syncServerWallpapers,
+      syncServerCommands,
+      syncServerSettingsTabs,
+      syncServerTitleBarButtons,
+      syncServerDockRailRenderers,
+      renderIcons
+    });
+    osSettings.subscribeOsSettings((snapshot) => {
+      if (!layoutDispatcher) {
+        return;
+      }
+      const prevLayout = layoutDispatcher.getLayout();
+      layoutDispatcher.setLayout(snapshot.desktopLayout);
+      desktopApi.dock = layoutDispatcher.getPrimary();
+      desktopApi.sideDock = layoutDispatcher.getSide();
+      desktopApi.desktopLayout = snapshot.desktopLayout;
+      if (prevLayout === snapshot.desktopLayout) {
+        layoutDispatcher.refresh();
+      }
+      syncShortcutsWithVisibility(
+        snapshot.itemVisibility,
+        snapshot.dockPromotedPositions
+      );
+      setCurrentLayout(snapshot.desktopLayout);
+    });
+    installShortcutsSync(
+      () => osSettings.getOsSettingsSnapshot().itemVisibility,
+      () => osSettings.getOsSettingsSnapshot().dockPromotedPositions
+    );
+    setCurrentLayout(osSettings.getOsSettingsSnapshot().desktopLayout);
+    const desktopApi = buildPublicApi({
+      manager,
+      dock,
+      layoutDispatcher,
+      osSettings,
+      iconsApi,
+      filesApi,
+      saveSession,
+      widgetLayer,
+      registerWindow,
+      openWindowById: nativeWindows.openById,
+      openNewWindowById: nativeWindows.openNewById,
+      placeSystemTile,
+      setDefaultWindow,
+      refreshMenu,
+      openOsSettings,
+      aiAssistant,
+      dragBridge,
+      dragManager,
+      connect: connectionBridge.connect,
+      config
+    });
+    installPublicApi(desktopApi);
+    installRecycleBinDropTargets(dragManager);
+    bootHeartbeatBus();
+    installOpenDeps({
+      openUrl: ({ id, url, title, icon }) => {
+        if (tryNativeUrlRemap(url)) {
+          return true;
+        }
+        void manager.open({ id, baseId: id, url, title, icon });
+        return true;
+      },
+      openNativeWindow: (id) => nativeWindows.openById(id),
+      deriveWindowId: (url) => deriveWindowId(url, config.adminUrl)
+    });
+    setUserAssociations(
+      config.userFileAssociations ?? {}
+    );
+    if (typeof config.filesUrl === "string" && config.filesUrl) {
+      installRestDeps({
+        baseUrl: config.filesUrl,
+        nonce: config.restNonce
+      });
+      const rootHost = document.getElementById("desktop-mode-area");
+      if (rootHost) {
+        const layerHandle = mountFilesLayer(rootHost, 0);
+        const reveal = () => {
+          if (!desktopArea.classList.contains("desktop-mode-area--booting")) {
+            return;
+          }
+          requestAnimationFrame(() => {
+            desktopArea.classList.remove("desktop-mode-area--booting");
+          });
+        };
+        const safetyTimer = setTimeout(reveal, 2e3);
+        void layerHandle.hydrated.then(() => {
+          clearTimeout(safetyTimer);
+          reveal();
+        });
+      }
+    }
+    startFilesHeartbeat();
+    startFilesRestoreSync();
+    bootPresenceProbe();
+    doAction(HOOKS.COMPONENTS_REGISTERED, { tags: [...WPD_COMPONENT_TAGS] });
+    registerBuiltInCommands();
+    bootstrapPwa(config, showToast);
+    const overlayPreload = () => {
+      preloadShellOverlays(config.shellOverlaysBundleUrl ?? "");
+      preloadWindowSystem(config.windowSystemBundleUrl ?? "");
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(overlayPreload, { timeout: 1500 });
+    } else {
+      window.setTimeout(overlayPreload, 0);
+    }
+    doAction(HOOKS.INIT, { config });
+    _earlyReady = true;
+    const queued = _earlyReadyQueue.splice(0);
+    for (const cb of queued) {
+      try {
+        cb();
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "when-ready-cb",
+          error: err
+        });
+        if (typeof console !== "undefined") {
+          console.error("[desktop-mode] whenReady cb threw:", err);
+        }
+      }
+    }
+    osSettings.apply();
+    widgetLayer?.hydrate();
+    window.addEventListener("pagehide", () => {
+      wallpaperLayer?.teardownActive();
+      widgetLayer?.disposeAll();
+    });
+    bindShellLifecycle();
+    bindTopWindowLinkInterceptor(manager, config);
+    const relayoutRoot = (transform, persist2 = true) => {
+      const root = filesApi.store.getState().placementsByFolder.get(0) ?? [];
+      const ordered = transform(root);
+      const rowsPerCol = Math.max(
+        1,
+        Math.floor((desktopArea.clientHeight - 16) / 110)
+      );
+      const occupied = /* @__PURE__ */ new Set();
+      let i = 0;
+      for (const p of ordered) {
+        const cell = snapToEmptyCell(
+          16 + Math.floor(i / rowsPerCol) * 96,
+          16 + i % rowsPerCol * 110,
+          occupied,
+          desktopArea
+        );
+        occupied.add(`${cell.col},${cell.row}`);
+        i++;
+        if (p.x === cell.x && p.y === cell.y) {
+          continue;
+        }
+        filesApi.store.upsertPlacement({
+          ...p,
+          x: cell.x,
+          y: cell.y,
+          sortOrder: i
+        });
+        if (!persist2) {
+          continue;
+        }
+        void updatePlacement(p.id, {
+          x: cell.x,
+          y: cell.y,
+          sortOrder: i
+        }).catch((err) => {
+          console.error("[desktop-mode] relayout persist failed", err);
+        });
+      }
+    };
+    const rootSortTransform = (mode) => (arr) => {
+      const sorted = arr.slice();
+      switch (mode) {
+        case "name-asc":
+          sorted.sort(
+            (a, b) => a.file.title.localeCompare(b.file.title)
+          );
+          break;
+        case "name-desc":
+          sorted.sort(
+            (a, b) => b.file.title.localeCompare(a.file.title)
+          );
+          break;
+        case "date-asc":
+          sorted.sort((a, b) => a.updatedAtMs - b.updatedAtMs);
+          break;
+        case "date-desc":
+          sorted.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+          break;
+      }
+      return sorted;
+    };
+    const ROOT_SORT_MODE_KEY = "desktop-mode:root-sort-mode";
+    const isRootSortMode = (v) => v === "name-asc" || v === "name-desc" || v === "date-asc" || v === "date-desc";
+    let rootSortMode = (() => {
+      try {
+        const raw = window.localStorage.getItem(ROOT_SORT_MODE_KEY);
+        return isRootSortMode(raw) ? raw : null;
+      } catch {
+        return null;
+      }
+    })();
+    const setRootSortMode = (mode) => {
+      rootSortMode = mode;
+      try {
+        if (mode) {
+          window.localStorage.setItem(ROOT_SORT_MODE_KEY, mode);
+        } else {
+          window.localStorage.removeItem(ROOT_SORT_MODE_KEY);
+        }
+      } catch {
+      }
+    };
+    addAction(
+      "desktop-mode.files.tile-manually-placed",
+      "desktop-mode/root-sort-clear",
+      (payload) => {
+        const folderId = payload?.folderId;
+        if (folderId === 0) {
+          setRootSortMode(null);
+        }
+      }
+    );
+    if (typeof ResizeObserver !== "undefined") {
+      let lastW = desktopArea.clientWidth;
+      let lastH = desktopArea.clientHeight;
+      const ro = new ResizeObserver(() => {
+        if (!rootSortMode) {
+          return;
+        }
+        const w = desktopArea.clientWidth;
+        const h = desktopArea.clientHeight;
+        if (w === lastW && h === lastH) {
+          return;
+        }
+        lastW = w;
+        lastH = h;
+        relayoutRoot(rootSortTransform(rootSortMode), false);
+      });
+      ro.observe(desktopArea);
+    }
+    desktopArea.addEventListener("click", (e) => {
+      if (!osSettings.state.showDesktopOnWallpaperClick) {
+        return;
+      }
+      if (e.target !== desktopArea) {
+        return;
+      }
+      if (desktopArea.classList.contains("desktop-mode-area--overview")) {
+        return;
+      }
+      if (isWallpaperMenuOpen()) {
+        return;
+      }
+      if (dragManager.recentlyEndedDrag()) {
+        return;
+      }
+      manager.toggleShowDesktop();
+    });
+    desktopArea.addEventListener("contextmenu", (e) => {
+      if (e.target !== desktopArea) {
+        return;
+      }
+      e.preventDefault();
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+      (() => {
+        if (desktopArea.classList.contains("desktop-mode-area--overview")) {
+          return;
+        }
+        if (isWallpaperMenuOpen()) {
+          closeWallpaperMenu();
+          return;
+        }
+        const dropClient = { x: clientX, y: clientY };
+        const cellAtClick = () => {
+          const rect = desktopArea.getBoundingClientRect();
+          const rawX = Math.max(0, dropClient.x - rect.left);
+          const rawY = Math.max(0, dropClient.y - rect.top);
+          const occupied = buildOccupiedSet(
+            filesApi.store.getState().placementsByFolder.get(0) ?? []
+          );
+          return snapToEmptyCell(rawX, rawY, occupied, desktopArea);
+        };
+        const createUrlPlacement = (dialogTitle, description) => {
+          openUrlDialog({
+            title: dialogTitle,
+            description,
+            nameLabel: "Name",
+            urlLabel: "URL",
+            submitLabel: "Create",
+            onSubmit: async ({ name, url }) => {
+              const cell = cellAtClick();
+              const placement = await createPlacement({
+                type: "link",
+                ref: url,
+                parentId: 0,
+                x: cell.x,
+                y: cell.y,
+                meta: name ? { name } : void 0
+              });
+              filesApi.store.upsertPlacement(placement);
+            }
+          });
+        };
+        const items = buildMenuItems({
+          createFolder: () => {
+            openCreateFolderDialog({
+              onSubmit: async (name) => {
+                const folder = await createFolder({ name });
+                const cell = cellAtClick();
+                const placement = await createPlacement({
+                  type: "folder",
+                  ref: String(folder.id),
+                  parentId: 0,
+                  x: cell.x,
+                  y: cell.y
+                });
+                filesApi.store.upsertFolder(folder);
+                filesApi.store.upsertPlacement(placement);
+              }
+            });
+          },
+          createUrl: () => createUrlPlacement(
+            "New URL",
+            "Opens the URL in a new browser tab."
+          ),
+          toggleShowDesktop: () => manager.toggleShowDesktop(),
+          openOsSettings: () => openOsSettings(),
+          sortIcons: (mode) => {
+            setRootSortMode(mode);
+            relayoutRoot(rootSortTransform(mode));
+          },
+          currentSortMode: rootSortMode,
+          includeShowDesktop: !osSettings.state.showDesktopOnWallpaperClick,
+          labels: {
+            createFolder: "New folder",
+            showDesktop: "Show desktop",
+            osSettings: "OS Settings",
+            sortHeading: "Sort by",
+            sortNameAsc: "Name (A → Z)",
+            sortNameDesc: "Name (Z → A)",
+            sortDateAsc: "Date (oldest first)",
+            sortDateDesc: "Date (newest first)",
+            newUrl: "New URL"
+          },
+          serverItems: config.serverWallpaperMenuItems ?? []
+        });
+        openWallpaperMenu(
+          document.body,
+          { x: clientX, y: clientY },
+          items
+        );
+      })();
+    });
+    void Promise.resolve().then(() => index).then((mod) => {
+      mod.bootOsFileDrop({
+        config: config.dropConfig,
+        mediaUrl: config.mediaUrl,
+        restNonce: config.restNonce
+      });
+    });
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-init", {
+        detail: { config, restored: hasSession }
+      })
+    );
+  }
+  startMissingImportWarner();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+  const _initial = {
+    tab: null,
+    requestedAt: 0
+  };
+  let _store = null;
+  function getStore() {
+    if (_store) {
+      return _store;
+    }
+    const w = window;
+    const factory = w.wp?.desktop?.createSharedStore;
+    if (typeof factory !== "function") {
+      return null;
+    }
+    _store = factory(
+      "desktop-mode/plugins-window/tab-target",
+      () => ({ ..._initial })
+    );
+    return _store;
+  }
+  function setPluginsWindowTab(tab) {
+    const store2 = getStore();
+    if (store2) {
+      store2.state.tab = tab;
+      store2.state.requestedAt = Date.now();
+      store2.notify();
+      return;
+    }
+    const w = window;
+    w._wpdPluginsWindowTab = { tab, requestedAt: Date.now() };
+  }
+  function consumePluginsWindowTab() {
+    const store2 = getStore();
+    if (store2) {
+      const tab = store2.state.tab;
+      if (tab !== null) {
+        store2.state.tab = null;
+        store2.state.requestedAt = 0;
+        store2.notify();
+      }
+      return tab;
+    }
+    const w = window;
+    const prev = w._wpdPluginsWindowTab;
+    if (prev) {
+      w._wpdPluginsWindowTab = { tab: null, requestedAt: 0 };
+      return prev.tab;
+    }
+    return null;
+  }
+  function subscribePluginsWindowTab(cb) {
+    const store2 = getStore();
+    if (!store2) {
+      return () => {
+      };
+    }
+    return store2.subscribe((state2) => cb({ ...state2 }));
+  }
+  const tabTarget = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    consumePluginsWindowTab,
+    setPluginsWindowTab,
+    subscribePluginsWindowTab
+  }, Symbol.toStringTag, { value: "Module" }));
+  const FILE_DROP_HOOKS = {
+    /**
+     * Filter — fires once per drop, after the manager has parsed
+     * the OS `DataTransfer` into `File[]` and BEFORE the mime /
+     * size filter runs.
+     *
+     * Signature: `(files: File[], ctx: DropContext) => File[]`.
+     * Return an empty array to abort the drop silently.
+     */
+    FILES_DETECTED: "desktop-mode.drop.files-detected",
+    /**
+     * Action — fires after the mime / size filter has rejected
+     * one or more files. Payload: `{ rejections: DropRejection[],
+     * context: DropContext }`. The shell toasts a default message;
+     * subscribers can surface a custom UX (a side panel with the
+     * list, an analytics call).
+     */
+    FILES_REJECTED: "desktop-mode.drop.files-rejected",
+    /**
+     * Filter — fires per file before the upload dialog renders.
+     * Receives `DropFileEntry` (the underlying file + the
+     * manager's default `fields`). Mutate `fields` (or return a
+     * new object) to change what the user sees in the form.
+     *
+     * Signature: `(entry: DropFileEntry, ctx: DropContext)
+     *             => DropFileEntry`.
+     */
+    DIALOG_FIELDS: "desktop-mode.drop.dialog-fields",
+    /**
+     * Filter — last call before the manager `POST`s to
+     * `wp/v2/media`. Receives `{ file: File, fields:
+     * DropDialogFields, mime: string }`. Return `null` to cancel
+     * the upload entirely (e.g. a plugin handled it via a
+     * different endpoint).
+     *
+     * Signature: `(payload, ctx: DropContext) => payload | null`.
+     */
+    BEFORE_UPLOAD: "desktop-mode.drop.before-upload",
+    /**
+     * Action — fires once `BEFORE_UPLOAD` has cleared and the XHR
+     * is `open()`ed, immediately before `send()`. Payload:
+     * `{ file: File, fields: DropDialogFields, context: DropContext,
+     * abort: () => void }`. The `abort` handle aborts the in-flight
+     * request; the manager rejects with `UploadAbortedError` and
+     * fires `UPLOAD_FAILED` with that error.
+     *
+     * Pair with `UPLOAD_PROGRESS` to drive a progress UI; pair with
+     * `AFTER_UPLOAD` / `UPLOAD_FAILED` to know when the upload ends.
+     *
+     * @since 0.31.0
+     */
+    UPLOAD_STARTED: "desktop-mode.drop.upload-started",
+    /**
+     * Action — fires for every `XMLHttpRequestUpload.progress` event.
+     * Payload: `{ file: File, fields: DropDialogFields, context:
+     * DropContext, loaded: number, total: number, indeterminate:
+     * boolean }`. `total` is `0` and `indeterminate` is `true` when
+     * the request body length isn't known (rare for multipart, but
+     * possible on transcoding proxies); subscribers should treat
+     * that as an indeterminate state.
+     *
+     * A synthetic 100%-loaded event is dispatched once the `upload`
+     * stream emits `load` so a HUD can show a definite "wrapping up"
+     * state while the server finishes the response.
+     *
+     * @since 0.31.0
+     */
+    UPLOAD_PROGRESS: "desktop-mode.drop.upload-progress",
+    /**
+     * Action — fires after a successful upload. Payload:
+     * `{ file: File, result: DropUploadResult, fields:
+     * DropDialogFields, context: DropContext }`.
+     *
+     * The `file` field carries the same `File` reference that
+     * `UPLOAD_STARTED` / `UPLOAD_PROGRESS` exposed (i.e. the
+     * payload returned by the `BEFORE_UPLOAD` filter, in case a
+     * plugin swapped the file). Subscribers tracking per-file
+     * state — progress HUDs, sequence counters — should match on
+     * this identity rather than the filename: two drops of
+     * `photo.jpg` from different folders would otherwise route
+     * each other's success event to the wrong row.
+     *
+     * @since 0.31.0 the `file` field was added; pre-0.31.0 code
+     * that destructured `{ result, fields, context }` keeps working.
+     */
+    AFTER_UPLOAD: "desktop-mode.drop.after-upload",
+    /**
+     * Action — fires after an upload fails. Payload:
+     * `{ file: File, error: Error, context: DropContext }`.
+     * `error` is an `UploadAbortedError` when the failure came
+     * from the caller invoking the `abort()` handle on
+     * `UPLOAD_STARTED`.
+     *
+     * `file` carries the same identity as `UPLOAD_STARTED` /
+     * `UPLOAD_PROGRESS` / `AFTER_UPLOAD` — the post-`BEFORE_UPLOAD`
+     * `File`, in case a plugin swapped it. Match by reference, not
+     * filename: a HUD that keys its row map on the started-File
+     * needs the same key here, otherwise the row stays stuck in
+     * "running" after a failure when a `BEFORE_UPLOAD` filter
+     * replaced the file.
+     */
+    UPLOAD_FAILED: "desktop-mode.drop.upload-failed"
+  };
+  const IFRAME_PASSTHROUGH_SELECTORS = [
+    ".components-drop-zone",
+    "[data-drop-zone]",
+    ".uploader-window",
+    ".media-frame-content"
+  ];
+  function dragHasFiles(ev) {
+    const types = ev.dataTransfer?.types;
+    if (!types) {
+      return false;
+    }
+    const list2 = types;
+    if (typeof list2.includes === "function") {
+      return list2.includes("Files");
+    }
+    if (typeof list2.contains === "function") {
+      return list2.contains("Files");
+    }
+    for (let i = 0; i < list2.length; i++) {
+      if (list2[i] === "Files") {
+        return true;
+      }
+    }
+    return false;
+  }
+  function resolveWindowIdFromSource(source) {
+    if (!source) {
+      return void 0;
+    }
+    const iframes = document.querySelectorAll("iframe");
+    for (const f of Array.from(iframes)) {
+      if (f.contentWindow === source) {
+        const host = f.closest("[data-window-id]");
+        return host?.getAttribute("data-window-id") || void 0;
+      }
+    }
+    return void 0;
+  }
+  function mountOsFileDropManager(opts) {
+    const host = window;
+    if (host.__desktopModeOsFileDropMounted) {
+      return host.__desktopModeOsFileDropMounted;
+    }
+    if (!opts.config.enabled) {
+      return mountNoOp();
+    }
+    const overlayEl = ensureDropOverlay();
+    let dragDepth = 0;
+    let dragWatchdog = null;
+    const resetOverlay = () => {
+      dragDepth = 0;
+      overlayEl.classList.remove("is-active");
+      if (dragWatchdog !== null) {
+        clearTimeout(dragWatchdog);
+        dragWatchdog = null;
+      }
+    };
+    const bumpWatchdog = () => {
+      if (dragWatchdog !== null) {
+        clearTimeout(dragWatchdog);
+      }
+      dragWatchdog = setTimeout(resetOverlay, 250);
+    };
+    const onDragEnter = (ev) => {
+      if (!dragHasFiles(ev)) {
+        return;
+      }
+      ev.preventDefault();
+      dragDepth++;
+      overlayEl.classList.add("is-active");
+      bumpWatchdog();
+    };
+    const onDragOver = (ev) => {
+      if (!dragHasFiles(ev)) {
+        return;
+      }
+      ev.preventDefault();
+      if (ev.dataTransfer) {
+        ev.dataTransfer.dropEffect = "copy";
+      }
+      bumpWatchdog();
+    };
+    const onDragLeave = () => {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) {
+        overlayEl.classList.remove("is-active");
+      }
+    };
+    const onDrop = (ev) => {
+      if (!dragHasFiles(ev)) {
+        return;
+      }
+      ev.preventDefault();
+      resetOverlay();
+      const files = ev.dataTransfer?.files ? Array.from(ev.dataTransfer.files) : [];
+      if (files.length === 0) {
+        return;
+      }
+      const ctx = classifyDropTarget(ev);
+      void handleFiles(files, ctx, opts);
+    };
+    const onDragEnd = () => resetOverlay();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        resetOverlay();
+      }
+    };
+    const onIframeMessage = (ev) => {
+      if (ev.origin !== window.location.origin) {
+        return;
+      }
+      const data = ev.data;
+      if (!data || data.type !== "desktop-mode-os-file-drop") {
+        return;
+      }
+      if (!Array.isArray(data.files) || data.files.length === 0) {
+        return;
+      }
+      const files = data.files.filter((f) => f instanceof File);
+      if (files.length === 0) {
+        return;
+      }
+      const windowId = resolveWindowIdFromSource(ev.source);
+      if (!windowId) {
+        return;
+      }
+      const ctx = {
+        surface: "iframe",
+        windowId,
+        x: typeof data.x === "number" ? data.x : 0,
+        y: typeof data.y === "number" ? data.y : 0
+      };
+      dragDepth = 0;
+      overlayEl.classList.remove("is-active");
+      void handleFiles(files, ctx, opts);
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    window.addEventListener("dragend", onDragEnd);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("blur", onDragEnd);
+    window.addEventListener("message", onIframeMessage);
+    const manager = {
+      dispose: () => {
+        window.removeEventListener("dragenter", onDragEnter);
+        window.removeEventListener("dragover", onDragOver);
+        window.removeEventListener("dragleave", onDragLeave);
+        window.removeEventListener("drop", onDrop);
+        window.removeEventListener("dragend", onDragEnd);
+        document.removeEventListener(
+          "visibilitychange",
+          onVisibilityChange
+        );
+        window.removeEventListener("blur", onDragEnd);
+        window.removeEventListener("message", onIframeMessage);
+        overlayEl.remove();
+        delete window.__desktopModeOsFileDropMounted;
+      }
+    };
+    host.__desktopModeOsFileDropMounted = manager;
+    return manager;
+  }
+  function ensureDropOverlay() {
+    const existing = document.querySelector(".desktop-mode-os-drop-overlay");
+    if (existing) {
+      return existing;
+    }
+    const el = document.createElement("div");
+    el.className = "desktop-mode-os-drop-overlay";
+    el.setAttribute("aria-hidden", "true");
+    el.style.cssText = [
+      "position:fixed",
+      "inset:0",
+      "pointer-events:none",
+      "z-index:200",
+      "opacity:0",
+      "transition:opacity 120ms ease",
+      "background:radial-gradient(circle at center, rgba(34,113,177,0.18) 0%, rgba(34,113,177,0.06) 60%, transparent 100%)",
+      "box-shadow:inset 0 0 0 3px rgba(34,113,177,0.55)"
+    ].join(";");
+    const label = document.createElement("div");
+    label.style.cssText = [
+      "position:absolute",
+      "top:50%",
+      "left:50%",
+      "transform:translate(-50%,-50%)",
+      "padding:14px 22px",
+      "border-radius:12px",
+      "background:rgba(20,20,24,0.78)",
+      "color:#fff",
+      "font:600 14px/1.2 -apple-system,BlinkMacSystemFont,sans-serif",
+      "letter-spacing:0.02em"
+    ].join(";");
+    label.textContent = "Drop to upload";
+    el.appendChild(label);
+    document.body.appendChild(el);
+    const style = document.createElement("style");
+    style.textContent = ".desktop-mode-os-drop-overlay.is-active{opacity:1!important;}";
+    document.head.appendChild(style);
+    return el;
+  }
+  function mountNoOp() {
+    const cancel = (ev) => {
+      if (!dragHasFiles(ev)) {
+        return;
+      }
+      const target = ev.target;
+      if (target?.closest && IFRAME_PASSTHROUGH_SELECTORS.some((s) => target.closest(s))) {
+        return;
+      }
+      ev.preventDefault();
+    };
+    window.addEventListener("dragover", cancel);
+    window.addEventListener("drop", cancel);
+    const host = window;
+    const manager = {
+      dispose: () => {
+        window.removeEventListener("dragover", cancel);
+        window.removeEventListener("drop", cancel);
+        delete host.__desktopModeOsFileDropMounted;
+      }
+    };
+    host.__desktopModeOsFileDropMounted = manager;
+    return manager;
+  }
+  function classifyDropTarget(ev) {
+    const x = ev.clientX;
+    const y = ev.clientY;
+    let node = ev.target;
+    while (node && node !== document.body) {
+      if (node.tagName === "IFRAME") {
+        const id = node.closest(
+          "[data-window-id]"
+        );
+        return {
+          surface: "iframe",
+          windowId: id?.getAttribute("data-window-id") || void 0,
+          x,
+          y
+        };
+      }
+      if (node.hasAttribute("data-window-id")) {
+        return {
+          surface: "window",
+          windowId: node.getAttribute("data-window-id") || void 0,
+          x,
+          y
+        };
+      }
+      if (node.classList.contains("desktop-mode-folder-grid")) {
+        return { surface: "folder", x, y };
+      }
+      if (node.id === "desktop-mode-wallpaper" || node.classList.contains("desktop-mode-wallpaper") || node.classList.contains("desktop-mode-desktop")) {
+        return { surface: "wallpaper", x, y };
+      }
+      node = node.parentElement;
+    }
+    return { surface: "unknown", x, y };
+  }
+  async function handleFiles(rawFiles, ctx, opts) {
+    const detected = applyFilters(
+      FILE_DROP_HOOKS.FILES_DETECTED,
+      rawFiles,
+      ctx
+    );
+    if (!Array.isArray(detected) || detected.length === 0) {
+      return;
+    }
+    const { accepted, rejected } = partitionByPolicy(
+      detected,
+      opts.config
+    );
+    if (rejected.length > 0) {
+      doAction(FILE_DROP_HOOKS.FILES_REJECTED, {
+        rejections: rejected,
+        context: ctx
+      });
+      showToast({
+        message: rejected.length === 1 ? rejected[0].message : `${rejected.length} files couldn't be uploaded.`
+      });
+    }
+    if (accepted.length === 0) {
+      return;
+    }
+    const entries = accepted.map(({ file, mime }) => {
+      const base = {
+        file,
+        mime,
+        fields: defaultFields(file, mime)
+      };
+      const filtered = applyFilters(
+        FILE_DROP_HOOKS.DIALOG_FIELDS,
+        base,
+        ctx
+      );
+      if (!filtered || typeof filtered !== "object" || !("fields" in filtered) || typeof filtered.fields !== "object") {
+        return base;
+      }
+      return filtered;
+    });
+    await opts.openDialog(entries, ctx);
+  }
+  function partitionByPolicy(files, config) {
+    const accepted = [];
+    const rejected = [];
+    for (const file of files) {
+      if (file.size === 0) {
+        rejected.push({
+          file,
+          reason: "empty",
+          message: `“${file.name}” is empty.`
+        });
+        continue;
+      }
+      if (config.maxSize > 0 && file.size > config.maxSize) {
+        rejected.push({
+          file,
+          reason: "size",
+          message: `“${file.name}” exceeds the ${formatBytes$1(
+            config.maxSize
+          )} upload limit.`
+        });
+        continue;
+      }
+      const mime = resolveAllowedMime(
+        file,
+        config.allowedMimes,
+        config.extToMime
+      );
+      if (!mime) {
+        rejected.push({
+          file,
+          reason: "mime",
+          message: `“${file.name}” is not an allowed file type.`
+        });
+        continue;
+      }
+      accepted.push({ file, mime });
+    }
+    return { accepted, rejected };
+  }
+  function resolveAllowedMime(file, allowedMimes, extToMime) {
+    if (allowedMimes.length === 0) {
+      return null;
+    }
+    const lower = file.type.toLowerCase();
+    if (lower && allowedMimes.includes(lower)) {
+      return lower;
+    }
+    const ext = extensionOf(file.name);
+    if (!ext) {
+      return null;
+    }
+    if (extToMime) {
+      for (const [key, mime] of Object.entries(extToMime)) {
+        if (key.split("|").includes(ext) && allowedMimes.includes(mime)) {
+          return mime;
+        }
+      }
+      return null;
+    }
+    const guess = EXTENSION_GUESSES[ext];
+    if (guess && allowedMimes.includes(guess)) {
+      return guess;
+    }
+    return null;
+  }
+  const EXTENSION_GUESSES = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    avif: "image/avif",
+    heic: "image/heic",
+    heif: "image/heif",
+    svg: "image/svg+xml",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    webm: "video/webm",
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    pdf: "application/pdf"
+  };
+  function extensionOf(name) {
+    const dot = name.lastIndexOf(".");
+    if (dot < 0) {
+      return "";
+    }
+    return name.slice(dot + 1).toLowerCase();
+  }
+  function defaultFields(file, mime) {
+    const safeName = sanitizeFilename(file.name);
+    const ext = extensionOf(safeName);
+    const stem = ext ? safeName.slice(0, safeName.length - ext.length - 1) : safeName;
+    const title = humanize(stem);
+    return {
+      title,
+      altText: mime.startsWith("image/") ? title : "",
+      caption: "",
+      description: "",
+      filename: safeName
+    };
+  }
+  function sanitizeFilename(name) {
+    const cleaned = name.replace(/[\\/]/g, "-").replace(/[\x00-\x1f\x7f]/g, "").replace(/\s+/g, " ").replace(/ *- */g, "-").replace(/-+/g, "-").trim().replace(/^[-.]+|[-.]+$/g, "");
+    return cleaned || "upload";
+  }
+  function humanize(stem) {
+    const spaced = stem.replace(/[-_]+/g, " ").trim();
+    if (!spaced) {
+      return "Upload";
+    }
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  }
+  function formatBytes$1(bytes) {
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    }
+    if (bytes >= 1024) {
+      return `${(bytes / 1024).toFixed(0)} KB`;
+    }
+    return `${bytes} B`;
+  }
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+      return "0 B";
+    }
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let v = bytes;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    const decimals = v >= 100 || i === 0 ? 0 : 1;
+    return `${v.toFixed(decimals)} ${units[i]}`;
+  }
+  const styles = css`:host{display:block;--wpd-progress-track-bg:var( --desktop-mode-control-bg,rgba( 0,0,0,0.08 ) );--wpd-progress-fill:var( --wp-admin-theme-color,#2271b1 );--wpd-progress-height:6px;--wpd-progress-radius:999px;--wpd-progress-label-color:inherit;--wpd-progress-label-size:12px;--wpd-progress-label-gap:4px;width:100%;font:inherit;color:var( --wpd-progress-label-color )}:host( [ hidden ] ){display:none}.header{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:var( --wpd-progress-label-gap );font-size:var( --wpd-progress-label-size );line-height:1.3}.label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.percent{font-variant-numeric:tabular-nums;opacity:0.75;flex-shrink:0}.track{position:relative;width:100%;height:var( --wpd-progress-height );background:var( --wpd-progress-track-bg );border-radius:var( --wpd-progress-radius );overflow:hidden}.fill{position:absolute;inset-block:0;inset-inline-start:0;width:0;background:var( --wpd-progress-fill );border-radius:inherit;transition:width 0.18s ease-out}:host( [ tone='success' ] ){--wpd-progress-fill:var( --desktop-mode-status-success,#3a8a3a )}:host( [ tone='warning' ] ){--wpd-progress-fill:var( --desktop-mode-status-warning,#dba617 )}:host( [ tone='danger' ] ){--wpd-progress-fill:var( --desktop-mode-status-danger,#d63638 )}:host( [ indeterminate ] ) .fill{width:33%;animation:wpd-progress-sweep 1.1s linear infinite;transition:none}@keyframes wpd-progress-sweep{0%{transform:translateX( -120% )}100%{transform:translateX( 320% )}}@media ( prefers-reduced-motion:reduce ){.fill{transition:none}:host( [ indeterminate ] ) .fill{animation:none;width:100%;opacity:0.6}}`;
+  const _WpdProgressBar = class _WpdProgressBar extends Component {
+    constructor() {
+      super(...arguments);
+      this._ownedAriaLabel = null;
+    }
+    render() {
+      return html`<div class="root" part="root">
+			<div class="header" part="header" hidden>
+				<span class="label" part="label"></span>
+				<span class="percent" part="percent"></span>
+			</div>
+			<div class="track" part="track">
+				<div class="fill" part="fill"></div>
+			</div>
+		</div>`;
+    }
+    requestUpdate() {
+      super.requestUpdate();
+      queueMicrotask(() => this._paint());
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      queueMicrotask(() => this._paint());
+    }
+    _paint() {
+      const root = this.shadowRoot;
+      if (!root) {
+        return;
+      }
+      const max = this._readMax();
+      const indeterminate = this.hasAttribute("indeterminate") || max <= 0;
+      const value = indeterminate ? 0 : this._readValue(max);
+      const ratio = indeterminate ? 0 : value / max;
+      const percent = Math.round(ratio * 100);
+      const label = this.getAttribute("label") ?? "";
+      const showPercent = this.hasAttribute("show-percent");
+      const fill = root.querySelector(".fill");
+      if (fill && !indeterminate) {
+        fill.style.width = `${(ratio * 100).toFixed(2)}%`;
+      } else if (fill && indeterminate) {
+        fill.style.removeProperty("width");
+      }
+      const header = root.querySelector(".header");
+      const labelEl = root.querySelector(".label");
+      const percentEl = root.querySelector(".percent");
+      if (header && labelEl && percentEl) {
+        const visible = label || showPercent && !indeterminate;
+        header.hidden = !visible;
+        labelEl.textContent = label;
+        percentEl.hidden = !(showPercent && !indeterminate);
+        percentEl.textContent = `${percent}%`;
+      }
+      this._syncAria(max, value, indeterminate, label);
+      const track = root.querySelector(".track");
+      if (track) {
+        track.setAttribute("role", "progressbar");
+        track.setAttribute("aria-valuemin", "0");
+        if (indeterminate) {
+          track.removeAttribute("aria-valuenow");
+          track.removeAttribute("aria-valuemax");
+        } else {
+          track.setAttribute("aria-valuemax", String(max));
+          track.setAttribute("aria-valuenow", String(value));
+        }
+        if (label) {
+          track.setAttribute("aria-label", label);
+        } else {
+          track.removeAttribute("aria-label");
+        }
+      }
+    }
+    _syncAria(max, value, indeterminate, label) {
+      this.setAttribute("role", "progressbar");
+      this.setAttribute("aria-valuemin", "0");
+      if (indeterminate) {
+        this.removeAttribute("aria-valuenow");
+        this.removeAttribute("aria-valuemax");
+      } else {
+        this.setAttribute("aria-valuemax", String(max));
+        this.setAttribute("aria-valuenow", String(value));
+      }
+      const existing = this.getAttribute("aria-label");
+      if (label) {
+        if (existing === null || existing === this._ownedAriaLabel) {
+          this.setAttribute("aria-label", label);
+          this._ownedAriaLabel = label;
+        }
+      } else if (existing !== null && existing === this._ownedAriaLabel) {
+        this.removeAttribute("aria-label");
+        this._ownedAriaLabel = null;
+      }
+    }
+    _readMax() {
+      const attr = this.getAttribute("max");
+      if (attr === null) {
+        return 100;
+      }
+      const raw = parseFloat(attr);
+      return Number.isFinite(raw) ? raw : 100;
+    }
+    _readValue(max) {
+      const raw = parseFloat(this.getAttribute("value") ?? "0");
+      if (!Number.isFinite(raw)) {
+        return 0;
+      }
+      if (raw < 0) {
+        return 0;
+      }
+      if (raw > max) {
+        return max;
+      }
+      return raw;
+    }
+  };
+  _WpdProgressBar.props = [
+    "value",
+    "max",
+    "indeterminate",
+    "tone",
+    "label",
+    "showPercent"
+  ];
+  _WpdProgressBar.styles = [styles];
+  _WpdProgressBar.help = {
+    title: "Progress bar",
+    summary: "Linear progress indicator. Determinate mode shows `value/max` as a fill width; indeterminate mode sweeps across the track. Supports tone tinting, an optional inline label + percent header, and full CSS-variable theming.",
+    status: "experimental",
+    since: "0.31.0",
+    props: [
+      {
+        name: "value",
+        type: "number",
+        default: "0",
+        description: "Current progress. Clamped to `[0, max]`."
+      },
+      {
+        name: "max",
+        type: "number",
+        default: "100",
+        description: "Maximum value. Setting `max <= 0` forces indeterminate."
+      },
+      {
+        name: "indeterminate",
+        type: "boolean",
+        description: "Show the sweeping indeterminate animation instead of a value-driven fill. The `value` attribute is ignored while this is set."
+      },
+      {
+        name: "tone",
+        type: '"default" | "success" | "warning" | "danger"',
+        default: "default",
+        description: "Tints the fill from the shared status palette."
+      },
+      {
+        name: "label",
+        type: "string",
+        description: "Optional inline label rendered above the track. Also wired into `aria-label` when set."
+      },
+      {
+        name: "show-percent",
+        type: "boolean",
+        description: "Render a right-aligned percent readout next to the label. Only meaningful in determinate mode."
+      }
+    ],
+    cssProps: [
+      {
+        name: "--wpd-progress-track-bg",
+        default: "var(--desktop-mode-control-bg, rgba(0,0,0,0.08))"
+      },
+      {
+        name: "--wpd-progress-fill",
+        default: "var(--wp-admin-theme-color, #2271b1)"
+      },
+      { name: "--wpd-progress-height", default: "6px" },
+      { name: "--wpd-progress-radius", default: "999px" },
+      { name: "--wpd-progress-label-color", default: "inherit" },
+      { name: "--wpd-progress-label-size", default: "12px" },
+      { name: "--wpd-progress-label-gap", default: "4px" }
+    ],
+    example: html`<wpd-progress-bar
+			value="42"
+			label="Uploading hero.jpg"
+			show-percent
+		></wpd-progress-bar>`
+  };
+  let WpdProgressBar = _WpdProgressBar;
+  defineComponent("wpd-progress-bar", WpdProgressBar);
+  const ROWS = /* @__PURE__ */ new Map();
+  let panel = null;
+  function mountUploadProgressHud() {
+    if (document.body.hasAttribute("data-desktop-mode-suppress-upload-hud")) {
+      return;
+    }
+    if (window.__wpdUploadHud) {
+      return;
+    }
+    window.__wpdUploadHud = true;
+    const ns = "desktop-mode/os-file-drop-hud";
+    addAction(
+      FILE_DROP_HOOKS.UPLOAD_STARTED,
+      ns,
+      (payload) => onStarted(payload.file, payload.fields, payload.abort)
+    );
+    addAction(
+      FILE_DROP_HOOKS.UPLOAD_PROGRESS,
+      ns,
+      (payload) => onProgress(
+        payload.file,
+        payload.loaded,
+        payload.total,
+        payload.indeterminate
+      )
+    );
+    addAction(
+      FILE_DROP_HOOKS.AFTER_UPLOAD,
+      ns,
+      (payload) => onComplete(payload.file, payload.fields, payload.result)
+    );
+    addAction(
+      FILE_DROP_HOOKS.UPLOAD_FAILED,
+      ns,
+      (payload) => onFailed(payload.file, payload.error)
+    );
+  }
+  function onStarted(file, fields, abort) {
+    const p = ensurePanel();
+    const row = document.createElement("div");
+    row.className = "desktop-mode-upload-hud__row";
+    const meta = document.createElement("div");
+    meta.className = "desktop-mode-upload-hud__meta";
+    const name = document.createElement("div");
+    name.className = "desktop-mode-upload-hud__name";
+    name.textContent = fields.filename || file.name;
+    name.title = fields.filename || file.name;
+    const statusEl = document.createElement("div");
+    statusEl.className = "desktop-mode-upload-hud__status";
+    statusEl.textContent = "Uploading…";
+    meta.append(name, statusEl);
+    const bar = document.createElement("wpd-progress-bar");
+    bar.setAttribute("indeterminate", "");
+    bar.setAttribute("show-percent", "");
+    const actions = document.createElement("div");
+    actions.className = "desktop-mode-upload-hud__actions";
+    const cancelBtn = document.createElement("wpd-button");
+    cancelBtn.setAttribute("variant", "tertiary");
+    cancelBtn.setAttribute("size", "small");
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => {
+      const r = ROWS.get(file);
+      if (!r) {
+        return;
+      }
+      if (r.state === "running") {
+        r.statusEl.textContent = "Cancelling…";
+        r.cancelBtn.disabled = true;
+        r.abort();
+      } else {
+        dismissRow(r);
+      }
+    });
+    actions.appendChild(cancelBtn);
+    row.append(meta, bar, actions);
+    p.querySelector(".desktop-mode-upload-hud__list").appendChild(row);
+    ROWS.set(file, {
+      file,
+      abort,
+      root: row,
+      bar,
+      statusEl,
+      cancelBtn,
+      state: "running",
+      lingerTimer: null
+    });
+    updateHeader();
+  }
+  function onProgress(file, loaded, total, indeterminate) {
+    const r = ROWS.get(file);
+    if (!r || r.state !== "running") {
+      return;
+    }
+    if (indeterminate || total <= 0) {
+      r.bar.setAttribute("indeterminate", "");
+      r.statusEl.textContent = `${formatBytes(loaded)} sent`;
+    } else {
+      r.bar.removeAttribute("indeterminate");
+      r.bar.setAttribute("max", String(total));
+      r.bar.setAttribute("value", String(loaded));
+      r.statusEl.textContent = `${formatBytes(loaded)} / ${formatBytes(total)}`;
+    }
+  }
+  function onComplete(file, fields, result) {
+    const r = ROWS.get(file);
+    if (!r) {
+      return;
+    }
+    r.state = "success";
+    r.bar.removeAttribute("indeterminate");
+    r.bar.setAttribute("value", "100");
+    r.bar.setAttribute("max", "100");
+    r.bar.setAttribute("tone", "success");
+    r.statusEl.textContent = "Uploaded";
+    r.cancelBtn.textContent = "Dismiss";
+    r.lingerTimer = setTimeout(() => dismissRow(r), 2500);
+    updateHeader();
+    activity.publish("desktop-mode/upload-hud-complete", {
+      filename: fields.filename || result.filename,
+      attachmentId: result.id
+    });
+  }
+  function onFailed(file, error) {
+    const r = ROWS.get(file);
+    if (!r) {
+      return;
+    }
+    r.bar.removeAttribute("indeterminate");
+    r.bar.setAttribute("tone", "danger");
+    r.cancelBtn.textContent = "Dismiss";
+    r.cancelBtn.disabled = false;
+    if (error.name === "UploadAbortedError") {
+      r.state = "aborted";
+      r.statusEl.textContent = "Cancelled";
+    } else {
+      r.state = "failed";
+      r.statusEl.textContent = error.message || "Upload failed";
+    }
+    updateHeader();
+  }
+  function dismissRow(r) {
+    if (r.lingerTimer) {
+      clearTimeout(r.lingerTimer);
+    }
+    ROWS.delete(r.file);
+    r.root.remove();
+    updateHeader();
+    if (ROWS.size === 0 && panel) {
+      panel.hidden = true;
+    }
+  }
+  function ensurePanel() {
+    if (panel && panel.isConnected) {
+      panel.hidden = false;
+      return panel;
+    }
+    const p = document.createElement("div");
+    p.className = "desktop-mode-upload-hud";
+    p.setAttribute("role", "region");
+    p.setAttribute("aria-label", "Uploads");
+    const header = document.createElement("div");
+    header.className = "desktop-mode-upload-hud__header";
+    const title = document.createElement("div");
+    title.className = "desktop-mode-upload-hud__title";
+    title.textContent = "Uploads";
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "desktop-mode-upload-hud__close";
+    closeBtn.setAttribute("aria-label", "Hide upload panel");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", () => {
+      for (const r of [...ROWS.values()]) {
+        if (r.state !== "running") {
+          dismissRow(r);
+        }
+      }
+      if (ROWS.size === 0) {
+        p.hidden = true;
+      }
+    });
+    header.append(title, closeBtn);
+    const list2 = document.createElement("div");
+    list2.className = "desktop-mode-upload-hud__list";
+    p.append(header, list2);
+    document.body.appendChild(p);
+    panel = p;
+    return p;
+  }
+  function updateHeader() {
+    if (!panel) {
+      return;
+    }
+    const title = panel.querySelector(
+      ".desktop-mode-upload-hud__title"
+    );
+    if (!title) {
+      return;
+    }
+    const total = ROWS.size;
+    const running = [...ROWS.values()].filter((r) => r.state === "running").length;
+    if (running > 0) {
+      title.textContent = running === total ? `Uploading ${running} file${running === 1 ? "" : "s"}…` : `${running} of ${total} uploading…`;
+    } else if (total > 0) {
+      title.textContent = `Uploads (${total})`;
+    } else {
+      title.textContent = "Uploads";
+    }
+  }
+  function mountMediaLibraryRefresher() {
+    if (document.body.hasAttribute(
+      "data-desktop-mode-suppress-media-library-refresh"
+    )) {
+      return;
+    }
+    const sentinel = window;
+    if (sentinel.__wpdMediaLibraryRefresher) {
+      return;
+    }
+    sentinel.__wpdMediaLibraryRefresher = true;
+    addAction(
+      FILE_DROP_HOOKS.AFTER_UPLOAD,
+      "desktop-mode/os-file-drop-library-refresh",
+      () => refreshOpenLibraries()
+    );
+  }
+  function refreshOpenLibraries() {
+    const iframes = document.querySelectorAll("iframe");
+    for (const frame of Array.from(iframes)) {
+      if (!isMediaLibraryUrl(resolveIframeUrl(frame))) {
+        continue;
+      }
+      try {
+        frame.contentWindow?.location.reload();
+      } catch {
+        const reloadHref = resolveIframeUrl(frame);
+        if (reloadHref) {
+          frame.setAttribute("src", reloadHref);
+        }
+      }
+    }
+  }
+  function resolveIframeUrl(frame) {
+    try {
+      return frame.contentWindow?.location.href ?? frame.src ?? "";
+    } catch {
+      return frame.src ?? "";
+    }
+  }
+  function isMediaLibraryUrl(url) {
+    if (!url) {
+      return false;
+    }
+    return /\/wp-admin\/upload\.php(?:[?#]|$)/.test(url);
+  }
+  function bootOsFileDrop(args) {
+    const config = args.config || {
+      enabled: false,
+      allowedMimes: [],
+      maxSize: 0
+    };
+    mountUploadProgressHud();
+    mountMediaLibraryRefresher();
+    mountOsFileDropManager({
+      config,
+      mediaUrl: args.mediaUrl,
+      restNonce: args.restNonce,
+      openDialog: async (entries, ctx) => {
+        const { openUploadDialog: openUploadDialog2 } = await Promise.resolve().then(() => dialog);
+        await openUploadDialog2({
+          entries,
+          context: ctx,
+          mediaUrl: args.mediaUrl,
+          restNonce: args.restNonce
+        });
+      }
+    });
+  }
+  const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    FILE_DROP_HOOKS,
+    bootOsFileDrop
+  }, Symbol.toStringTag, { value: "Module" }));
+  const textFieldStyles = css`:host{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var( --desktop-mode-text,#1d2327 );min-width:0}:host( [ hidden ] ){display:none}.wpd-text-field__label{font-size:12px;color:var( --desktop-mode-muted,#646970 )}.wpd-text-field__row{position:relative;display:flex;align-items:center;width:100%}input{appearance:none;-webkit-appearance:none;display:block;width:100%;min-width:0;box-sizing:border-box;padding:7px 10px;background:var( --desktop-mode-window-bg,#fff );border:1px solid var( --desktop-mode-border,#dcdcde );border-radius:6px;font:inherit;font-size:13px;color:var( --desktop-mode-text,#1d2327 );transition:border-color 0.12s ease,box-shadow 0.12s ease}.wpd-text-field__suffix{position:absolute;inset-inline-end:10px;top:50%;transform:translateY( -50% );pointer-events:none;font-size:12px;color:var( --desktop-mode-muted,#646970 )}.wpd-text-field__row--has-reveal input{padding-inline-end:36px}.wpd-text-field__reveal{position:absolute;inset-inline-end:0;top:0;bottom:0;width:34px;display:flex;align-items:center;justify-content:center;padding:0;border:none;background:transparent;color:var( --desktop-mode-muted,#646970 );cursor:pointer;border-radius:0 6px 6px 0;transition:color 0.12s ease}.wpd-text-field__reveal:hover{color:var( --wp-admin-theme-color,#2271b1 )}.wpd-text-field__reveal:focus-visible{outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:-2px;border-radius:0 6px 6px 0}.wpd-text-field__reveal:disabled{opacity:0.45;cursor:not-allowed}.wpd-text-field__input--masked{-webkit-text-security:disc;text-security:disc}@supports not ( ( -webkit-text-security:disc ) or ( text-security:disc ) ){.wpd-text-field__input--masked{font-family:text-security-disc,"password",monospace;letter-spacing:0.2em}}input:hover{border-color:var( --desktop-mode-muted,#8c8f94 )}input:focus-visible{outline:none;border-color:var( --wp-admin-theme-color,#2271b1 );box-shadow:0 0 0 1px var( --wp-admin-theme-color,#2271b1 )}input:disabled{opacity:0.55;cursor:not-allowed;background:rgba( 0,0,0,0.03 )}input[ aria-invalid='true' ]{border-color:#d63638}input[ aria-invalid='true' ]:focus-visible{box-shadow:0 0 0 1px #d63638}input[ type='number' ]::-webkit-inner-spin-button,input[ type='number' ]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[ type='number' ]{-moz-appearance:textfield}`;
+  const _WpdTextField = class _WpdTextField extends Component {
+    constructor() {
+      super(...arguments);
+      this._revealed = false;
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      ensureAutoId(this);
+    }
+    render() {
+      const label = this.label || "";
+      const value = this.value ?? "";
+      const placeholder = this.placeholder || "";
+      const disabled = this.disabled !== null;
+      const readonly = this.readonly !== null;
+      const declaredAutocomplete = this.autocomplete;
+      const declaredType = this.type || "text";
+      const isPassword = declaredType === "password";
+      let autocomplete = declaredAutocomplete || "off";
+      if (isPassword && (!declaredAutocomplete || autocomplete === "off")) {
+        autocomplete = "new-password";
+      }
+      const maxLength = this.maxlength;
+      const minLength = this.minlength;
+      const pattern = this.pattern || "";
+      const name = this.name || "";
+      const suffix = this.suffix || "";
+      const invalid = this.invalid !== null;
+      const reveal = this.reveal !== null;
+      const isPasswordIntent = declaredType === "password";
+      const isMasked = isPasswordIntent && !(reveal && this._revealed);
+      let effectiveType;
+      if (isPasswordIntent) {
+        effectiveType = "text";
+      } else if (reveal && this._revealed) {
+        effectiveType = "text";
+      } else {
+        effectiveType = declaredType;
+      }
+      const rowClass = reveal ? "wpd-text-field__row wpd-text-field__row--has-reveal" : "wpd-text-field__row";
+      const inputClass = isMasked ? "wpd-text-field__input wpd-text-field__input--masked" : "wpd-text-field__input";
+      const hostId = this.id || "wpd-unnamed";
+      const inputId = `${hostId}__input`;
+      return html`
+			${label ? html`<label
+						class="wpd-text-field__label"
+						for=${inputId}
+					>${label}</label>` : html``}
+			<span class=${rowClass}>
+				<input
+					id=${inputId}
+					class=${inputClass}
+					type=${effectiveType}
+					.value=${value}
+					placeholder=${placeholder}
+					?disabled=${disabled}
+					?readonly=${readonly}
+					autocomplete=${autocomplete}
+					maxlength=${maxLength ?? ""}
+					minlength=${minLength ?? ""}
+					pattern=${pattern}
+					name=${name}
+					aria-invalid=${invalid ? "true" : "false"}
+					aria-label=${label || ""}
+					@input=${(e) => this._onInput(e)}
+					@change=${(e) => this._onChange(e)}
+					@keydown=${(e) => this._onKeyDown(e)}
+				/>
+				${suffix ? html`<span class="wpd-text-field__suffix">${suffix}</span>` : html``}
+				${reveal ? this._renderRevealButton(disabled) : html``}
+			</span>
+		`;
+    }
+    _renderRevealButton(disabled) {
+      const label = this._revealed ? "Hide" : "Show";
+      return html`
+			<button
+				type="button"
+				class="wpd-text-field__reveal"
+				aria-label=${label}
+				aria-pressed=${this._revealed ? "true" : "false"}
+				?disabled=${disabled}
+				tabindex="0"
+				@click=${() => this._onToggleReveal()}
+			>
+				${this._revealed ? _iconEyeOff() : _iconEye()}
+			</button>
+		`;
+    }
+    _onToggleReveal() {
+      this._revealed = !this._revealed;
+      this.requestUpdate();
+    }
+    _onInput(e) {
+      const input = e.target;
+      this.value = input.value;
+      this.emit("wpd-input-change", { value: input.value });
+    }
+    _onChange(e) {
+      const input = e.target;
+      this.emit("wpd-input-commit", { value: input.value });
+    }
+    _onKeyDown(e) {
+      if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.metaKey) {
+        const input = e.target;
+        this.emit("wpd-submit", { value: input.value });
+      }
+    }
+  };
+  _WpdTextField.props = [
+    "label",
+    "value",
+    "placeholder",
+    "disabled",
+    "readonly",
+    "autocomplete",
+    "type",
+    "maxlength",
+    "minlength",
+    "pattern",
+    "name",
+    "suffix",
+    "invalid",
+    "reveal"
+  ];
+  _WpdTextField.styles = [textFieldStyles];
+  _WpdTextField.help = {
+    title: "Text field",
+    summary: "Labelled text input primitive. Two-way reflects `value`, emits wpd-input-change per keystroke, wpd-input-commit on blur/change, and wpd-submit on Enter. Optional password reveal toggle.",
+    status: "stable",
+    since: "0.11.0",
+    props: [
+      { name: "label", type: "string", description: "Visible label above the input." },
+      { name: "value", type: "string", description: "Current input value; reflected two-way." },
+      { name: "placeholder", type: "string", description: "Native placeholder string." },
+      { name: "disabled", type: "boolean attribute", description: "Disables the native input." },
+      { name: "readonly", type: "boolean attribute", description: "Marks the input readonly." },
+      {
+        name: "autocomplete",
+        type: "string",
+        default: "off",
+        description: "Forwarded to the native input autocomplete attribute."
+      },
+      {
+        name: "type",
+        type: "string",
+        default: "text",
+        description: "Native input type (text, password, email, search, tel, url)."
+      },
+      { name: "maxlength", type: "integer (string)", description: "Native maxlength." },
+      { name: "minlength", type: "integer (string)", description: "Native minlength." },
+      { name: "pattern", type: "regex string", description: "Native validation pattern." },
+      { name: "name", type: "string", description: "Forwarded to the native input for form submission." },
+      { name: "suffix", type: "string", description: "Text rendered inside the right edge of the input row." },
+      {
+        name: "invalid",
+        type: "boolean attribute",
+        description: "Marks the field aria-invalid and applies the error style."
+      },
+      {
+        name: "reveal",
+        type: "boolean attribute",
+        description: 'On type="password" fields, adds an eye-icon toggle that flips the input between hidden and visible text.'
+      }
+    ],
+    events: [
+      {
+        name: "wpd-input-change",
+        description: "Fires on every input keystroke.",
+        detail: "{ value: string }"
+      },
+      {
+        name: "wpd-input-commit",
+        description: "Fires on the native change event (blur / Enter).",
+        detail: "{ value: string }"
+      },
+      {
+        name: "wpd-submit",
+        description: "Fires when the user presses Enter (without Shift/Alt/Meta).",
+        detail: "{ value: string }"
+      }
+    ],
+    cssProps: [
+      { name: "--desktop-mode-text", description: "Text colour." },
+      { name: "--desktop-mode-muted", description: "Label + suffix colour." },
+      { name: "--desktop-mode-border", description: "Input outline." },
+      { name: "--desktop-mode-window-bg", description: "Input background." }
+    ],
+    example: html`
+			<wpd-stack gap="8">
+				<wpd-text-field label="Note title" value="Untitled" placeholder="Name this note"></wpd-text-field>
+				<wpd-text-field type="password" reveal label="API key"></wpd-text-field>
+			</wpd-stack>
+		`
+  };
+  let WpdTextField = _WpdTextField;
+  defineComponent("wpd-text-field", WpdTextField);
+  function _iconEye() {
+    return html`
+		<svg
+			viewBox="0 0 16 16"
+			width="14"
+			height="14"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="1.5"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<path d="M1 8C1 8 3.5 3 8 3s7 5 7 5-2.5 5-7 5S1 8 1 8z" />
+			<circle cx="8" cy="8" r="2" />
+		</svg>
+	`;
+  }
+  function _iconEyeOff() {
+    return html`
+		<svg
+			viewBox="0 0 16 16"
+			width="14"
+			height="14"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="1.5"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<path d="M1 8C1 8 3.5 3 8 3s7 5 7 5-2.5 5-7 5S1 8 1 8z" />
+			<circle cx="8" cy="8" r="2" />
+			<line x1="2" y1="2" x2="14" y2="14" />
+		</svg>
+	`;
+  }
+  const textareaStyles = css`:host{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var( --desktop-mode-text,#1d2327 );min-width:0}:host( [ hidden ] ){display:none}.wpd-textarea__label{font-size:12px;color:var( --desktop-mode-muted,#646970 )}textarea{appearance:none;-webkit-appearance:none;display:block;width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;background:var( --desktop-mode-window-bg,#fff );border:1px solid var( --desktop-mode-border,#dcdcde );border-radius:6px;font:inherit;font-size:13px;line-height:1.45;color:var( --desktop-mode-text,#1d2327 );resize:vertical;transition:border-color 0.12s ease,box-shadow 0.12s ease}textarea:hover{border-color:var( --desktop-mode-muted,#8c8f94 )}textarea:focus-visible{outline:none;border-color:var( --wp-admin-theme-color,#2271b1 );box-shadow:0 0 0 1px var( --wp-admin-theme-color,#2271b1 )}textarea:disabled{opacity:0.55;cursor:not-allowed;background:rgba( 0,0,0,0.03 )}textarea[ aria-invalid='true' ]{border-color:#d63638}textarea[ aria-invalid='true' ]:focus-visible{box-shadow:0 0 0 1px #d63638}:host( [ auto-grow ] ) textarea{resize:none;overflow:hidden}`;
+  const _WpdTextarea = class _WpdTextarea extends Component {
+    constructor() {
+      super(...arguments);
+      this._textareaEl = null;
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      ensureAutoId(this);
+    }
+    render() {
+      const label = this._attr("label") || "";
+      const value = this._attr("value") ?? "";
+      const placeholder = this._attr("placeholder") || "";
+      const disabled = this._boolAttr("disabled");
+      const readonly = this._boolAttr("readonly");
+      const name = this._attr("name") || "";
+      const rows = Number(this._attr("rows")) || 3;
+      const maxLength = this._attr("maxlength");
+      const minLength = this._attr("minlength");
+      const invalid = this._boolAttr("invalid");
+      const hostId = this.id || "wpd-unnamed";
+      const fieldId = `${hostId}__field`;
+      return html`
+			${label ? html`<label class="wpd-textarea__label" for=${fieldId}>${label}</label>` : html``}
+			<textarea
+				id=${fieldId}
+				part="textarea"
+				.value=${value}
+				placeholder=${placeholder}
+				?disabled=${disabled}
+				?readonly=${readonly}
+				rows=${rows}
+				maxlength=${maxLength ?? ""}
+				minlength=${minLength ?? ""}
+				name=${name}
+				aria-invalid=${invalid ? "true" : "false"}
+				aria-label=${label || ""}
+				@input=${(e) => this._onInput(e)}
+				@change=${(e) => this._onChange(e)}
+				@keydown=${(e) => this._onKeyDown(e)}
+			></textarea>
+		`;
+    }
+    _attr(name) {
+      return this.getAttribute(name);
+    }
+    _boolAttr(name) {
+      return this.getAttribute(name) !== null;
+    }
+    _onInput(e) {
+      const ta = e.target;
+      this._textareaEl = ta;
+      this.setAttribute("value", ta.value);
+      this.emit("wpd-input-change", { value: ta.value });
+      if (this._boolAttr("auto-grow")) {
+        this._autosize(ta);
+      }
+    }
+    _onChange(e) {
+      const ta = e.target;
+      this.emit("wpd-input-commit", { value: ta.value });
+    }
+    _onKeyDown(e) {
+      if (!this._boolAttr("submit-on-enter")) {
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        const ta = e.target;
+        this.emit("wpd-submit", { value: ta.value });
+      }
+    }
+    /**
+     * Grow the textarea height to fit content, capped at `max-rows`.
+     * Resets to scroll-height each input then clamps; cheap because
+     * the browser caches layout.
+     */
+    _autosize(ta) {
+      const maxRows = Number(this._attr("max-rows")) || 8;
+      const cs = window.getComputedStyle(ta);
+      const fontSize = parseFloat(cs.fontSize) || 13;
+      const lineHeightRaw = cs.lineHeight;
+      const lineHeight = lineHeightRaw === "normal" ? fontSize * 1.45 : parseFloat(lineHeightRaw) || fontSize * 1.45;
+      const paddingTop = parseFloat(cs.paddingTop) || 0;
+      const paddingBottom = parseFloat(cs.paddingBottom) || 0;
+      const max = lineHeight * maxRows + paddingTop + paddingBottom;
+      ta.style.height = "auto";
+      const next = Math.min(ta.scrollHeight, max);
+      ta.style.height = `${next}px`;
+    }
+    /** Public helper for callers that programmatically set `.value` and want autosize to re-run. */
+    refreshAutosize() {
+      if (this._textareaEl && this._boolAttr("auto-grow")) {
+        this._autosize(this._textareaEl);
+      }
+    }
+    /** Imperatively focus the underlying textarea. */
+    focusInput() {
+      const root = this.shadowRoot ?? this;
+      const ta = root.querySelector("textarea");
+      ta?.focus();
+    }
+    /** Imperatively clear the value. */
+    clear() {
+      this.setAttribute("value", "");
+      const root = this.shadowRoot ?? this;
+      const ta = root.querySelector("textarea");
+      if (ta) {
+        ta.value = "";
+        if (this._boolAttr("auto-grow")) {
+          this._autosize(ta);
+        }
+      }
+    }
+  };
+  _WpdTextarea.props = [
+    "label",
+    "value",
+    "placeholder",
+    "disabled",
+    "readonly",
+    "name",
+    "rows",
+    "maxlength",
+    "minlength",
+    "invalid",
+    "autoGrow",
+    "maxRows",
+    "submitOnEnter"
+  ];
+  _WpdTextarea.styles = [textareaStyles];
+  _WpdTextarea.help = {
+    title: "Textarea",
+    summary: "Multi-line text input. Same event shape as wpd-text-field. Optional auto-grow up to max-rows; optional submit-on-enter (Enter sends, Shift+Enter newlines).",
+    status: "stable",
+    since: "0.22.0",
+    props: [
+      { name: "label", type: "string", description: "Visible label above the textarea." },
+      { name: "value", type: "string", description: "Current value; reflected two-way." },
+      { name: "placeholder", type: "string", description: "Native placeholder." },
+      { name: "disabled", type: "boolean attribute" },
+      { name: "readonly", type: "boolean attribute" },
+      { name: "name", type: "string", description: "Forwarded to native textarea for form submission." },
+      { name: "rows", type: "integer (string)", default: "3", description: "Initial visible row count." },
+      { name: "maxlength", type: "integer (string)" },
+      { name: "minlength", type: "integer (string)" },
+      { name: "invalid", type: "boolean attribute", description: "Sets aria-invalid + error styling." },
+      { name: "auto-grow", type: "boolean attribute", description: "Grows up to max-rows as the user types." },
+      { name: "max-rows", type: "integer (string)", default: "8" },
+      {
+        name: "submit-on-enter",
+        type: "boolean attribute",
+        description: "Enter fires wpd-submit; Shift+Enter inserts a newline."
+      }
+    ],
+    events: [
+      { name: "wpd-input-change", description: "Fires on every keystroke.", detail: "{ value: string }" },
+      { name: "wpd-input-commit", description: "Fires on blur / native change.", detail: "{ value: string }" },
+      {
+        name: "wpd-submit",
+        description: "Fires on Enter (without Shift) when submit-on-enter is set.",
+        detail: "{ value: string }"
+      }
+    ],
+    example: html`
+			<wpd-textarea label="Message" rows="3" auto-grow max-rows="8" submit-on-enter></wpd-textarea>
+		`
+  };
+  let WpdTextarea = _WpdTextarea;
+  defineComponent("wpd-textarea", WpdTextarea);
+  async function uploadFile(args) {
+    const initial = {
+      file: args.file,
+      mime: args.mime,
+      fields: args.fields
+    };
+    const filtered = applyFilters(
+      FILE_DROP_HOOKS.BEFORE_UPLOAD,
+      initial,
+      args.context
+    );
+    if (!filtered) {
+      throw new UploadCancelledError();
+    }
+    const body = new FormData();
+    const renamed = filtered.fields.filename !== filtered.file.name ? new File([filtered.file], filtered.fields.filename, {
+      type: filtered.mime || filtered.file.type
+    }) : filtered.file;
+    body.append("file", renamed);
+    body.append("title", filtered.fields.title);
+    body.append("alt_text", filtered.fields.altText);
+    body.append("caption", filtered.fields.caption);
+    body.append("description", filtered.fields.description);
+    return new Promise((resolve2, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", args.mediaUrl, true);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("X-WP-Nonce", args.restNonce);
+      xhr.responseType = "text";
+      let aborted = false;
+      let bodyFullySent = false;
+      let cancelRequested = false;
+      const abort = () => {
+        cancelRequested = true;
+        if (bodyFullySent) {
+          return;
+        }
+        aborted = true;
+        try {
+          xhr.abort();
+        } catch {
+        }
+      };
+      doAction(FILE_DROP_HOOKS.UPLOAD_STARTED, {
+        file: filtered.file,
+        fields: filtered.fields,
+        context: args.context,
+        abort
+      });
+      xhr.upload.addEventListener("progress", (e) => {
+        doAction(FILE_DROP_HOOKS.UPLOAD_PROGRESS, {
+          file: filtered.file,
+          fields: filtered.fields,
+          context: args.context,
+          loaded: e.loaded,
+          total: e.lengthComputable ? e.total : 0,
+          indeterminate: !e.lengthComputable
+        });
+      });
+      xhr.upload.addEventListener("load", () => {
+        bodyFullySent = true;
+        doAction(FILE_DROP_HOOKS.UPLOAD_PROGRESS, {
+          file: filtered.file,
+          fields: filtered.fields,
+          context: args.context,
+          loaded: filtered.file.size,
+          total: filtered.file.size,
+          indeterminate: false
+        });
+      });
+      xhr.addEventListener("error", () => {
+        if (aborted) {
+          return;
+        }
+        const error = new Error("Network error during upload.");
+        doAction(FILE_DROP_HOOKS.UPLOAD_FAILED, {
+          // `filtered.file` — same identity as UPLOAD_STARTED /
+          // _PROGRESS / AFTER_UPLOAD. A BEFORE_UPLOAD filter
+          // that swapped the File would otherwise route this
+          // failure to a row keyed by the original (pre-swap)
+          // File, leaving the HUD row stuck in "running".
+          file: filtered.file,
+          error,
+          context: args.context
+        });
+        reject(error);
+      });
+      xhr.addEventListener("abort", () => {
+        const error = new UploadAbortedError();
+        doAction(FILE_DROP_HOOKS.UPLOAD_FAILED, {
+          // `filtered.file` — same identity as UPLOAD_STARTED /
+          // _PROGRESS / AFTER_UPLOAD. A BEFORE_UPLOAD filter
+          // that swapped the File would otherwise route this
+          // failure to a row keyed by the original (pre-swap)
+          // File, leaving the HUD row stuck in "running".
+          file: filtered.file,
+          error,
+          context: args.context
+        });
+        reject(error);
+      });
+      xhr.addEventListener("load", () => {
+        if (aborted) {
+          return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const message = extractXhrMessage(xhr);
+          const error = new Error(message);
+          doAction(FILE_DROP_HOOKS.UPLOAD_FAILED, {
+            file: filtered.file,
+            error,
+            context: args.context
+          });
+          reject(error);
+          return;
+        }
+        let data;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error("Could not parse server response.");
+          doAction(FILE_DROP_HOOKS.UPLOAD_FAILED, {
+            file: filtered.file,
+            error,
+            context: args.context
+          });
+          reject(error);
+          return;
+        }
+        if (cancelRequested && data.id) {
+          void deleteAttachment(
+            args.mediaUrl,
+            args.restNonce,
+            data.id
+          );
+          const error = new UploadAbortedError();
+          doAction(FILE_DROP_HOOKS.UPLOAD_FAILED, {
+            file: filtered.file,
+            error,
+            context: args.context
+          });
+          reject(error);
+          return;
+        }
+        const result = {
+          id: data.id,
+          url: data.source_url,
+          mime: data.mime_type || filtered.mime,
+          title: data.title?.rendered || filtered.fields.title,
+          filename: data.media_details?.file || filtered.fields.filename
+        };
+        doAction(FILE_DROP_HOOKS.AFTER_UPLOAD, {
+          file: filtered.file,
+          result,
+          fields: filtered.fields,
+          context: args.context
+        });
+        resolve2(result);
+      });
+      xhr.send(body);
+    });
+  }
+  class UploadCancelledError extends Error {
+    constructor() {
+      super("Upload cancelled by desktop-mode.drop.before-upload filter.");
+      this.name = "UploadCancelledError";
+    }
+  }
+  class UploadAbortedError extends Error {
+    constructor() {
+      super("Upload aborted by the caller.");
+      this.name = "UploadAbortedError";
+    }
+  }
+  function deleteAttachment(mediaUrl, restNonce, id) {
+    const url = `${mediaUrl.replace(/\/$/, "")}/${id}?force=true`;
+    const cleanup = new XMLHttpRequest();
+    cleanup.open("DELETE", url, true);
+    cleanup.withCredentials = true;
+    cleanup.setRequestHeader("X-WP-Nonce", restNonce);
+    return new Promise((resolve2) => {
+      cleanup.addEventListener("loadend", () => {
+        if (cleanup.status < 200 || cleanup.status >= 300) {
+          console.warn(
+            `[os-file-drop] late-cancel cleanup failed for attachment ${id} (HTTP ${cleanup.status}). The attachment remains in the Media Library; delete it manually.`
+          );
+        }
+        resolve2();
+      });
+      cleanup.addEventListener("error", () => {
+        console.warn(
+          `[os-file-drop] late-cancel cleanup network error for attachment ${id}. The attachment remains in the Media Library; delete it manually.`
+        );
+        resolve2();
+      });
+      try {
+        cleanup.send();
+      } catch (err) {
+        console.warn(
+          `[os-file-drop] late-cancel cleanup could not be dispatched for attachment ${id}:`,
+          err
+        );
+        resolve2();
+      }
+    });
+  }
+  function extractXhrMessage(xhr) {
+    const fallback = `Upload failed (HTTP ${xhr.status}).`;
+    const text = xhr.responseText;
+    if (!text) {
+      return fallback;
+    }
+    try {
+      const data = JSON.parse(text);
+      if (data && typeof data.message === "string") {
+        return data.message;
+      }
+    } catch {
+    }
+    return fallback;
+  }
+  async function openUploadDialog(args) {
+    if (args.entries.length === 0) {
+      return;
+    }
+    const modal = document.createElement("wpd-modal");
+    modal.setAttribute("open", "");
+    modal.setAttribute("size", "md");
+    modal.setAttribute(
+      "title",
+      args.entries.length === 1 ? "Upload to Media Library" : `Upload ${args.entries.length} files to Media Library`
+    );
+    document.body.appendChild(modal);
+    const draft = args.entries.map((entry) => ({
+      ...entry.fields
+    }));
+    const renderBody = () => {
+      modal.innerHTML = "";
+      const list2 = document.createElement("div");
+      list2.style.cssText = "display:flex;flex-direction:column;gap:18px;max-height:60vh;overflow:auto;padding-right:6px;";
+      args.entries.forEach((entry, i) => {
+        list2.appendChild(renderEntry(entry, draft[i], i + 1));
+      });
+      modal.appendChild(list2);
+      const footer = document.createElement("div");
+      footer.setAttribute("slot", "footer");
+      footer.style.cssText = "display:flex;gap:8px;justify-content:flex-end;";
+      const cancel = document.createElement("wpd-button");
+      cancel.setAttribute("variant", "secondary");
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => {
+        modal.remove();
+      });
+      const upload = document.createElement("wpd-button");
+      upload.setAttribute("variant", "primary");
+      upload.textContent = args.entries.length === 1 ? "Upload" : `Upload ${args.entries.length} files`;
+      upload.addEventListener("click", () => {
+        void runUploads(upload, cancel);
+      });
+      footer.appendChild(cancel);
+      footer.appendChild(upload);
+      modal.appendChild(footer);
+    };
+    const renderEntry = (entry, fields, index2) => {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;";
+      const heading = document.createElement("div");
+      heading.style.cssText = "display:flex;gap:10px;align-items:center;font-weight:600;";
+      const tag = document.createElement("span");
+      tag.textContent = args.entries.length === 1 ? "" : `#${index2} · `;
+      tag.style.opacity = "0.6";
+      const fname = document.createElement("span");
+      fname.textContent = entry.file.name;
+      fname.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      const size = document.createElement("span");
+      size.textContent = `${entry.mime || "unknown"} · ${formatBytes(
+        entry.file.size
+      )}`;
+      size.style.cssText = "opacity:0.6;font-size:12px;";
+      heading.appendChild(tag);
+      heading.appendChild(fname);
+      heading.appendChild(size);
+      wrap.appendChild(heading);
+      wrap.appendChild(textField("Title", fields.title, (v) => fields.title = v));
+      wrap.appendChild(textField("Filename", fields.filename, (v) => fields.filename = v));
+      if (entry.mime.startsWith("image/")) {
+        wrap.appendChild(
+          textField("Alt text", fields.altText, (v) => fields.altText = v)
+        );
+      }
+      wrap.appendChild(textField("Caption", fields.caption, (v) => fields.caption = v));
+      wrap.appendChild(
+        textareaField("Description", fields.description, (v) => fields.description = v)
+      );
+      return wrap;
+    };
+    const runUploads = async (uploadBtn, cancelBtn) => {
+      uploadBtn.disabled = true;
+      cancelBtn.disabled = true;
+      uploadBtn.textContent = "Uploading…";
+      const total = args.entries.length;
+      let successes = 0;
+      let failures = 0;
+      let cancelled = 0;
+      const failureDetails = [];
+      for (let i = 0; i < total; i++) {
+        const entry = args.entries[i];
+        try {
+          await uploadFile({
+            file: entry.file,
+            mime: entry.mime,
+            fields: draft[i],
+            context: args.context,
+            mediaUrl: args.mediaUrl,
+            restNonce: args.restNonce
+          });
+          successes++;
+        } catch (err) {
+          if (err instanceof UploadCancelledError) {
+            cancelled++;
+            continue;
+          }
+          if (err instanceof UploadAbortedError) {
+            cancelled++;
+            continue;
+          }
+          failures++;
+          const message = err instanceof Error ? err.message : "Upload failed.";
+          failureDetails.push(`“${entry.file.name}” — ${message}`);
+        }
+      }
+      modal.remove();
+      showBatchSummaryToast({
+        total,
+        successes,
+        failures,
+        cancelled,
+        failureDetails
+      });
+    };
+    renderBody();
+    await new Promise((resolve2) => {
+      modal.addEventListener("wpd-modal-cancel", () => {
+        modal.remove();
+        resolve2();
+      });
+      const observer = new MutationObserver(() => {
+        if (!modal.isConnected) {
+          observer.disconnect();
+          resolve2();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  }
+  function textField(label, value, onChange) {
+    const el = document.createElement("wpd-text-field");
+    el.setAttribute("label", label);
+    el.setAttribute("value", value);
+    el.addEventListener("input", () => {
+      const v = el.value;
+      if (typeof v === "string") {
+        onChange(v);
+      }
+    });
+    return el;
+  }
+  function textareaField(label, value, onChange) {
+    const el = document.createElement("wpd-textarea");
+    el.setAttribute("label", label);
+    el.setAttribute("value", value);
+    el.setAttribute("rows", "3");
+    el.addEventListener("input", () => {
+      const v = el.value;
+      if (typeof v === "string") {
+        onChange(v);
+      }
+    });
+    return el;
+  }
+  function showBatchSummaryToast(args) {
+    const { total, successes, failures, cancelled, failureDetails } = args;
+    if (total === 0) {
+      return;
+    }
+    if (total === 1) {
+      if (successes === 1) {
+        showToast({ message: "Uploaded to Media Library." });
+      } else if (failures === 1 && failureDetails[0]) {
+        showToast({ message: failureDetails[0] });
+      } else if (cancelled === 1) {
+        showToast({ message: "Upload cancelled." });
+      }
+      return;
+    }
+    if (successes === total) {
+      showToast({
+        message: `Uploaded ${successes} files to Media Library.`
+      });
+      return;
+    }
+    if (cancelled === total) {
+      showToast({ message: "All uploads cancelled." });
+      return;
+    }
+    if (failures === total) {
+      showToast({
+        message: failures === 1 && failureDetails[0] ? failureDetails[0] : `${failures} uploads failed.`
+      });
+      return;
+    }
+    const parts = [];
+    if (successes > 0) {
+      parts.push(
+        `Uploaded ${successes} file${successes === 1 ? "" : "s"}.`
+      );
+    }
+    if (cancelled > 0) {
+      parts.push(`Cancelled ${cancelled}.`);
+    }
+    if (failures > 0) {
+      parts.push(`Failed ${failures}.`);
+    }
+    showToast({ message: parts.join(" ") });
+  }
+  const dialog = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    openUploadDialog
+  }, Symbol.toStringTag, { value: "Module" }));
+  exports.clampGeometryToViewport = clampGeometryToViewport;
+  Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+  return exports;
+}({});

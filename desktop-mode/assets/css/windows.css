@@ -1,0 +1,33 @@
+/**
+ * Desktop Mode — Window styles (entry point).
+ *
+ * The window stylesheet used to be 1,500 lines of chrome, states,
+ * overview, and OS Settings mixed together. It now imports four
+ * focused files so each concern lives on its own:
+ *
+ *   - window-chrome.css    — base window, title bar, icon, title,
+ *                            controls, focused/unfocused variants,
+ *                            menu panel, screen-meta buttons, tabs,
+ *                            window body, primary iframe, native body.
+ *   - window-states.css    — resize handle, drag/resize overlays,
+ *                            maximized, fullscreen, opening animation,
+ *                            minimized, closing, reduced-motion, RTL.
+ *   - window-overview.css  — zoom-out overview grid + floating labels
+ *                            + per-desktop top bar + dock-collapse.
+ *   - os-settings.css      — the OS Settings native panel (wallpaper
+ *                            picker, accent, dock size, uploader,
+ *                            Media Library grid). Will move to its own
+ *                            enqueue once it stops being coupled to the
+ *                            window chrome loading order.
+ *
+ * The `desktop-mode-windows` script handle registers this file as its
+ * CSS source, so all four sub-sheets ship with a single handle — no
+ * changes required to `includes/assets.php` or `includes/render.php`.
+ *
+ * @since 6.9.0
+ */
+
+@import url( "window-chrome.css" );
+@import url( "window-states.css" );
+@import url( "window-overview.css" );
+@import url( "os-settings.css" );

@@ -1,0 +1,1106 @@
+/**
+ * Desktop Mode — OS Settings native panel.
+ *
+ * The preferences panel rendered inside the OS Settings native
+ * window: wallpaper swatches + editor slot, accent colors, dock size,
+ * and the "Or use your own image" uploader + Media Library grid.
+ * Currently shipped alongside the window-chrome stylesheet because
+ * historically the rules lived there; marked for a future move to its
+ * own enqueue handle once the coupling to the shell CSS is removed.
+ *
+ * @since 0.5.0
+ */
+.desktop-mode-os-settings {
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.desktop-mode-os-settings__intro {
+	margin: 0 0 16px;
+	color: #50575e;
+}
+
+/*
+ * Card styling for each OS-Settings section. `<wpd-section>`'s
+ * shadow DOM handles the heading + description; the outer card
+ * (padding, background, border) lives here because it's a
+ * per-surface visual choice, not a property of the component
+ * itself. Targets the tag so shadow-DOM internals stay private.
+ */
+.desktop-mode-os-settings wpd-section {
+	display: block;
+	margin: 0 0 20px;
+	padding: 16px 16px 18px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+}
+
+/*
+ * Generic grid. Auto-fill + minmax gives us a truly responsive
+ * layout — the panel reflows columns as OS Settings is resized,
+ * rather than locking to a fixed 3-across.
+ */
+.desktop-mode-os-settings__grid {
+	display: grid;
+	grid-template-columns: repeat( auto-fill, minmax( 140px, 1fr ) );
+	gap: 10px;
+}
+
+/*
+ * Wallpaper swatches — each is a `<wpd-swatch variant="wallpaper">`
+ * with its own shadow-DOM button + aspect ratio + selected state.
+ * The only outer knobs we need are: wider minmax for wallpapers
+ * (so each tile shows meaningful preview area), and the 16:9
+ * aspect ratio override. Everything else lives in the component.
+ */
+.desktop-mode-os-settings__grid--wallpapers {
+	grid-template-columns: repeat( auto-fill, minmax( 160px, 1fr ) );
+}
+
+/*
+ * Wallpaper preset label — sits above the gradient/image preview.
+ * Presets span the full tonal range (graphite dark, mono near-
+ * black, aurora blue, sunset hot pink) so neither pure white nor
+ * pure black text is universally readable. A frosted glass chip
+ * behind the text gives the label its own local contrast that's
+ * legible on every preset and respects the tile's visual language
+ * (rounded pill shape matches the selected-state corners).
+ */
+.desktop-mode-os-settings__swatch-label {
+	display: inline-block;
+	padding: 3px 10px;
+	font-size: 11px;
+	font-weight: 600;
+	color: #fff;
+	background: rgba(0, 0, 0, 0.45);
+	backdrop-filter: blur(8px) saturate(160%);
+	-webkit-backdrop-filter: blur(8px) saturate(160%);
+	border-radius: 999px;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+	letter-spacing: 0.01em;
+	/* Stop the chip from hugging the swatch edge — the 6 8 padding
+	 * on the parent already gives a gap, but this keeps things
+	 * consistent if the parent padding is ever tuned. */
+	pointer-events: none;
+}
+
+/* Accent swatches now render as `<wpd-swatch>` via `<wpd-swatch-grid>`.
+ * The old `__swatch--accent` / `__swatch-label` / `__segmented` /
+ * `__segment` rules moved into those component shadow-DOM
+ * stylesheets; nothing at host level needs to override them. */
+
+.desktop-mode-os-settings__footer {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 12px;
+}
+
+/* Top-level tab strip separating Appearance from AI Settings.
+ * Don't add a `display` rule for `wpd-tabpanel` here — the component's
+ * shadow-DOM `:host([hidden]) { display: none }` has lower specificity
+ * than any outer descendant selector, and overriding it from outside
+ * breaks the auto-swap (hidden panels stay visible). The component's
+ * own `:host { display: block }` already handles the shown state. */
+.desktop-mode-os-settings wpd-tabs {
+	display: block;
+}
+
+/* `__reset` now renders as `<wpd-button variant="ghost">`. */
+
+/* ---------------------------------------------------------------
+ * Custom gradient editor — color inputs + angle slider.
+ *
+ * Toggled by `data-expanded` on the outer wrapper. Uses the modern
+ * grid-template-rows 0fr ↔ 1fr trick so we can animate to natural
+ * content height without hard-coding a max-height. The inner wrapper
+ * owns the visible chrome (padding, border, background) and is
+ * clipped during the transition by overflow: hidden; the outer
+ * wrapper animates the row track + spacing + opacity.
+ *
+ * Supported in all evergreen browsers (Chrome 117+, Safari 17.2+,
+ * Firefox 128+). On older engines the transition is simply skipped —
+ * the editor still appears, just without the glide.
+ * --------------------------------------------------------------- */
+/*
+ * Editor slot — the per-wallpaper panel that slides in below the
+ * swatch grid when a wallpaper with `renderEditor` is selected.
+ * Collapses via the grid-template-rows 0fr → 1fr trick; TS drives
+ * the `[data-expanded]` attribute on the slot wrapper.
+ */
+.desktop-mode-os-settings__editor-slot {
+	display: grid;
+	grid-template-rows: 0fr;
+	margin-top: 0;
+	opacity: 0;
+	transition:
+		grid-template-rows 0.25s cubic-bezier(0.2, 0, 0.2, 1),
+		margin-top 0.25s cubic-bezier(0.2, 0, 0.2, 1),
+		opacity 0.2s ease;
+}
+
+.desktop-mode-os-settings__editor-slot[data-expanded="true"] {
+	grid-template-rows: 1fr;
+	margin-top: 12px;
+	opacity: 1;
+}
+
+.desktop-mode-os-settings__editor-slot-inner {
+	overflow: hidden;
+	min-height: 0;
+	padding: 12px;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+}
+
+/*
+ * Custom-gradient editor fills the inner slot. Kept as a separate
+ * class (vs. scoping to __editor-slot-inner) so a future plugin
+ * renderEditor can opt out of these per-control rules.
+ */
+.desktop-mode-os-settings__gradient-editor-inner {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+/*
+ * Gradient editor row — laid out as a flex of `<wpd-color-field>` +
+ * `<wpd-range-field>`. Each field owns its own label / control /
+ * readout styling internally; only spacing between fields lives here.
+ */
+.desktop-mode-os-settings__gradient-row {
+	display: flex;
+	gap: 16px;
+}
+
+.desktop-mode-os-settings__gradient-row wpd-color-field {
+	flex: 1;
+}
+
+.desktop-mode-os-settings__gradient-editor-inner wpd-range-field {
+	margin-top: 12px;
+}
+
+/* ---------------------------------------------------------------
+ * Image uploader tile.
+ *
+ * Empty state: dashed border, "+" glyph, drop-and-click zone.
+ * Filled state: thumbnail preview that doubles as a wallpaper swatch.
+ * --------------------------------------------------------------- */
+.desktop-mode-os-settings__uploader {
+	margin-top: 16px;
+}
+
+.desktop-mode-os-settings__uploader-heading {
+	margin: 0 0 6px;
+	font-size: 12px;
+	font-weight: 600;
+	color: #50575e;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.desktop-mode-os-settings__file-input {
+	display: none;
+}
+
+.desktop-mode-os-settings__upload-tile {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 120px;
+	padding: 16px;
+	background: #fff;
+	background-size: cover;
+	background-position: center;
+	border: 2px dashed #c3c4c7;
+	border-radius: 8px;
+	color: #50575e;
+	cursor: pointer;
+	text-align: center;
+	transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.desktop-mode-os-settings__upload-tile:hover {
+	border-color: var(--wp-admin-theme-color, #2271b1);
+	color: var(--wp-admin-theme-color, #2271b1);
+}
+
+.desktop-mode-os-settings__upload-tile:focus-within,
+.desktop-mode-os-settings__upload-tile:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+	outline-offset: 2px;
+}
+
+.desktop-mode-os-settings__upload-tile--dragover {
+	border-style: solid;
+	border-color: var(--wp-admin-theme-color, #2271b1);
+	background-color: rgba(34, 113, 177, 0.06);
+	transform: scale(1.01);
+}
+
+.desktop-mode-os-settings__upload-tile--busy {
+	cursor: progress;
+	opacity: 0.8;
+}
+
+/* Filled state — thumbnail is the whole tile; selection uses the same
+ * aria-pressed pattern as the other swatches. */
+.desktop-mode-os-settings__upload-tile--filled {
+	border-style: solid;
+	border-color: transparent;
+	padding: 0;
+	min-height: 140px;
+	color: transparent;
+}
+
+.desktop-mode-os-settings__upload-tile--filled:hover {
+	color: transparent;
+}
+
+.desktop-mode-os-settings__upload-tile[aria-pressed="true"] {
+	border-color: var(--wp-admin-theme-color, #2271b1);
+	box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9) inset;
+}
+
+.desktop-mode-os-settings__upload-inner {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	pointer-events: none;
+}
+
+.desktop-mode-os-settings__upload-plus {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: rgba(0, 0, 0, 0.05);
+	font-size: 22px;
+	font-weight: 300;
+	line-height: 1;
+	color: inherit;
+}
+
+.desktop-mode-os-settings__upload-tile:hover .desktop-mode-os-settings__upload-plus {
+	background: rgba(34, 113, 177, 0.12);
+}
+
+.desktop-mode-os-settings__upload-prompt {
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.desktop-mode-os-settings__upload-hint {
+	font-size: 11px;
+	color: #8c8f94;
+}
+
+.desktop-mode-os-settings__upload-status {
+	font-size: 13px;
+	font-weight: 500;
+	color: #50575e;
+}
+
+.desktop-mode-os-settings__upload-error {
+	position: absolute;
+	inset-inline: 10px;
+	bottom: 10px;
+	padding: 6px 10px;
+	background: #d63638;
+	color: #fff;
+	border-radius: 4px;
+	font-size: 11px;
+	line-height: 1.3;
+	text-align: start;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/*
+ * `__upload-remove` renders as `<wpd-button variant="danger">`
+ * with component-owned styling. Only the positioning on the
+ * filled tile is caller-specific — stays here.
+ */
+.desktop-mode-os-settings__upload-remove {
+	position: absolute;
+	top: 8px;
+	inset-inline-end: 8px;
+}
+
+/* Tab strip moved into `<wpd-tabs>` + `<wpd-tab>`
+ * (src/ui/components/wpd-tabs/). Only the surrounding pane keeps
+ * a host-level rule — it's an OS-Settings layout choice, not
+ * component-intrinsic. */
+.desktop-mode-os-settings__tab-pane {
+	min-height: 140px;
+}
+
+/* ---------------------------------------------------------------
+ * Media Library picker.
+ *
+ * Toolbar (search + HD toggle), responsive thumbnail grid, footer
+ * with count + Load more button.
+ * --------------------------------------------------------------- */
+.desktop-mode-os-settings__library-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 10px;
+	flex-wrap: wrap;
+}
+
+.desktop-mode-os-settings__library-search {
+	flex: 1;
+	min-width: 180px;
+	padding: 6px 10px;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #fff;
+	font: inherit;
+	font-size: 12px;
+	color: #1d2327;
+}
+
+.desktop-mode-os-settings__library-search:focus {
+	border-color: var(--wp-admin-theme-color, #2271b1);
+	box-shadow: 0 0 0 1px var(--wp-admin-theme-color, #2271b1);
+	outline: none;
+}
+
+/* `__library-hd` now renders as `<wpd-checkbox-label>`. */
+
+.desktop-mode-os-settings__library-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+	gap: 8px;
+	min-height: 140px;
+}
+
+.desktop-mode-os-settings__library-tile {
+	position: relative;
+	aspect-ratio: 16 / 10;
+	padding: 0;
+	border: 2px solid transparent;
+	border-radius: 6px;
+	background-color: #eef0f1;
+	background-size: cover;
+	background-position: center;
+	background-repeat: no-repeat;
+	cursor: pointer;
+	overflow: hidden;
+	transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.desktop-mode-os-settings__library-tile:hover {
+	transform: translateY(-1px);
+	border-color: rgba(34, 113, 177, 0.4);
+}
+
+.desktop-mode-os-settings__library-tile:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+	outline-offset: 2px;
+}
+
+.desktop-mode-os-settings__library-tile--selected,
+.desktop-mode-os-settings__library-tile[aria-pressed="true"] {
+	border-color: var(--wp-admin-theme-color, #2271b1);
+	box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9) inset;
+}
+
+/* Dimension badge in the corner — readable over any thumbnail. */
+.desktop-mode-os-settings__library-tile-dims {
+	position: absolute;
+	bottom: 4px;
+	inset-inline-end: 4px;
+	padding: 2px 6px;
+	background: rgba(0, 0, 0, 0.6);
+	color: #fff;
+	font-size: 10px;
+	font-weight: 500;
+	line-height: 1.3;
+	border-radius: 3px;
+	letter-spacing: 0.02em;
+	font-variant-numeric: tabular-nums;
+	pointer-events: none;
+}
+
+/* Skeleton tiles during the first-page fetch. Animated subtle pulse
+ * so the user perceives progress without us needing a spinner. */
+.desktop-mode-os-settings__library-tile--skeleton {
+	cursor: default;
+	background: linear-gradient(
+		90deg,
+		#eef0f1 0%,
+		#dcdcde 50%,
+		#eef0f1 100%
+	);
+	background-size: 200% 100%;
+	animation: desktop-mode-library-shimmer 1.1s ease-in-out infinite;
+}
+
+.desktop-mode-os-settings__library-tile--skeleton:hover {
+	transform: none;
+	border-color: transparent;
+}
+
+@keyframes desktop-mode-library-shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+
+.desktop-mode-os-settings__library-empty,
+.desktop-mode-os-settings__library-error {
+	grid-column: 1 / -1;
+	margin: 0;
+	padding: 24px 16px;
+	text-align: center;
+	color: #646970;
+	font-size: 12px;
+}
+
+.desktop-mode-os-settings__library-error {
+	color: #b32d2e;
+}
+
+.desktop-mode-os-settings__library-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 10px;
+	gap: 10px;
+	min-height: 24px;
+}
+
+.desktop-mode-os-settings__library-meta {
+	color: #8c8f94;
+	font-size: 11px;
+}
+
+/* `__library-load-more` now renders as `<wpd-button variant="ghost">`. */
+
+/* ---------------------------------------------------------------
+ * Reduced-motion: collapse every OS-Settings animation/transition to
+ * near-zero so motion-sensitive users still get the layout changes
+ * (hover feedback, expanded editor, tile highlights) but without the
+ * glide. Kept as a single scoped block so the intent is readable at
+ * a glance rather than spread across each rule.
+ * --------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+	.desktop-mode-os-settings__editor-slot,
+	.desktop-mode-os-settings__upload-tile,
+	.desktop-mode-os-settings__library-tile,
+	wpd-swatch {
+		transition-duration: 0.01ms !important;
+	}
+
+	.desktop-mode-os-settings__library-tile--skeleton {
+		animation: none;
+	}
+}
+
+/* AI settings section — error and saving feedback */
+.desktop-mode-ai-settings__error {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: #d63638;
+}
+
+.desktop-mode-ai-settings__saving {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: #646970;
+	font-style: italic;
+}
+
+/* Extended options section — hint paragraph + error/saving states */
+.desktop-mode-ext__hint {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: #646970;
+	line-height: 1.5;
+}
+
+.desktop-mode-ext__error {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: #d63638;
+}
+
+.desktop-mode-ext__saving {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: #646970;
+	font-style: italic;
+}
+
+/*
+ * Help tab — developer-facing component reference. Two-column layout
+ * (nav + detail) on desktop, stacks naturally on narrow windows via
+ * the same container the OS Settings panel lives in.
+ */
+.desktop-mode-os-settings__help-count {
+	margin: 4px 0 0;
+	font-size: 12px;
+	color: #646970;
+}
+
+.desktop-mode-os-settings__help-layout {
+	display: grid;
+	grid-template-columns: 200px 1fr;
+	gap: 20px;
+}
+
+@container (max-width: 640px) {
+	.desktop-mode-os-settings__help-layout {
+		grid-template-columns: 1fr;
+	}
+}
+
+.desktop-mode-os-settings__help-nav {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	align-self: stretch;
+	overflow-y: auto;
+	padding: 4px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+}
+
+.desktop-mode-os-settings__help-nav-item {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	align-items: flex-start;
+	width: 100%;
+	padding: 6px 10px;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	text-align: start;
+	cursor: pointer;
+	font: inherit;
+	color: inherit;
+}
+
+.desktop-mode-os-settings__help-nav-item:hover {
+	background: #fff;
+	border-color: #dcdcde;
+}
+
+.desktop-mode-os-settings__help-nav-item.is-active {
+	background: #fff;
+	border-color: var( --wp-admin-theme-color, #2271b1 );
+}
+
+.desktop-mode-os-settings__help-nav-title {
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.desktop-mode-os-settings__help-nav-tag {
+	font-family: Menlo, Consolas, monospace;
+	font-size: 11px;
+	color: #646970;
+}
+
+.desktop-mode-os-settings__help-detail {
+	min-width: 0;
+	padding: 16px 18px 18px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+}
+
+.desktop-mode-os-settings__help-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+	margin: 0 0 8px;
+}
+
+.desktop-mode-os-settings__help-title {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.desktop-mode-os-settings__help-code {
+	font-family: Menlo, Consolas, monospace;
+	font-size: 12px;
+	color: #646970;
+}
+
+.desktop-mode-os-settings__help-badge {
+	padding: 1px 8px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	background: #e4e7eb;
+	color: #1d2327;
+}
+
+.desktop-mode-os-settings__help-badge.is-experimental {
+	background: #fcf9e8;
+	color: #996800;
+}
+
+.desktop-mode-os-settings__help-badge.is-planned {
+	background: #e1e8ff;
+	color: #123fb3;
+}
+
+.desktop-mode-os-settings__help-since {
+	font-size: 11px;
+	color: #646970;
+}
+
+.desktop-mode-os-settings__help-summary {
+	margin: 0 0 16px;
+	color: #1d2327;
+}
+
+.desktop-mode-os-settings__help-group {
+	margin: 0 0 16px;
+}
+
+.desktop-mode-os-settings__help-group h4 {
+	margin: 0 0 8px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #646970;
+}
+
+.desktop-mode-os-settings__help-example {
+	padding: 16px;
+	background: #fff;
+	border: 1px dashed #c3c4c7;
+	border-radius: 6px;
+}
+
+.desktop-mode-os-settings__help-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+
+.desktop-mode-os-settings__help-table th,
+.desktop-mode-os-settings__help-table td {
+	padding: 6px 8px;
+	border-bottom: 1px solid #dcdcde;
+	text-align: start;
+	vertical-align: top;
+}
+
+.desktop-mode-os-settings__help-table th {
+	font-weight: 600;
+	color: #646970;
+	background: #fff;
+}
+
+.desktop-mode-os-settings__help-table code,
+.desktop-mode-os-settings__help-list code {
+	font-family: Menlo, Consolas, monospace;
+	font-size: 11px;
+	padding: 1px 4px;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 3px;
+}
+
+.desktop-mode-os-settings__help-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.desktop-mode-os-settings__help-list li {
+	padding: 4px 0;
+	border-bottom: 1px solid #ececee;
+	font-size: 12px;
+}
+
+.desktop-mode-os-settings__help-list li:last-child {
+	border-bottom: 0;
+}
+
+.desktop-mode-os-settings__help-note {
+	margin: 12px 0 0;
+	padding: 10px 12px;
+	background: #fcf9e8;
+	border: 1px solid #f5e6a5;
+	border-radius: 6px;
+	font-size: 12px;
+	color: #996800;
+}
+
+/* ---------------------------------------------------------------
+ * Window-fit scrolling.
+ *
+ * Without this block the OS Settings panel grows past the native
+ * window's viewport and the whole body scrolls — fine for short tabs
+ * but actively wrong for the Components tab, where a 200px nav rail
+ * and a tall detail pane should each scroll inside their own column,
+ * not in lockstep down a giant single-column page.
+ *
+ * Strategy:
+ *   1. The native window body normally has overflow:auto. Override it
+ *      to `hidden` ONLY when the OS Settings root is mounted (via
+ *      :has()) so other native windows keep their default page-scroll.
+ *   2. Make the OS Settings root a flex column that fills the body.
+ *      The tab strip + footer hug the top/bottom; the active
+ *      tabpanel takes the remaining height.
+ *   3. Each tabpanel scrolls itself (overflow:auto) — replaces the
+ *      whole-body scroll, visually identical for the simple tabs
+ *      (Appearance, AI, Extended) but pins the reset footer.
+ *   4. The Components tab opts OUT of overflow:auto so its inner
+ *      grid (nav + detail) can scroll independently per pane.
+ *
+ * `:has()` is supported in every evergreen engine (Chrome 105+,
+ * Safari 15.4+, Firefox 121+); fine for an admin-context shell.
+ * --------------------------------------------------------------- */
+.desktop-mode-window__body--native:has( .desktop-mode-os-settings ) {
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.desktop-mode-os-settings {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/* The tab strip + footer must NOT shrink when the active panel
+   wants more height. Marking them flex-shrink:0 also keeps them
+   pinned visually as the panel below scrolls. */
+.desktop-mode-os-settings > wpd-tabs,
+.desktop-mode-os-settings > .desktop-mode-os-settings__footer {
+	flex: 0 0 auto;
+}
+
+.desktop-mode-os-settings > wpd-tabpanel {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+}
+
+/* Components tab — split-pane layout. Don't scroll the whole panel;
+   let the inner grid distribute height to nav + detail, each with
+   their own overflow.
+ *
+ * The `:not([hidden])` guard is load-bearing: a bare
+ * `wpd-tabpanel[for='help'] { display: flex }` rule has specificity
+ * (0,0,2,1) which outranks the shadow-DOM `:host([hidden]) {
+ * display: none }` rule (specificity 0,0,1,0), so the panel would
+ * keep rendering when it should be hidden — bleeding the Components
+ * UI into every other tab. Pinning the rule to the visible state
+ * leaves the hidden state to the shadow-DOM default. */
+.desktop-mode-os-settings > wpd-tabpanel[ for='help' ]:not( [ hidden ] ) {
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+.desktop-mode-os-settings
+	> wpd-tabpanel[ for='help' ]:not( [ hidden ] )
+	> wpd-panel {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.desktop-mode-os-settings__help {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+/* The intro card (Component library description) shouldn't grow —
+   it's content-sized so the grid below gets the remaining height. */
+.desktop-mode-os-settings__help > wpd-section {
+	flex: 0 0 auto;
+}
+.desktop-mode-os-settings__help-layout {
+	flex: 1;
+	min-height: 0;
+}
+
+/* Each split pane is its own scroll container. min-height:0 unlocks
+   shrinking in a grid item (default is `auto` which equals content
+   height — would defeat the overflow). max-height:100% pins the
+   pane to the grid track. */
+.desktop-mode-os-settings__help-nav,
+.desktop-mode-os-settings__help-detail {
+	min-height: 0;
+	max-height: 100%;
+	overflow-y: auto;
+}
+
+/*
+ * Features section — per-user opt-in toggles.
+ *
+ * Save status pill renders the live OS-settings save lifecycle
+ * (`pending` → `saving` → `saved` / `failed`) so toggling a
+ * per-user feature flag gets immediate, honest feedback instead
+ * of an optimistic flicker.
+ */
+.desktop-mode-features__status-row {
+	min-height: 22px;
+}
+
+/* One toggle + hint pair. Stacking these without separators reads as
+ * a wall of checkboxes; a hairline above each item (after the first)
+ * groups the label with its description and gives the eye a stopping
+ * point between unrelated settings. The first item sits flush so the
+ * section heading already serves as its top boundary. */
+.desktop-mode-features__item {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.desktop-mode-features__item + .desktop-mode-features__item {
+	margin-top: 16px;
+	padding-top: 16px;
+	border-top: 1px solid var( --wpd-border, rgba( 0, 0, 0, 0.08 ) );
+}
+
+/* "Reset what's-new dialogs" row — separates the action from the
+ * native-Posts toggle above and gives breathing room around the
+ * button. `align-items: flex-start` keeps the inline-flex
+ * `<wpd-button>` from stretching full-width inside the column,
+ * and the explicit margin on the button below works around the
+ * fact that flex `gap` doesn't always render visibly when one
+ * neighbour is an inline-flex custom element with zero outer
+ * margin. */
+.desktop-mode-features__row {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 12px;
+	margin-top: 20px;
+	padding-top: 20px;
+	border-top: 1px solid var( --wpd-border, rgba( 0, 0, 0, 0.08 ) );
+}
+
+.desktop-mode-features__row > wpd-button {
+	display: inline-flex;
+	margin-block: 4px 8px;
+}
+
+.desktop-mode-features__row > .desktop-mode-features__hint {
+	margin: 0;
+}
+
+.desktop-mode-features__hint {
+	margin: 0;
+	font-size: 12px;
+	color: var( --wpd-text-muted, #50575e );
+	line-height: 1.5;
+}
+
+.desktop-mode-features__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	font-weight: 500;
+	padding: 2px 10px;
+	border-radius: 999px;
+	white-space: nowrap;
+	transition: opacity 200ms ease;
+}
+
+.desktop-mode-features__status--saving {
+	background: var( --wpd-surface-elevated, #f0f0f1 );
+	color: var( --wpd-text-muted, #50575e );
+}
+
+.desktop-mode-features__status--saved {
+	background: rgba( 30, 132, 73, 0.12 );
+	color: #1d6f42;
+}
+
+.desktop-mode-features__status--saved .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+}
+
+.desktop-mode-features__status--failed {
+	background: rgba( 214, 54, 56, 0.12 );
+	color: #a02622;
+}
+
+.desktop-mode-features__status--failed .dashicons {
+	font-size: 14px;
+	width: 14px;
+	height: 14px;
+}
+
+.desktop-mode-features__status-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: currentColor;
+	animation: desktop-mode-features-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes desktop-mode-features-pulse {
+	0%, 100% { opacity: 0.35; transform: scale( 0.85 ); }
+	50%      { opacity: 1;    transform: scale( 1 ); }
+}
+
+/*
+ * OS Settings panel header — hosts the global tabs strip and a single
+ * `<wpd-save-status>` indicator that auto-listens to the save
+ * lifecycle. The save status sits on the trailing edge of the header
+ * so it's visible across every tab without competing with section
+ * content.
+ */
+.desktop-mode-os-settings__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 12px;
+}
+
+.desktop-mode-os-settings__header wpd-tabs {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.desktop-mode-os-settings__header wpd-save-status {
+	flex: 0 0 auto;
+	margin-inline-start: auto;
+}
+
+/*
+ * About tab — full-tabpanel PixiJS canvas. Every credit string and
+ * the AUTOMATTIC logotype (formed by particles) render inside Pixi
+ * itself; this stylesheet only sizes the host so the canvas fills
+ * the available height + width without any HTML chrome around it.
+ *
+ * The chain is: tabpanel → wpd-panel → .about (flex column) →
+ * .about-stage-host (the canvas mounts here). Each link sets
+ * `flex: 1; min-height: 0;` so the canvas inherits the tabpanel's
+ * full inner height instead of hugging an intrinsic minimum.
+ *
+ * @since 0.8.0
+ */
+.desktop-mode-os-settings
+	> wpd-tabpanel[ for='about' ]:not( [ hidden ] ) {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.desktop-mode-os-settings
+	> wpd-tabpanel[ for='about' ]:not( [ hidden ] )
+	> wpd-panel {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.desktop-mode-os-settings__about {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	/* Edge-to-edge — no border-radius / box-shadow framing — so the
+	 * canvas (and the logotype centred inside it) consume the entire
+	 * tabpanel surface. The gradient is just the colour-of-last-resort
+	 * underneath while Pixi initialises; once the canvas is rendering
+	 * it covers every pixel of this element anyway. */
+	background: linear-gradient( 180deg, #060a1c 0%, #0c1733 100% );
+	overflow: hidden;
+}
+
+.desktop-mode-os-settings__about-stage-host {
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+	overflow: hidden;
+	cursor: crosshair;
+}
+
+.desktop-mode-os-settings__about-stage-host canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+
+/* Apps & Icons section (since 0.25.0) — per-item placement chooser. */
+.desktop-mode-apps-icons__list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.desktop-mode-apps-icons__row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 4px;
+	border-bottom: 1px solid var( --desktop-mode-border, rgba( 0, 0, 0, 0.08 ) );
+}
+
+.desktop-mode-apps-icons__row:last-child {
+	border-bottom: 0;
+}
+
+.desktop-mode-apps-icons__identity {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: 1;
+	min-width: 0;
+}
+
+.desktop-mode-apps-icons__icon {
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.desktop-mode-apps-icons__icon.dashicons {
+	font-size: 20px;
+}
+
+.desktop-mode-apps-icons__title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.desktop-mode-apps-icons__row wpd-select {
+	min-width: 180px;
+}
