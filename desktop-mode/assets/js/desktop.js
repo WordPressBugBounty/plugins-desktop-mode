@@ -3998,7 +3998,7 @@ var desktopMode = function(exports) {
     body.appendChild(config ? createLoadingOverlay(config) : buildDefaultLoadingOverlay());
   }
   const FADE_OUT_MS$1 = 250;
-  let _installed$2 = false;
+  let _installed$3 = false;
   function findWindowElement(windowId) {
     if (!windowId) {
       return null;
@@ -4006,10 +4006,10 @@ var desktopMode = function(exports) {
     return document.getElementById(`wp-window-${windowId}`);
   }
   function installWindowLoadingTransitions() {
-    if (_installed$2) {
+    if (_installed$3) {
       return;
     }
-    _installed$2 = true;
+    _installed$3 = true;
     _installSubscriptions();
   }
   function _installSubscriptions() {
@@ -7845,10 +7845,15 @@ var desktopMode = function(exports) {
       if (tryOpenExternalUrl(item.url)) {
         return;
       }
+      const openNewWindow = window.wp?.desktop?.openNewWindow;
+      if (item.windowId && !item.url) {
+        if (openNewWindow?.(item.windowId, { source: "dock-peek" })) {
+          return;
+        }
+      }
       const remappedId = resolveNativeUrlRemap(item.url);
       if (remappedId) {
-        const api = window.wp?.desktop;
-        if (api?.openNewWindow?.(remappedId, { source: "dock-peek" })) {
+        if (openNewWindow?.(remappedId, { source: "dock-peek" })) {
           return;
         }
       }
@@ -14100,7 +14105,7 @@ var desktopMode = function(exports) {
     console.warn(LOG_PREFIX, ...args);
   }
   const TARGET_ID = "desktop-mode-recycle-bin";
-  const HEARTBEAT_FIELD = "desktop_mode_recycle_bin_seen_ts";
+  const HEARTBEAT_FIELD$1 = "desktop_mode_recycle_bin_seen_ts";
   function getDesktopApi() {
     return window.wp?.desktop;
   }
@@ -14270,7 +14275,7 @@ var desktopMode = function(exports) {
     $(document).on("heartbeat-send", (...args) => {
       const data = args[1];
       if (data) {
-        data[HEARTBEAT_FIELD] = store$3.state.seenTs;
+        data[HEARTBEAT_FIELD$1] = store$3.state.seenTs;
       }
     });
     $(document).on("heartbeat-tick", (...args) => {
@@ -15090,7 +15095,7 @@ var desktopMode = function(exports) {
         }
         const msg = e.data;
         if (isStart(msg)) {
-          this._startDrag(msg.payload, e.source ?? null);
+          this._startDrag(msg.payload);
           return;
         }
         if (isEnd(msg)) {
@@ -15116,7 +15121,16 @@ var desktopMode = function(exports) {
     isDragging() {
       return this._payload !== null;
     }
-    _startDrag(payload, _source) {
+    start(payload) {
+      if (this._payload === payload) {
+        return;
+      }
+      this._startDrag(payload);
+    }
+    end() {
+      this._endDrag();
+    }
+    _startDrag(payload) {
       this._payload = payload;
       document.dispatchEvent(
         new CustomEvent(DRAG_BRIDGE_EVENTS.START, { detail: { payload } })
@@ -15361,12 +15375,12 @@ var desktopMode = function(exports) {
   function defaultOffsetY(source) {
     return source.offsetHeight / 2;
   }
-  let _installed$1 = false;
+  let _installed$2 = false;
   function installRecovery(cancelActive) {
-    if (_installed$1) {
+    if (_installed$2) {
       return;
     }
-    _installed$1 = true;
+    _installed$2 = true;
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         cancelActive("escape");
@@ -15717,6 +15731,174 @@ var desktopMode = function(exports) {
       el.removeAttribute(FILES_DROP_ACTIVE_ATTR);
     }
   }
+  const TARGET_ID_PREFIX = "desktop-mode-iframe-drop-";
+  const IFRAME_SELECTOR = "iframe.desktop-mode-window__iframe";
+  const DROP_ACTIVE_ATTR = "data-desktop-mode-iframe-drop-active";
+  let _installed$1 = false;
+  let _dragManager = null;
+  const _suppressedIframes = /* @__PURE__ */ new Map();
+  const _activeRegistrations = /* @__PURE__ */ new Map();
+  function extractBridgePayload(payload) {
+    if (!payload || typeof payload !== "object") {
+      return void 0;
+    }
+    const obj = payload;
+    if (obj.type !== "shortcut" && obj.type !== "desktop-file") {
+      return void 0;
+    }
+    const data = obj.data;
+    return data?.bridgePayload;
+  }
+  function postIntoIframe(iframe, msg) {
+    const w = iframe.contentWindow;
+    if (!w) {
+      return;
+    }
+    try {
+      w.postMessage(msg, window.location.origin);
+    } catch {
+    }
+  }
+  function registerDropTargetFor(dragManager, iframe, target, windowId) {
+    return dragManager.registerDropTarget({
+      id: `${TARGET_ID_PREFIX}${windowId}`,
+      element: target,
+      accept: (payload) => !!extractBridgePayload(payload),
+      onEnter: (session) => {
+        const bridge = extractBridgePayload(session.payload);
+        if (!bridge) {
+          return;
+        }
+        target.setAttribute(DROP_ACTIVE_ATTR, "");
+        postIntoIframe(iframe, {
+          type: "desktop-mode-drag-over",
+          payload: bridge
+        });
+      },
+      onLeave: () => {
+        target.removeAttribute(DROP_ACTIVE_ATTR);
+        postIntoIframe(iframe, { type: "desktop-mode-drag-leave" });
+      },
+      onDrop: (session, ev) => {
+        target.removeAttribute(DROP_ACTIVE_ATTR);
+        const bridge = extractBridgePayload(session.payload);
+        if (!bridge) {
+          return;
+        }
+        const rect = iframe.getBoundingClientRect();
+        postIntoIframe(iframe, {
+          type: "desktop-mode-drop",
+          payload: bridge,
+          position: {
+            x: ev.clientX - rect.left,
+            y: ev.clientY - rect.top
+          }
+        });
+      }
+    });
+  }
+  function deriveWindowIdFromIframe(iframe) {
+    let cur = iframe.parentElement;
+    while (cur) {
+      if (cur.id.startsWith("wp-window-")) {
+        return cur.id.slice("wp-window-".length);
+      }
+      cur = cur.parentElement;
+    }
+    return `unknown-${Math.random().toString(36).slice(2, 10)}`;
+  }
+  function onDragStart(payload) {
+    const dragManager = _dragManager;
+    if (!dragManager) {
+      return;
+    }
+    const iframes = document.querySelectorAll(IFRAME_SELECTOR);
+    const isBridgeable = !!extractBridgePayload(payload);
+    console.info(
+      "[desktop-mode] drag-start: suppressing %d iframe(s); bridgeable=%s",
+      iframes.length,
+      isBridgeable,
+      payload
+    );
+    iframes.forEach((iframe) => {
+      if (_suppressedIframes.has(iframe)) {
+        return;
+      }
+      _suppressedIframes.set(iframe, iframe.style.pointerEvents);
+      iframe.style.pointerEvents = "none";
+      if (!isBridgeable) {
+        return;
+      }
+      const dropTargetEl = iframe.parentElement;
+      if (!dropTargetEl) {
+        return;
+      }
+      const windowId = deriveWindowIdFromIframe(iframe);
+      const deregister = registerDropTargetFor(
+        dragManager,
+        iframe,
+        dropTargetEl,
+        windowId
+      );
+      _activeRegistrations.set(iframe, deregister);
+    });
+  }
+  function onDragEnd() {
+    _suppressedIframes.forEach((prev, iframe) => {
+      iframe.style.pointerEvents = prev;
+    });
+    _suppressedIframes.clear();
+    _activeRegistrations.forEach((deregister) => {
+      try {
+        deregister();
+      } catch {
+      }
+    });
+    _activeRegistrations.clear();
+  }
+  function installIframeDropTargets(dragManager) {
+    if (_installed$1) {
+      return;
+    }
+    _installed$1 = true;
+    _dragManager = dragManager;
+    document.addEventListener(DRAG_EVENTS.START, (e) => {
+      const detail = e.detail;
+      onDragStart(detail?.payload);
+    });
+    document.addEventListener(DRAG_EVENTS.END, () => {
+      onDragEnd();
+    });
+    addAction(
+      HOOKS.WINDOW_CLOSED,
+      "desktop-mode/drag/iframe-drop-targets-window-close",
+      () => {
+        for (const [iframe] of Array.from(_suppressedIframes)) {
+          if (!iframe.isConnected) {
+            _suppressedIframes.delete(iframe);
+          }
+        }
+        for (const [iframe, deregister] of Array.from(_activeRegistrations)) {
+          if (!iframe.isConnected) {
+            try {
+              deregister();
+            } catch {
+            }
+            _activeRegistrations.delete(iframe);
+          }
+        }
+      }
+    );
+    window.__desktopModeIframeDropDebug = () => ({
+      installed: _installed$1,
+      iframesInDom: document.querySelectorAll(IFRAME_SELECTOR).length,
+      suppressedCount: _suppressedIframes.size,
+      registeredCount: _activeRegistrations.size,
+      suppressedIframeIds: Array.from(_suppressedIframes.keys()).map(
+        deriveWindowIdFromIframe
+      )
+    });
+  }
   function collectOpenables() {
     const desktop = window.wp?.desktop;
     if (!desktop) {
@@ -15926,7 +16108,7 @@ var desktopMode = function(exports) {
   }
   const suppliers = /* @__PURE__ */ new Map();
   const subscribers = /* @__PURE__ */ new Map();
-  let booted$1 = false;
+  let booted$2 = false;
   const heartbeat = {
     contribute(field, supplier) {
       suppliers.set(field, supplier);
@@ -15949,10 +16131,10 @@ var desktopMode = function(exports) {
     }
   };
   function bootHeartbeatBus() {
-    if (booted$1) {
+    if (booted$2) {
       return;
     }
-    booted$1 = true;
+    booted$2 = true;
     const $ = window.jQuery;
     if (!$) {
       console.warn(
@@ -16005,7 +16187,7 @@ var desktopMode = function(exports) {
   );
   const ACTIVE_THRESHOLD_MS = 5 * 60 * 1e3;
   let lastInputMs = Date.now();
-  let booted = false;
+  let booted$1 = false;
   function noteUserActivity() {
     lastInputMs = Date.now();
   }
@@ -16062,10 +16244,10 @@ var desktopMode = function(exports) {
     });
   }
   function bootPresenceProbe() {
-    if (booted) {
+    if (booted$1) {
       return;
     }
-    booted = true;
+    booted$1 = true;
     document.addEventListener("pointerdown", noteUserActivity, {
       capture: true,
       passive: true
@@ -16163,6 +16345,98 @@ var desktopMode = function(exports) {
     markActive,
     applyBatch: applyPresenceBatch
   });
+  const HEARTBEAT_FIELD = "desktop_mode_nonces";
+  const targets = /* @__PURE__ */ new Map();
+  let booted = false;
+  function registerNonceTarget(action, updater) {
+    if (typeof action !== "string" || action === "") {
+      return () => {
+      };
+    }
+    let set = targets.get(action);
+    if (!set) {
+      set = /* @__PURE__ */ new Set();
+      targets.set(action, set);
+    }
+    set.add(updater);
+    return () => {
+      set.delete(updater);
+    };
+  }
+  function bootNonceRefresh() {
+    if (booted) {
+      return;
+    }
+    booted = true;
+    heartbeat.subscribe(HEARTBEAT_FIELD, (payload) => {
+      if (!payload || typeof payload !== "object") {
+        return;
+      }
+      for (const [action, value] of Object.entries(payload)) {
+        if (typeof value !== "string" || value === "") {
+          continue;
+        }
+        const set = targets.get(action);
+        if (!set) {
+          continue;
+        }
+        for (const updater of set) {
+          try {
+            updater(value);
+          } catch (err) {
+            console.error(
+              `[desktop-mode/nonce-refresh] updater for "${action}" threw:`,
+              err
+            );
+          }
+        }
+      }
+    });
+    registerShellAndPluginsWindowTargets();
+  }
+  function registerShellAndPluginsWindowTargets() {
+    registerNonceTarget("wp_rest", updateAllRestNonces);
+    registerNonceTarget("desktop-mode-plugins", (fresh) => {
+      writeWindowConfigField("desktop-mode-plugins", "ajaxNonce", fresh);
+    });
+    registerNonceTarget("updates", (fresh) => {
+      writeWindowConfigField("desktop-mode-plugins", "updatesNonce", fresh);
+    });
+  }
+  function updateAllRestNonces(fresh) {
+    const cfg = readShellConfig();
+    if (cfg && typeof cfg.restNonce === "string") {
+      cfg.restNonce = fresh;
+    }
+    const windowConfigs = readWindowConfigs();
+    if (!windowConfigs) {
+      return;
+    }
+    for (const blob of Object.values(windowConfigs)) {
+      if (blob && typeof blob === "object" && typeof blob.restNonce === "string") {
+        blob.restNonce = fresh;
+      }
+    }
+  }
+  function writeWindowConfigField(windowId, field, value) {
+    const blobs = readWindowConfigs();
+    const blob = blobs?.[windowId];
+    if (blob && typeof blob === "object") {
+      blob[field] = value;
+    }
+  }
+  function readShellConfig() {
+    if (typeof window === "undefined") {
+      return void 0;
+    }
+    return window.desktopModeConfig;
+  }
+  function readWindowConfigs() {
+    if (typeof window === "undefined") {
+      return void 0;
+    }
+    return window.desktopModeWindowConfig;
+  }
   const VIEWPORT_CLAMP_MARGIN = 12;
   function findDockEntryForUrl(url, config) {
     const windowId = deriveWindowId(url, config.adminUrl);
@@ -19653,6 +19927,47 @@ var desktopMode = function(exports) {
     }
     return trashPlacementWithUndo(placement);
   }
+  function buildBridgePayloadFromPlacement(placement) {
+    const file = placement.file;
+    if (!file) {
+      return void 0;
+    }
+    const id = parseInt(String(file.ref ?? ""), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return void 0;
+    }
+    const title = String(file.title ?? "");
+    if (file.type === "attachment") {
+      const url = String(file.sourceUrl ?? file.previewUrl ?? "");
+      return {
+        kind: "attachment",
+        id,
+        url,
+        title,
+        alt: String(file.alt ?? ""),
+        mime: String(file.mime ?? ""),
+        thumbnailUrl: file.previewUrl ? String(file.previewUrl) : void 0
+      };
+    }
+    if (file.type === "post") {
+      return {
+        kind: "post",
+        id,
+        postType: String(file.postType ?? "post"),
+        url: String(file.link ?? ""),
+        title
+      };
+    }
+    if (file.type === "user") {
+      return {
+        kind: "user",
+        id,
+        url: String(file.link ?? ""),
+        title
+      };
+    }
+    return void 0;
+  }
   function getDragManager() {
     const api = window.wp?.desktop?.dragManager;
     return api ?? null;
@@ -20509,7 +20824,15 @@ var desktopMode = function(exports) {
           source: tile2,
           data: {
             placement: livePlacement,
-            sourceFolderId: folderId
+            sourceFolderId: folderId,
+            // Synthesize a cross-frame bridge payload from the
+            // placement's file shape so a wallpaper-placed
+            // shortcut can be dropped into an open Gutenberg
+            // iframe and inserted as the matching block. The
+            // PHP serialize() methods (`Desktop_Mode_Post_File`,
+            // `Desktop_Mode_User_File`, `Desktop_Mode_Attachment_File`)
+            // surface the URL fields this needs.
+            bridgePayload: buildBridgePayloadFromPlacement(livePlacement)
           },
           ghost: {
             offsetX: e.clientX - tile2.getBoundingClientRect().left,
@@ -24925,6 +25248,36 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     );
     const dragBridge = new DragBridge();
     const dragManager = new DragManager();
+    document.addEventListener(DRAG_EVENTS.START, (e) => {
+      const detail = e.detail;
+      const payload = detail?.payload;
+      if (!payload) {
+        return;
+      }
+      if (payload.type !== "shortcut" && payload.type !== "desktop-file") {
+        return;
+      }
+      const bridgePayload = payload.data?.bridgePayload;
+      if (bridgePayload) {
+        dragBridge.start(bridgePayload);
+      }
+    });
+    document.addEventListener(DRAG_EVENTS.END, () => {
+      dragBridge.end();
+    });
+    installIframeDropTargets(dragManager);
+    window.addEventListener("message", (e) => {
+      if (e.origin !== window.location.origin) {
+        return;
+      }
+      const data = e.data;
+      if (!data || data.type !== "desktop-mode-drop-failed") {
+        return;
+      }
+      showToast({
+        message: "Could not insert into the editor."
+      });
+    });
     registerPalette({
       id: "desktop-mode-ai-assistant",
       label: "AI Assistant",
@@ -25457,6 +25810,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     installPublicApi(desktopApi);
     installRecycleBinDropTargets(dragManager);
     bootHeartbeatBus();
+    bootNonceRefresh();
     installOpenDeps({
       openUrl: ({ id, url, title, icon }) => {
         if (tryNativeUrlRemap(url)) {
@@ -26019,6 +26373,10 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       if (!dragHasFiles(ev)) {
         return;
       }
+      if (ev.defaultPrevented) {
+        resetOverlay();
+        return;
+      }
       ev.preventDefault();
       if (ev.dataTransfer) {
         ev.dataTransfer.dropEffect = "copy";
@@ -26035,6 +26393,10 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       if (!dragHasFiles(ev)) {
         return;
       }
+      if (ev.defaultPrevented) {
+        resetOverlay();
+        return;
+      }
       ev.preventDefault();
       resetOverlay();
       const files = ev.dataTransfer?.files ? Array.from(ev.dataTransfer.files) : [];
@@ -26044,7 +26406,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       const ctx = classifyDropTarget(ev);
       void handleFiles(files, ctx, opts);
     };
-    const onDragEnd = () => resetOverlay();
+    const onDragEnd2 = () => resetOverlay();
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         resetOverlay();
@@ -26083,9 +26445,9 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("dragleave", onDragLeave);
     window.addEventListener("drop", onDrop);
-    window.addEventListener("dragend", onDragEnd);
+    window.addEventListener("dragend", onDragEnd2);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("blur", onDragEnd);
+    window.addEventListener("blur", onDragEnd2);
     window.addEventListener("message", onIframeMessage);
     const manager = {
       dispose: () => {
@@ -26093,12 +26455,12 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         window.removeEventListener("dragover", onDragOver);
         window.removeEventListener("dragleave", onDragLeave);
         window.removeEventListener("drop", onDrop);
-        window.removeEventListener("dragend", onDragEnd);
+        window.removeEventListener("dragend", onDragEnd2);
         document.removeEventListener(
           "visibilitychange",
           onVisibilityChange
         );
-        window.removeEventListener("blur", onDragEnd);
+        window.removeEventListener("blur", onDragEnd2);
         window.removeEventListener("message", onIframeMessage);
         overlayEl.remove();
         delete window.__desktopModeOsFileDropMounted;

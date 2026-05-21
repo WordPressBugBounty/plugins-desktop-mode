@@ -109,7 +109,7 @@ var desktopModePostsWindow = function(exports) {
           const canvas = document.createElement("canvas");
           canvas.width = 1;
           canvas.height = 1;
-          const ctx = canvas.getContext("2d");
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
           if (!ctx) {
             resolve(raw);
             return;
@@ -4403,7 +4403,7 @@ var desktopModePostsWindow = function(exports) {
       _readbackCanvas.width = 1;
       _readbackCanvas.height = 1;
     }
-    const ctx = _readbackCanvas.getContext("2d");
+    const ctx = _readbackCanvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) {
       return "#1d2327";
     }
@@ -17370,7 +17370,7 @@ var desktopModePostsWindow = function(exports) {
         el.textContent = seg.label;
         statusHost.appendChild(el);
       }
-      statusHost.addEventListener("wpd-segmented-change", (e) => {
+      statusHost.addEventListener("wpd-pick", (e) => {
         const detail = e.detail;
         view.status = detail?.value ?? "";
         view.page = 1;

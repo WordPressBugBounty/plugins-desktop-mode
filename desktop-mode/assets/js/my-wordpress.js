@@ -1550,7 +1550,8 @@
             kind: payload.kind,
             ref: payload.ref,
             title: payload.title,
-            icon: payload.icon
+            icon: payload.icon,
+            bridgePayload: payload.bridgePayload
           },
           ghost: {
             offsetX: e.clientX - rect.left,
@@ -1595,6 +1596,82 @@
       return renderers.get("post");
     }
     return renderers.get(kind);
+  }
+  const DEBOUNCE_MS = 300;
+  function renderListToolbar(options) {
+    const host = document.createElement("div");
+    host.className = "desktop-mode-my-wordpress__list-toolbar";
+    const search = document.createElement("div");
+    search.className = "desktop-mode-my-wordpress__list-toolbar-search";
+    const input = document.createElement("input");
+    input.type = "search";
+    input.className = "desktop-mode-my-wordpress__list-toolbar-search-input";
+    input.placeholder = options.placeholder ?? __("Search…", "desktop-mode");
+    input.setAttribute(
+      "aria-label",
+      options.ariaLabel ?? options.placeholder ?? __("Search", "desktop-mode")
+    );
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    if (options.initialValue) {
+      input.value = options.initialValue;
+    }
+    search.appendChild(input);
+    host.appendChild(search);
+    let debounceId = null;
+    let lastEmitted = options.initialValue ?? "";
+    const emit = (raw) => {
+      const normalized = raw.trim();
+      if (normalized === lastEmitted) {
+        return;
+      }
+      lastEmitted = normalized;
+      options.onSearchChange(normalized);
+    };
+    const onInput = () => {
+      if (debounceId !== null) {
+        clearTimeout(debounceId);
+      }
+      debounceId = setTimeout(() => {
+        debounceId = null;
+        emit(input.value);
+      }, DEBOUNCE_MS);
+    };
+    input.addEventListener("input", onInput);
+    const onSearchEvent = () => {
+      if (input.value === "") {
+        if (debounceId !== null) {
+          clearTimeout(debounceId);
+          debounceId = null;
+        }
+        emit("");
+      }
+    };
+    input.addEventListener("search", onSearchEvent);
+    const onKeydown = (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        if (debounceId !== null) {
+          clearTimeout(debounceId);
+          debounceId = null;
+        }
+        emit(input.value);
+      }
+    };
+    input.addEventListener("keydown", onKeydown);
+    return {
+      host,
+      getQuery: () => lastEmitted,
+      destroy: () => {
+        if (debounceId !== null) {
+          clearTimeout(debounceId);
+          debounceId = null;
+        }
+        input.removeEventListener("input", onInput);
+        input.removeEventListener("search", onSearchEvent);
+        input.removeEventListener("keydown", onKeydown);
+      }
+    };
   }
   const FILE_DROP_HOOKS = {
     /**
@@ -1993,13 +2070,17 @@
     );
     url.searchParams.set("_embed", "wp:featuredmedia");
     url.searchParams.set("status", "publish,future,draft,pending,private");
+    if (params.search) {
+      url.searchParams.set("search", params.search);
+    }
     const response = await shellFetch$1(url.toString(), {
       method: "GET",
       credentials: "same-origin",
       headers: {
         "X-WP-Nonce": cfg.restNonce,
         Accept: "application/json"
-      }
+      },
+      signal: params.signal
     });
     if (!response.ok) {
       throw new Error(
@@ -2119,6 +2200,9 @@
       } else {
         url.searchParams.set("who", "authors");
       }
+      if (params.search) {
+        url.searchParams.set("search", params.search);
+      }
       return url.toString();
     };
     const send = (target) => shellFetch$1(target, {
@@ -2127,7 +2211,8 @@
       headers: {
         "X-WP-Nonce": cfg.restNonce,
         Accept: "application/json"
-      }
+      },
+      signal: params.signal
     });
     let response = await send(buildRequestUrl("edit"));
     if (response.status === 403) {
@@ -2277,13 +2362,17 @@
     url.searchParams.set("orderby", "date");
     url.searchParams.set("order", "desc");
     url.searchParams.set("status", "inherit");
+    if (params.search) {
+      url.searchParams.set("search", params.search);
+    }
     const response = await shellFetch(url.toString(), {
       method: "GET",
       credentials: "same-origin",
       headers: {
         "X-WP-Nonce": cfg.restNonce,
         Accept: "application/json"
-      }
+      },
+      signal: params.signal
     });
     if (!response.ok) {
       throw new Error(
@@ -2642,6 +2731,7 @@
     }
     host.appendChild(pane);
   }
+  const lastQueryByMediaEntity = /* @__PURE__ */ new Map();
   function describeCount(ctx) {
     if (ctx.total === 0 && ctx.loaded === 0) {
       return __("No media yet.", "desktop-mode");
@@ -2715,7 +2805,23 @@
       kind: "attachment",
       ref: String(media.id),
       title: titleText,
-      icon: dashiconForMime(media.mime_type)
+      icon: dashiconForMime(media.mime_type),
+      // Cross-frame bridge payload — lets the Gutenberg drop-
+      // receiver build a `core/image` / `core/video` / `core/audio`
+      // / `core/file` block when this tile is dropped on an open
+      // editor iframe. The full-size source URL is the right block
+      // attribute regardless of mime; the receiver picks the
+      // concrete block from the MIME prefix.
+      bridgePayload: {
+        kind: "attachment",
+        id: media.id,
+        url: media.source_url,
+        title: titleText,
+        alt: stripTags(media.alt_text ?? ""),
+        mime: media.mime_type,
+        thumbnailUrl: thumbUrl || void 0,
+        sizes: media.media_details?.sizes
+      }
     });
     tile.addEventListener("click", () => selectTile$1(ctx, tile, media));
     tile.addEventListener("dblclick", (e) => {
@@ -2930,6 +3036,18 @@
   }
   function renderMediaList(host, entity) {
     const cfg = getConfig();
+    const initialQuery = lastQueryByMediaEntity.get(entity.id) ?? "";
+    const toolbar = renderListToolbar({
+      placeholder: __("Search media…", "desktop-mode"),
+      ariaLabel: __("Search media", "desktop-mode"),
+      initialValue: initialQuery,
+      onSearchChange: (q) => {
+        lastQueryByMediaEntity.set(entity.id, q);
+        void resetForSearch(q);
+      }
+    });
+    host.body.appendChild(toolbar.host);
+    host.addTeardown(() => toolbar.destroy());
     const split = document.createElement("div");
     split.className = "desktop-mode-my-wordpress__split desktop-mode-my-wordpress__split--media";
     const left = document.createElement("div");
@@ -2971,8 +3089,11 @@
       statusBar,
       entity,
       host,
-      previewActions: cfg.previewActions ?? []
+      previewActions: cfg.previewActions ?? [],
+      query: initialQuery,
+      abort: null
     };
+    host.addTeardown(() => ctx.abort?.abort());
     const sentinelIsVisible = () => {
       const sr = sentinel.getBoundingClientRect();
       const rr = left.getBoundingClientRect();
@@ -2986,16 +3107,31 @@
       ctx.loading = true;
       const nextPage = ctx.page + 1;
       const perPage = cfg.mediaPerPage ?? 48;
+      const queryAtFetchTime = ctx.query;
+      const controller = new AbortController();
+      ctx.abort = controller;
       try {
         const result = await fetchMediaPage(entity, {
           page: nextPage,
-          perPage
+          perPage,
+          search: queryAtFetchTime || void 0,
+          signal: controller.signal
         });
+        if (ctx.query !== queryAtFetchTime) {
+          return;
+        }
         ctx.page = nextPage;
         ctx.totalPages = result.totalPages;
         ctx.total = result.total;
         if (result.items.length === 0 && nextPage === 1) {
-          renderEmpty(tiles, __("No media yet.", "desktop-mode"));
+          renderEmpty(
+            tiles,
+            queryAtFetchTime ? sprintf(
+              // translators: %s is the user-entered search query.
+              __('No media match "%s".', "desktop-mode"),
+              queryAtFetchTime
+            ) : __("No media yet.", "desktop-mode")
+          );
           ctx.done = true;
           paintStatus$2(ctx);
           return;
@@ -3009,11 +3145,99 @@
         }
         paintStatus$2(ctx);
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         const message = err instanceof Error ? err.message : __("Unknown error.", "desktop-mode");
         renderEmpty(tiles, message);
         ctx.done = true;
       } finally {
         ctx.loading = false;
+        if (ctx.abort === controller) {
+          ctx.abort = null;
+        }
+      }
+      if (!ctx.done) {
+        requestAnimationFrame(() => {
+          if (sentinelIsVisible()) {
+            void loadMore();
+          }
+        });
+      }
+    };
+    const resetForSearch = async (q) => {
+      ctx.abort?.abort();
+      ctx.abort = null;
+      ctx.query = q;
+      tiles.classList.add(
+        "desktop-mode-my-wordpress__media-grid--searching"
+      );
+      const controller = new AbortController();
+      ctx.abort = controller;
+      ctx.loading = true;
+      const perPage = cfg.mediaPerPage ?? 48;
+      try {
+        const result = await fetchMediaPage(entity, {
+          page: 1,
+          perPage,
+          search: q || void 0,
+          signal: controller.signal
+        });
+        if (ctx.query !== q) {
+          return;
+        }
+        tiles.replaceChildren();
+        tiles.classList.remove(
+          "desktop-mode-my-wordpress__media-grid--searching"
+        );
+        ctx.page = 1;
+        ctx.totalPages = result.totalPages;
+        ctx.total = result.total;
+        ctx.loaded = 0;
+        ctx.done = ctx.page >= ctx.totalPages;
+        ctx.selectedId = null;
+        ctx.selectedTile = null;
+        ctx.preview.replaceChildren();
+        const emptyPreview = document.createElement("div");
+        emptyPreview.className = "desktop-mode-my-wordpress__preview-empty";
+        emptyPreview.textContent = __(
+          "Select a media item to preview it here.",
+          "desktop-mode"
+        );
+        ctx.preview.appendChild(emptyPreview);
+        if (result.items.length === 0) {
+          renderEmpty(
+            tiles,
+            q ? sprintf(
+              // translators: %s is the user-entered search query.
+              __('No media match "%s".', "desktop-mode"),
+              q
+            ) : __("No media yet.", "desktop-mode")
+          );
+          ctx.done = true;
+        } else {
+          for (const item of result.items) {
+            tiles.appendChild(buildMediaTile(ctx, item));
+            ctx.loaded += 1;
+          }
+        }
+        paintStatus$2(ctx);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        tiles.classList.remove(
+          "desktop-mode-my-wordpress__media-grid--searching"
+        );
+        tiles.replaceChildren();
+        const message = err instanceof Error ? err.message : __("Unknown error.", "desktop-mode");
+        renderEmpty(tiles, message);
+        ctx.done = true;
+      } finally {
+        ctx.loading = false;
+        if (ctx.abort === controller) {
+          ctx.abort = null;
+        }
       }
       if (!ctx.done) {
         requestAnimationFrame(() => {
@@ -4275,8 +4499,29 @@
     empty.textContent = message;
     state.body.appendChild(empty);
   }
+  const lastQueryByEntity = /* @__PURE__ */ new Map();
   function renderEntityList(state, entity) {
     const cfg = getConfig();
+    const initialQuery = lastQueryByEntity.get(entity.id) ?? "";
+    const toolbar = renderListToolbar({
+      placeholder: sprintf(
+        // translators: %s is a lowercased entity-type label (e.g. "posts", "pages").
+        __("Search %s…", "desktop-mode"),
+        entity.label.toLowerCase()
+      ),
+      ariaLabel: sprintf(
+        // translators: %s is an entity-type label (e.g. "Posts", "Pages").
+        __("Search %s", "desktop-mode"),
+        entity.label
+      ),
+      initialValue: initialQuery,
+      onSearchChange: (q) => {
+        lastQueryByEntity.set(entity.id, q);
+        void resetForSearch(q);
+      }
+    });
+    state.body.appendChild(toolbar.host);
+    state.teardown.push(() => toolbar.destroy());
     const split = document.createElement("div");
     split.className = "desktop-mode-my-wordpress__split";
     const left = document.createElement("div");
@@ -4320,9 +4565,12 @@
       selectedId: null,
       selectedTile: null,
       observer: null,
-      layout: tileLayout
+      layout: tileLayout,
+      query: initialQuery,
+      abort: null
     };
     state.teardown.push(() => tileLayout.dispose());
+    state.teardown.push(() => ctx.abort?.abort());
     const repaintListStatus = () => {
       let itemLabel;
       if (ctx.total === 0 && ctx.loaded === 0) {
@@ -4376,18 +4624,26 @@
       ctx.loading = true;
       const nextPage = ctx.page + 1;
       const isFirst = nextPage === 1;
+      const queryAtFetchTime = ctx.query;
       showLoadingSkeleton(tiles, ctx.layout, isFirst);
+      const controller = new AbortController();
+      ctx.abort = controller;
       try {
         const result = await fetchEntityList(entity, {
           page: nextPage,
-          perPage: cfg.perPage
+          perPage: cfg.perPage,
+          search: queryAtFetchTime || void 0,
+          signal: controller.signal
         });
+        if (ctx.query !== queryAtFetchTime) {
+          return;
+        }
         ctx.page = nextPage;
         ctx.totalPages = result.totalPages;
         ctx.total = result.total;
         hideLoadingSkeleton(tiles);
         if (result.items.length === 0 && isFirst) {
-          renderListEmpty(tiles, entity);
+          renderListEmpty(tiles, entity, queryAtFetchTime);
           ctx.done = true;
           repaintListStatus();
           return;
@@ -4401,12 +4657,97 @@
         }
         repaintListStatus();
       } catch (err) {
+        if (isAbortError(err)) {
+          return;
+        }
         hideLoadingSkeleton(tiles);
         const msg = err instanceof Error ? err.message : __("Unknown error.", "desktop-mode");
         renderListError(tiles, msg);
         ctx.done = true;
       } finally {
         ctx.loading = false;
+        if (ctx.abort === controller) {
+          ctx.abort = null;
+        }
+      }
+      if (!ctx.done) {
+        requestAnimationFrame(() => {
+          if (sentinelIsVisible()) {
+            void loadMore();
+          }
+        });
+      }
+    };
+    const resetForSearch = async (q) => {
+      ctx.abort?.abort();
+      ctx.abort = null;
+      ctx.query = q;
+      tiles.classList.add(
+        "desktop-mode-my-wordpress__tiles--searching"
+      );
+      hideLoadingSkeleton(tiles);
+      const controller = new AbortController();
+      ctx.abort = controller;
+      ctx.loading = true;
+      try {
+        const result = await fetchEntityList(entity, {
+          page: 1,
+          perPage: cfg.perPage,
+          search: q || void 0,
+          signal: controller.signal
+        });
+        if (ctx.query !== q) {
+          return;
+        }
+        tiles.replaceChildren();
+        ctx.layout.clear();
+        tiles.classList.remove(
+          "desktop-mode-my-wordpress__tiles--searching"
+        );
+        ctx.page = 1;
+        ctx.totalPages = result.totalPages;
+        ctx.total = result.total;
+        ctx.loaded = 0;
+        ctx.done = ctx.page >= ctx.totalPages;
+        ctx.selectedId = null;
+        ctx.selectedTile = null;
+        ctx.preview.replaceChildren();
+        const emptyPreview = document.createElement("div");
+        emptyPreview.className = "desktop-mode-my-wordpress__preview-empty";
+        emptyPreview.textContent = __(
+          "Select an entry to preview it here.",
+          "desktop-mode"
+        );
+        ctx.preview.appendChild(emptyPreview);
+        if (result.items.length === 0) {
+          renderListEmpty(tiles, entity, q);
+          ctx.done = true;
+        } else {
+          for (const item of result.items) {
+            tiles.appendChild(
+              buildEntityTile(state, ctx, entity, item)
+            );
+            ctx.loaded += 1;
+          }
+        }
+        repaintListStatus();
+      } catch (err) {
+        if (isAbortError(err)) {
+          return;
+        }
+        tiles.classList.remove(
+          "desktop-mode-my-wordpress__tiles--searching"
+        );
+        tiles.replaceChildren();
+        ctx.layout.clear();
+        const msg = err instanceof Error ? err.message : __("Unknown error.", "desktop-mode");
+        renderListError(tiles, msg);
+        ctx.done = true;
+      } finally {
+        ctx.loading = false;
+        if (ctx.abort === controller) {
+          ctx.abort = null;
+        }
       }
       if (!ctx.done) {
         requestAnimationFrame(() => {
@@ -4432,14 +4773,26 @@
     }
     void loadMore();
   }
-  function renderListEmpty(host, entity) {
+  function isAbortError(err) {
+    return err instanceof DOMException && err.name === "AbortError";
+  }
+  function renderListEmpty(host, entity, query) {
     const empty = document.createElement("div");
     empty.className = "desktop-mode-my-wordpress__empty";
-    empty.textContent = sprintf(
-      // translators: %s is an entity-type label (e.g. "Posts", "Pages").
-      __("No %s yet.", "desktop-mode"),
-      entity.label.toLowerCase()
-    );
+    if (query) {
+      empty.textContent = sprintf(
+        // translators: 1: search query, 2: lowercased entity-type label.
+        __('No %2$s match "%1$s".', "desktop-mode"),
+        query,
+        entity.label.toLowerCase()
+      );
+    } else {
+      empty.textContent = sprintf(
+        // translators: %s is an entity-type label (e.g. "Posts", "Pages").
+        __("No %s yet.", "desktop-mode"),
+        entity.label.toLowerCase()
+      );
+    }
     host.appendChild(empty);
   }
   function renderListError(host, message) {
@@ -4512,7 +4865,19 @@
         kind: "post",
         ref: String(item.id),
         title: titleText,
-        icon: entity.icon
+        icon: entity.icon,
+        // Cross-frame bridge payload — the Gutenberg drop-receiver
+        // turns this into a `core/paragraph` with an `<a href>` to
+        // the permalink. Tiles without a `link` (very old REST
+        // shapes / private posts) still drag-out for placement
+        // purposes; the receiver no-ops on an empty url.
+        bridgePayload: {
+          kind: "post",
+          id: item.id,
+          postType: entity.id,
+          url: item.link ?? "",
+          title: titleText
+        }
       },
       () => hideTooltip()
     );
@@ -6331,6 +6696,18 @@
   }
   function renderUserEntityList(state, entity) {
     const cfg = getConfig();
+    const initialQuery = lastQueryByEntity.get(entity.id) ?? "";
+    const toolbar = renderListToolbar({
+      placeholder: __("Search users…", "desktop-mode"),
+      ariaLabel: __("Search users", "desktop-mode"),
+      initialValue: initialQuery,
+      onSearchChange: (q) => {
+        lastQueryByEntity.set(entity.id, q);
+        void resetForSearch(q);
+      }
+    });
+    state.body.appendChild(toolbar.host);
+    state.teardown.push(() => toolbar.destroy());
     const split = document.createElement("div");
     split.className = "desktop-mode-my-wordpress__split";
     const left = document.createElement("div");
@@ -6374,9 +6751,12 @@
       selectedId: null,
       selectedTile: null,
       observer: null,
-      layout: tileLayout
+      layout: tileLayout,
+      query: initialQuery,
+      abort: null
     };
     state.teardown.push(() => tileLayout.dispose());
+    state.teardown.push(() => ctx.abort?.abort());
     const repaintListStatus = () => {
       let itemLabel;
       if (ctx.total === 0 && ctx.loaded === 0) {
@@ -6430,12 +6810,20 @@
       ctx.loading = true;
       const nextPage = ctx.page + 1;
       const isFirst = nextPage === 1;
+      const queryAtFetchTime = ctx.query;
       showLoadingSkeleton(tiles, ctx.layout, isFirst);
+      const controller = new AbortController();
+      ctx.abort = controller;
       try {
         const result = await fetchUserList(entity, {
           page: nextPage,
-          perPage: cfg.perPage
+          perPage: cfg.perPage,
+          search: queryAtFetchTime || void 0,
+          signal: controller.signal
         });
+        if (ctx.query !== queryAtFetchTime) {
+          return;
+        }
         ctx.page = nextPage;
         ctx.totalPages = result.totalPages;
         ctx.total = result.total;
@@ -6443,7 +6831,11 @@
         if (result.items.length === 0 && isFirst) {
           renderListEmptyMessage(
             tiles,
-            __("No users to show.", "desktop-mode")
+            queryAtFetchTime ? sprintf(
+              // translators: %s is the user-entered search query.
+              __('No users match "%s".', "desktop-mode"),
+              queryAtFetchTime
+            ) : __("No users to show.", "desktop-mode")
           );
           ctx.done = true;
           repaintListStatus();
@@ -6460,12 +6852,104 @@
         }
         repaintListStatus();
       } catch (err) {
+        if (isAbortError(err)) {
+          return;
+        }
         hideLoadingSkeleton(tiles);
         const msg = err instanceof Error ? err.message : __("Unknown error.", "desktop-mode");
         renderListError(tiles, msg);
         ctx.done = true;
       } finally {
         ctx.loading = false;
+        if (ctx.abort === controller) {
+          ctx.abort = null;
+        }
+      }
+      if (!ctx.done) {
+        requestAnimationFrame(() => {
+          if (sentinelIsVisible()) {
+            void loadMore();
+          }
+        });
+      }
+    };
+    const resetForSearch = async (q) => {
+      ctx.abort?.abort();
+      ctx.abort = null;
+      ctx.query = q;
+      tiles.classList.add(
+        "desktop-mode-my-wordpress__tiles--searching"
+      );
+      hideLoadingSkeleton(tiles);
+      const controller = new AbortController();
+      ctx.abort = controller;
+      ctx.loading = true;
+      try {
+        const result = await fetchUserList(entity, {
+          page: 1,
+          perPage: cfg.perPage,
+          search: q || void 0,
+          signal: controller.signal
+        });
+        if (ctx.query !== q) {
+          return;
+        }
+        tiles.replaceChildren();
+        ctx.layout.clear();
+        tiles.classList.remove(
+          "desktop-mode-my-wordpress__tiles--searching"
+        );
+        ctx.page = 1;
+        ctx.totalPages = result.totalPages;
+        ctx.total = result.total;
+        ctx.loaded = 0;
+        ctx.done = ctx.page >= ctx.totalPages;
+        ctx.selectedId = null;
+        ctx.selectedTile = null;
+        ctx.preview.replaceChildren();
+        const emptyPreview = document.createElement("div");
+        emptyPreview.className = "desktop-mode-my-wordpress__preview-empty";
+        emptyPreview.textContent = __(
+          "Select a user to see their profile here.",
+          "desktop-mode"
+        );
+        ctx.preview.appendChild(emptyPreview);
+        if (result.items.length === 0) {
+          renderListEmptyMessage(
+            tiles,
+            q ? sprintf(
+              // translators: %s is the user-entered search query.
+              __('No users match "%s".', "desktop-mode"),
+              q
+            ) : __("No users to show.", "desktop-mode")
+          );
+          ctx.done = true;
+        } else {
+          for (const item of result.items) {
+            tiles.appendChild(
+              buildUserTile(state, ctx, entity, item)
+            );
+            ctx.loaded += 1;
+          }
+        }
+        repaintListStatus();
+      } catch (err) {
+        if (isAbortError(err)) {
+          return;
+        }
+        tiles.classList.remove(
+          "desktop-mode-my-wordpress__tiles--searching"
+        );
+        tiles.replaceChildren();
+        ctx.layout.clear();
+        const msg = err instanceof Error ? err.message : __("Unknown error.", "desktop-mode");
+        renderListError(tiles, msg);
+        ctx.done = true;
+      } finally {
+        ctx.loading = false;
+        if (ctx.abort === controller) {
+          ctx.abort = null;
+        }
       }
       if (!ctx.done) {
         requestAnimationFrame(() => {
@@ -6573,7 +7057,18 @@
         kind: "user",
         ref: String(item.id),
         title: displayName,
-        icon: "dashicons-admin-users"
+        icon: "dashicons-admin-users",
+        // Cross-frame bridge payload — receiver inserts a
+        // `core/paragraph` with `<a href>` pointing at the
+        // author archive (`item.link`). Falls back to empty
+        // string when the REST shape omitted the link; the
+        // receiver gates on a truthy URL.
+        bridgePayload: {
+          kind: "user",
+          id: item.id,
+          url: item.link ?? "",
+          title: displayName
+        }
       },
       () => hideTooltip()
     );
@@ -7025,6 +7520,16 @@
         ""
       )
     );
+    const updateCount = payload.totals.updates ?? 0;
+    if (updateCount > 0) {
+      wrap.appendChild(
+        buildStatCard(
+          updateCount.toLocaleString(),
+          __("Updates", "desktop-mode"),
+          __("Saves on existing posts", "desktop-mode")
+        )
+      );
+    }
     const longestRange = payload.streak.longestRange;
     const longestCaption = longestRange.from && longestRange.to ? sprintf(
       // translators: 1: start date, 2: end date.
@@ -7068,8 +7573,9 @@
     section.appendChild(h);
     const calendar = document.createElement("div");
     calendar.className = "desktop-mode-my-wordpress__footprint-calendar";
+    const dayIntensity = (d) => d.posts + d.comments + (d.updates ?? 0);
     const maxIntensity = payload.daily.reduce((m, d) => {
-      const v = d.posts + d.comments;
+      const v = dayIntensity(d);
       return v > m ? v : m;
     }, 0);
     const bucketize = (v) => {
@@ -7160,18 +7666,19 @@
     }
     for (let i = 0; i < payload.daily.length; i += 1) {
       const d = payload.daily[i];
-      const intensity = bucketize(d.posts + d.comments);
+      const intensity = bucketize(dayIntensity(d));
       const cell = document.createElement("span");
       cell.className = `desktop-mode-my-wordpress__footprint-cell desktop-mode-my-wordpress__footprint-cell--l${intensity}`;
       cell.title = sprintf(
-        // translators: 1: date, 2: post count, 3: comment count.
+        // translators: 1: date, 2: post count, 3: comment count, 4: update (re-save) count.
         __(
-          "%1$s — %2$d posts, %3$d comments",
+          "%1$s — %2$d posts, %3$d comments, %4$d updates",
           "desktop-mode"
         ),
         formatLongDate(d.date),
         d.posts,
-        d.comments
+        d.comments,
+        d.updates ?? 0
       );
       cell.dataset.date = d.date;
       placeCell(cell, firstDow + i);
@@ -7363,7 +7870,13 @@
       const dot = document.createElement("span");
       dot.className = "desktop-mode-my-wordpress__footprint-dot";
       const icon = document.createElement("span");
-      icon.className = "dashicons " + (ev.kind === "comment" ? "dashicons-admin-comments" : "dashicons-admin-post");
+      let iconClass = "dashicons-admin-post";
+      if (ev.kind === "comment") {
+        iconClass = "dashicons-admin-comments";
+      } else if (ev.kind === "post-update") {
+        iconClass = "dashicons-edit";
+      }
+      icon.className = "dashicons " + iconClass;
       icon.setAttribute("aria-hidden", "true");
       dot.appendChild(icon);
       li.appendChild(dot);
@@ -7372,11 +7885,21 @@
       const title = ev.title || __("(no title)", "desktop-mode");
       const titleNode = ev.link ? document.createElement("a") : document.createElement("span");
       titleNode.className = "desktop-mode-my-wordpress__footprint-event-title";
-      titleNode.textContent = ev.kind === "comment" ? sprintf(
-        // translators: %s is a post title the user commented on.
-        __("Commented on “%s”", "desktop-mode"),
-        title
-      ) : title;
+      if (ev.kind === "comment") {
+        titleNode.textContent = sprintf(
+          // translators: %s is a post title the user commented on.
+          __("Commented on “%s”", "desktop-mode"),
+          title
+        );
+      } else if (ev.kind === "post-update") {
+        titleNode.textContent = sprintf(
+          // translators: %s is the post title the user re-saved.
+          __("Updated “%s”", "desktop-mode"),
+          title
+        );
+      } else {
+        titleNode.textContent = title;
+      }
       if (ev.link && titleNode instanceof HTMLAnchorElement) {
         titleNode.href = ev.link;
         titleNode.target = "_blank";
@@ -7707,6 +8230,11 @@
       }
       return out;
     };
+    const clear = () => {
+      entries.length = 0;
+      occupied.clear();
+      host.style.minHeight = "";
+    };
     return {
       host,
       scope,
@@ -7715,6 +8243,7 @@
       sort,
       reflow,
       peekNextCells,
+      clear,
       dispose: () => {
         resizeObserver?.disconnect();
         resizeObserver = null;
@@ -7750,17 +8279,19 @@
     return `desktop-mode-my-wordpress:positions:${scope}`;
   }
   let activeState = null;
+  const liveStates = /* @__PURE__ */ new Map();
   let pendingRoute = null;
+  let rejectIdCounter = 0;
   function renderInto(body) {
     const root = body.querySelector(ROOT_SEL);
     if (!root) {
-      return;
+      return void 0;
     }
     const breadcrumbsHost = root.querySelector(BREADCRUMBS_SEL);
     const bodyHost = root.querySelector(BODY_SEL);
     const statusHost = root.querySelector(STATUS_SEL);
     if (!breadcrumbsHost || !bodyHost || !statusHost) {
-      return;
+      return void 0;
     }
     const state = {
       route: { kind: "root" },
@@ -7772,39 +8303,46 @@
       history: []
     };
     activeState = state;
+    liveStates.set(bodyHost, state);
+    const windowTeardowns = [];
     const dragManager = getDragManager();
     if (dragManager) {
+      rejectIdCounter += 1;
       const deregister = dragManager.registerDropTarget({
-        id: `${WINDOW_ID}-reject`,
+        id: `${WINDOW_ID}-reject-${rejectIdCounter}`,
         element: body,
         accept: () => false,
         onDrop: () => {
         }
       });
-      state.teardown.push(deregister);
+      windowTeardowns.push(deregister);
     }
-    const closeHandler = (e) => {
-      const detail = e.detail;
-      if (detail?.windowId === WINDOW_ID) {
-        clearTeardown(state);
-        closeAnyTileMenu();
-        if (activeState === state) {
-          activeState = null;
-        }
-        document.removeEventListener("desktop-mode-window-closed", closeHandler);
-      }
-    };
-    document.addEventListener("desktop-mode-window-closed", closeHandler);
-    state.teardown.push(() => closeAnyTileMenu());
+    windowTeardowns.push(() => closeAnyTileMenu());
     const initialRoute = pendingRoute ?? { kind: "root" };
     pendingRoute = null;
     navigate(state, initialRoute);
+    return () => {
+      clearTeardown(state);
+      for (const fn of windowTeardowns) {
+        try {
+          fn();
+        } catch {
+        }
+      }
+      windowTeardowns.length = 0;
+      liveStates.delete(bodyHost);
+      if (activeState === state) {
+        const next = liveStates.size > 0 ? Array.from(liveStates.values()).pop() : null;
+        activeState = next;
+      }
+    };
   }
   const callback = (body) => {
     try {
-      renderInto(body);
+      return renderInto(body);
     } catch (err) {
       console.error("[my-wordpress] render failed:", err);
+      return void 0;
     }
   };
   window.desktopModeNativeWindows = window.desktopModeNativeWindows || {};
@@ -7817,17 +8355,16 @@
   });
   registerEntityKind("media", renderMediaList);
   function asRenderState(host) {
-    if (!activeState) {
-      throw new Error(
-        "[my-wordpress] asRenderState: called outside an active render."
-      );
+    const found = liveStates.get(host.body);
+    if (found) {
+      return found;
     }
-    if (host.body !== activeState.body) {
-      throw new Error(
-        "[my-wordpress] asRenderState: host body does not match active state."
-      );
+    if (activeState && host.body === activeState.body) {
+      return activeState;
     }
-    return activeState;
+    throw new Error(
+      "[my-wordpress] asRenderState: host body does not match any live render state."
+    );
   }
   function openDetail(args) {
     const route = {

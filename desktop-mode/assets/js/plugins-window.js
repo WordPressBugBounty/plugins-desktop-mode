@@ -4711,6 +4711,13 @@
       card.append(heading, lede, dropZone, status, actions);
       overlay.appendChild(card);
       host.appendChild(overlay);
+      const swallowDrag = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+      };
+      overlay.addEventListener("dragenter", swallowDrag);
+      overlay.addEventListener("dragover", swallowDrag);
+      overlay.addEventListener("drop", swallowDrag);
       let pickedFile = null;
       let uploading = false;
       const setFile = (file) => {
@@ -4745,13 +4752,16 @@
       });
       dropZone.addEventListener("dragover", (ev) => {
         ev.preventDefault();
+        ev.stopPropagation();
         dropZone.classList.add("is-hovered");
       });
-      dropZone.addEventListener("dragleave", () => {
+      dropZone.addEventListener("dragleave", (ev) => {
+        ev.stopPropagation();
         dropZone.classList.remove("is-hovered");
       });
       dropZone.addEventListener("drop", (ev) => {
         ev.preventDefault();
+        ev.stopPropagation();
         dropZone.classList.remove("is-hovered");
         const file = ev.dataTransfer?.files?.[0];
         if (file && isZip(file)) {

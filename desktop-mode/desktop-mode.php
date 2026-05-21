@@ -3,7 +3,7 @@
  * Plugin Name:       Desktop Mode
  * Plugin URI:        https://github.com/WordPress/desktop-mode
  * Description:       Renders the WordPress admin as a desktop OS. Admin screens become draggable, resizable, minimizable windows floating on a desktop with a dock. Purely opt-in per user.
- * Version:           0.8.6
+ * Version:           0.8.7
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Daniel López Sánchez
@@ -17,7 +17,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'DESKTOP_MODE_VERSION', '0.8.6' );
+define( 'DESKTOP_MODE_VERSION', '0.8.7' );
 define( 'DESKTOP_MODE_FILE', __FILE__ );
 define( 'DESKTOP_MODE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'DESKTOP_MODE_URL', plugin_dir_url( __FILE__ ) );
@@ -43,6 +43,7 @@ require_once DESKTOP_MODE_DIR . 'includes/assets.php';
 require_once DESKTOP_MODE_DIR . 'includes/admin-bar.php';
 require_once DESKTOP_MODE_DIR . 'includes/session.php';
 require_once DESKTOP_MODE_DIR . 'includes/presence.php';
+require_once DESKTOP_MODE_DIR . 'includes/nonce-refresh.php';
 require_once DESKTOP_MODE_DIR . 'includes/os-settings.php';
 require_once DESKTOP_MODE_DIR . 'includes/seen-intros.php';
 require_once DESKTOP_MODE_DIR . 'includes/welcome-dialog.php';

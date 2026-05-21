@@ -48,7 +48,7 @@
             "%1$s · %2$s KB": [
                 ""
             ],
-            "%1$s — %2$d posts, %3$d comments": [
+            "%1$s — %2$d posts, %3$d comments, %4$d updates": [
                 ""
             ],
             "%1$s — currently being edited by %2$s": [
@@ -1099,6 +1099,9 @@
             "Next": [
                 ""
             ],
+            "No %2$s match \"%1$s\".": [
+                ""
+            ],
             "No %s yet.": [
                 ""
             ],
@@ -1156,6 +1159,9 @@
             "No media attached to this post.": [
                 ""
             ],
+            "No media match \"%s\".": [
+                ""
+            ],
             "No media yet.": [
                 ""
             ],
@@ -1175,6 +1181,9 @@
                 ""
             ],
             "No tags assigned.": [
+                ""
+            ],
+            "No users match \"%s\".": [
                 ""
             ],
             "No users to show.": [
@@ -1537,6 +1546,9 @@
             "Saved %s": [
                 ""
             ],
+            "Saves on existing posts": [
+                ""
+            ],
             "Saving…": [
                 "Subiendo…"
             ],
@@ -1548,6 +1560,15 @@
             ],
             "Screenshots": [
                 ""
+            ],
+            "Search": [
+                "Buscar medios"
+            ],
+            "Search %s": [
+                "Buscar medios"
+            ],
+            "Search %s…": [
+                "Buscar medios"
             ],
             "Search WordPress.org…": [
                 ""
@@ -1561,14 +1582,26 @@
             "Search media": [
                 "Buscar medios"
             ],
+            "Search media…": [
+                "Buscar medios"
+            ],
             "Search nodes…": [
                 ""
             ],
             "Search posts and pages in the graph": [
                 ""
             ],
+            "Search users": [
+                "Buscar medios"
+            ],
+            "Search users…": [
+                "Buscar medios"
+            ],
             "Search your media": [
                 "Busca en tus medios"
+            ],
+            "Search…": [
+                "Buscar medios"
             ],
             "See author, comments, categories, tags, attached media, and revisions for this entry.": [
                 ""
@@ -1877,6 +1910,12 @@
                 "Añadir %s"
             ],
             "Updated %s": [
+                "Añadir %s"
+            ],
+            "Updated “%s”": [
+                "Añadir %s"
+            ],
+            "Updates": [
                 "Añadir %s"
             ],
             "Updating…": [
