@@ -12,6 +12,21 @@
     const connections = {};
     const connectionListeners = [];
     const subs = {};
+    let _windowId = null;
+    const _windowIdWaiters = [];
+    const _setWindowId = (id) => {
+      if (!id || _windowId === id) {
+        return;
+      }
+      _windowId = id;
+      const waiters = _windowIdWaiters.splice(0);
+      for (const waiter of waiters) {
+        try {
+          waiter(id);
+        } catch {
+        }
+      }
+    };
     const channelSubs = {};
     const emitToParent = (connectionId, topic, payload) => {
       try {
@@ -36,6 +51,10 @@
         return;
       }
       if (data.type === "desktop-mode-bridge-handshake" && typeof data.connectionId === "string") {
+        const tw = data.targetWindowId;
+        if (typeof tw === "string" && tw !== "") {
+          _setWindowId(tw);
+        }
         if (connections[data.connectionId]) {
           try {
             window.parent.postMessage(
@@ -128,7 +147,15 @@
         if (typeof topic !== "string" || topic === "") {
           return;
         }
-        for (const id of Object.keys(connections)) {
+        const ids = Object.keys(connections);
+        if (ids.length === 0) {
+          console.warn(
+            '[desktop-mode] wp.desktop.iframe.publish dropped: no open connection for topic "%s". The parent shell must call `wp.desktop.connect(windowId)` first.',
+            topic
+          );
+          return;
+        }
+        for (const id of ids) {
           emitToParent(id, topic, payload);
         }
       },
@@ -285,6 +312,28 @@
             settle(false, err);
           }
         });
+      },
+      get windowId() {
+        return _windowId;
+      },
+      whenWindowId() {
+        if (_windowId !== null) {
+          return Promise.resolve(_windowId);
+        }
+        return new Promise((resolve) => {
+          _windowIdWaiters.push(resolve);
+        });
+      },
+      isParentReachable() {
+        if (!window.parent || window.parent === window) {
+          return false;
+        }
+        try {
+          const parentOrig = window.parent.location.origin;
+          return parentOrig === parentOrigin;
+        } catch {
+          return false;
+        }
       }
     };
     if (!w.wp) {
@@ -426,6 +475,15 @@
         },
         true
       );
+    }
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          { type: "desktop-mode-ready" },
+          parentOrigin
+        );
+      }
+    } catch {
     }
     function installScreenMetaHoist(origin) {
       const start = () => {

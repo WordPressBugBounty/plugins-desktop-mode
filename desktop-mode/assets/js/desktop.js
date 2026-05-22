@@ -1403,8 +1403,8 @@ var desktopMode = function(exports) {
       mgr._overviewLabels.set(item.win.id, label);
     }
     const pressTargetForEvent = (e) => {
-      const target = e.target;
-      const winEl = target?.closest(
+      const target2 = e.target;
+      const winEl = target2?.closest(
         ".desktop-mode-window--overview"
       );
       if (winEl) {
@@ -1413,7 +1413,7 @@ var desktopMode = function(exports) {
           element: winEl
         };
       }
-      if (target === mgr._desktop) {
+      if (target2 === mgr._desktop) {
         return { id: "backdrop", element: mgr._desktop };
       }
       return null;
@@ -1478,8 +1478,8 @@ var desktopMode = function(exports) {
       true
     );
     mgr._overviewClickBlocker = (e) => {
-      const target = e.target;
-      if (target?.closest(".desktop-mode-overview-top-bar")) {
+      const target2 = e.target;
+      if (target2?.closest(".desktop-mode-overview-top-bar")) {
         return;
       }
       e.stopPropagation();
@@ -1493,8 +1493,8 @@ var desktopMode = function(exports) {
     document.addEventListener("keydown", mgr._overviewKeyHandler);
     mgr._lastOverviewHoverId = null;
     mgr._overviewMouseHandler = (e) => {
-      const target = e.target;
-      const winEl = target?.closest(
+      const target2 = e.target;
+      const winEl = target2?.closest(
         ".desktop-mode-window--overview"
       );
       const newId = winEl ? winEl.id.replace(/^wp-window-/, "") : null;
@@ -2102,8 +2102,8 @@ var desktopMode = function(exports) {
       mgr._splitOverviewLabels.set(item.win.id, label);
     }
     const pressTargetForEvent = (e) => {
-      const target = e.target;
-      const winEl = target?.closest(
+      const target2 = e.target;
+      const winEl = target2?.closest(
         ".desktop-mode-window--overview"
       );
       if (winEl) {
@@ -2112,7 +2112,7 @@ var desktopMode = function(exports) {
           element: winEl
         };
       }
-      if (target) {
+      if (target2) {
         return { id: "dismiss", element: mgr._desktop };
       }
       return null;
@@ -3488,11 +3488,11 @@ var desktopMode = function(exports) {
     const currentIdx = focused ? list2.indexOf(focused) : -1;
     const step = direction === "next" ? 1 : -1;
     const nextIdx = (currentIdx + step + list2.length) % list2.length;
-    const target = list2[nextIdx];
-    if (target.state === "minimized") {
-      target.restore();
+    const target2 = list2[nextIdx];
+    if (target2.state === "minimized") {
+      target2.restore();
     } else {
-      mgr.focus(target);
+      mgr.focus(target2);
     }
   }
   let installed$3 = false;
@@ -4141,11 +4141,11 @@ var desktopMode = function(exports) {
         const fresh = record.rebuild();
         const cur = record.state;
         if (typeof cur === "object" && cur !== null && typeof fresh === "object" && fresh !== null) {
-          const target = cur;
-          for (const k of Object.keys(target)) {
-            delete target[k];
+          const target2 = cur;
+          for (const k of Object.keys(target2)) {
+            delete target2[k];
           }
-          Object.assign(target, fresh);
+          Object.assign(target2, fresh);
         } else {
           record.state = fresh;
         }
@@ -6376,9 +6376,9 @@ var desktopMode = function(exports) {
     });
   }
   const FALLBACK_BASE = "http://localhost/";
-  function joinRestUrl(restRoot, path) {
+  function joinRestUrl(restRoot2, path) {
     const base = typeof window !== "undefined" && window.location ? window.location.href : FALLBACK_BASE;
-    const url = new URL(restRoot, base);
+    const url = new URL(restRoot2, base);
     const trimmed = path.replace(/^\/+/, "");
     const queryAt = trimmed.indexOf("?");
     const route = queryAt === -1 ? trimmed : trimmed.slice(0, queryAt);
@@ -6592,11 +6592,11 @@ var desktopMode = function(exports) {
       return;
     }
     const cfg = window.desktopModeConfig ?? {};
-    const restRoot = typeof cfg.restRoot === "string" && cfg.restRoot ? cfg.restRoot : `${window.location.origin}/wp-json/`;
+    const restRoot2 = typeof cfg.restRoot === "string" && cfg.restRoot ? cfg.restRoot : `${window.location.origin}/wp-json/`;
     const restNonce = typeof cfg.restNonce === "string" && cfg.restNonce ? cfg.restNonce : "";
     const stripped = pluginFile.endsWith(".php") ? pluginFile.slice(0, -4) : pluginFile;
     const encoded = stripped.split("/").map(encodeURIComponent).join("/");
-    const url = joinRestUrl(restRoot, `wp/v2/plugins/${encoded}`);
+    const url = joinRestUrl(restRoot2, `wp/v2/plugins/${encoded}`);
     try {
       const res = await trackedFetch$1(
         url,
@@ -6722,6 +6722,14 @@ var desktopMode = function(exports) {
         "data-desktop-mode-dock-placement",
         orientation
       );
+      const scroll = document.createElement("div");
+      scroll.className = "desktop-mode-dock__scroll";
+      const pinned = document.createElement("div");
+      pinned.className = "desktop-mode-dock__pinned";
+      container.appendChild(scroll);
+      container.appendChild(pinned);
+      this.itemHost = scroll;
+      this.systemHost = pinned;
       this.tooltip = document.createElement("div");
       this.tooltip.className = "desktop-mode-dock__tooltip";
       this.tooltip.setAttribute("role", "tooltip");
@@ -6810,7 +6818,7 @@ var desktopMode = function(exports) {
       for (const el of this.itemElements.values()) {
         el.remove();
       }
-      this.container.querySelectorAll(
+      this.itemHost.querySelectorAll(
         ".desktop-mode-dock__separator--group"
       ).forEach((el) => el.remove());
       this.itemElements.clear();
@@ -6829,21 +6837,13 @@ var desktopMode = function(exports) {
             const sep = document.createElement("div");
             sep.className = "desktop-mode-dock__separator desktop-mode-dock__separator--group";
             sep.setAttribute("aria-hidden", "true");
-            if (this.systemSeparator) {
-              this.container.insertBefore(sep, this.systemSeparator);
-            } else {
-              this.container.appendChild(sep);
-            }
+            this.itemHost.appendChild(sep);
           }
           insertedGroupSeparator = true;
         }
         const btn = this.createItemButton(item);
         this.itemElements.set(item.id, btn);
-        if (this.systemSeparator) {
-          this.container.insertBefore(btn, this.systemSeparator);
-        } else {
-          this.container.appendChild(btn);
-        }
+        this.itemHost.appendChild(btn);
         tilesInsertedThisPass++;
         const override = this.badgeOverrides.get(item.id);
         if (override !== void 0) {
@@ -7027,11 +7027,11 @@ var desktopMode = function(exports) {
         this.systemSeparator = document.createElement("div");
         this.systemSeparator.className = "desktop-mode-dock__separator";
         this.systemSeparator.setAttribute("aria-hidden", "true");
-        this.container.appendChild(this.systemSeparator);
+        this.systemHost.appendChild(this.systemSeparator);
       }
       const tile2 = this.createSystemItemButton(item);
       this.systemItemElements.set(item.id, tile2);
-      this.container.appendChild(tile2);
+      this.systemHost.appendChild(tile2);
       this.updateActiveStates();
       doAction(HOOKS.DOCK_TILE_RENDERED, {
         ...this.buildHookContextBase(),
@@ -7061,7 +7061,7 @@ var desktopMode = function(exports) {
         teardown();
       }
       this.peekTeardowns.clear();
-      this.container.innerHTML = "";
+      this.itemHost.innerHTML = "";
       const base = this.buildHookContextBase();
       doAction(HOOKS.DOCK_BEFORE_RENDER, {
         ...base,
@@ -7071,17 +7071,17 @@ var desktopMode = function(exports) {
       let insertedGroupSeparator = false;
       for (const item of this.items) {
         if (!insertedGroupSeparator && item.isCore === false) {
-          if (this.container.childElementCount > 0) {
+          if (this.itemHost.childElementCount > 0) {
             const sep = document.createElement("div");
             sep.className = "desktop-mode-dock__separator desktop-mode-dock__separator--group";
             sep.setAttribute("aria-hidden", "true");
-            this.container.appendChild(sep);
+            this.itemHost.appendChild(sep);
           }
           insertedGroupSeparator = true;
         }
         const btn = this.createItemButton(item);
         this.itemElements.set(item.id, btn);
-        this.container.appendChild(btn);
+        this.itemHost.appendChild(btn);
         doAction(HOOKS.DOCK_TILE_RENDERED, {
           ...base,
           item,
@@ -7318,7 +7318,7 @@ var desktopMode = function(exports) {
         return !!el && el instanceof HTMLElement && el.classList.contains("desktop-mode-dock__item") && !el.classList.contains("desktop-mode-dock__item--system") && !!el.dataset.menuSlug;
       };
       const eachSiblingTile = (fn) => {
-        for (const child of Array.from(this.container.children)) {
+        for (const child of Array.from(this.itemHost.children)) {
           if (child instanceof HTMLElement && child !== tile2 && isMenuTile(child)) {
             fn(child);
           }
@@ -7326,7 +7326,7 @@ var desktopMode = function(exports) {
       };
       const snapshotMenuOrder = () => {
         const ids = [];
-        for (const child of Array.from(this.container.children)) {
+        for (const child of Array.from(this.itemHost.children)) {
           if (isMenuTile(child)) {
             ids.push(child.dataset.menuSlug);
           }
@@ -7407,11 +7407,11 @@ var desktopMode = function(exports) {
         let reordered = false;
         if (insertBefore) {
           if (targetTile !== tile2.nextSibling) {
-            this.container.insertBefore(tile2, targetTile);
+            this.itemHost.insertBefore(tile2, targetTile);
             reordered = true;
           }
         } else if (targetTile.nextSibling !== tile2) {
-          this.container.insertBefore(tile2, targetTile.nextSibling);
+          this.itemHost.insertBefore(tile2, targetTile.nextSibling);
           reordered = true;
         }
         if (reordered) {
@@ -7502,7 +7502,7 @@ var desktopMode = function(exports) {
           eachSiblingTile((sib) => {
             prevRects.set(sib, sib.getBoundingClientRect());
           });
-          this.container.insertBefore(tile2, originalNext);
+          this.itemHost.insertBefore(tile2, originalNext);
           flipSiblings(prevRects);
         }
         animateHome();
@@ -7642,21 +7642,21 @@ var desktopMode = function(exports) {
       if (!adminMenu) {
         return null;
       }
-      let target;
+      let target2;
       try {
         const u = new URL(url, window.location.href);
         const filename = u.pathname.split("/").pop() || "";
-        target = filename + u.search;
+        target2 = filename + u.search;
       } catch {
         return null;
       }
-      if (!target) {
+      if (!target2) {
         return null;
       }
       const links = adminMenu.querySelectorAll("li.menu-top > a");
       let matchLi = null;
       for (const link of Array.from(links)) {
-        if (link.href.endsWith(target)) {
+        if (link.href.endsWith(target2)) {
           matchLi = link.closest("li.menu-top");
           break;
         }
@@ -8351,7 +8351,7 @@ var desktopMode = function(exports) {
     body.set("action", "save-desktop-mode");
     body.set("nonce", cfg.nonce);
     body.set("enabled", "");
-    let target = fallback;
+    let target2 = fallback;
     try {
       const res = await fetch(cfg.ajaxUrl, {
         method: "POST",
@@ -8364,12 +8364,12 @@ var desktopMode = function(exports) {
       if (res.ok) {
         const json = await res.json();
         if (json?.success && json.data?.redirect) {
-          target = json.data.redirect;
+          target2 = json.data.redirect;
         }
       }
     } catch {
     }
-    navigateTop(target);
+    navigateTop(target2);
   }
   function navigateTop(url) {
     try {
@@ -9947,7 +9947,7 @@ var desktopMode = function(exports) {
       writeMap(map);
     }
   }
-  const styles$4 = css`:host{display:flex;align-items:flex-start;gap:10px;width:100%;box-sizing:border-box;padding:10px 14px;font:var( --wpd-notice-font,13px/1.5 var( --desktop-mode-font,system-ui ) );color:var( --wpd-notice-color,var( --desktop-mode-text,#1d2327 ) );background:var( --wpd-notice-bg,rgba( 0,0,0,0.04 ) );border-block-end:1px solid var( --wpd-notice-border,rgba( 0,0,0,0.08 ) );border-inline-start:4px solid var( --wpd-notice-accent,#646970 )}:host( [ hidden ] ){display:none}.wpd-notice__icon{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var( --wpd-notice-accent,#646970 )}.wpd-notice__icon[ hidden ]{display:none}.wpd-notice__label{flex:1;min-width:0;word-wrap:break-word}::slotted( a ){color:var( --wpd-notice-link,var( --wp-admin-theme-color,#2271b1 ) )}::slotted( p:first-child ){margin-block-start:0}::slotted( p:last-child ){margin-block-end:0}.wpd-notice__close{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;background:transparent;color:inherit;opacity:0.6;cursor:pointer;border-radius:4px;transition:opacity 0.12s ease,background-color 0.12s ease}.wpd-notice__close:hover{opacity:1;background:rgba( 0,0,0,0.06 )}.wpd-notice__close:focus-visible{opacity:1;outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:1px}.wpd-notice__close[ hidden ]{display:none}.wpd-notice__close svg{width:14px;height:14px}:host( [ tone='info' ] ){--wpd-notice-accent:var( --wpd-notice-info,#0969da );--wpd-notice-bg:var( --wpd-notice-info-bg,rgba( 9,105,218,0.08 ) );--wpd-notice-border:var( --wpd-notice-info-border,rgba( 9,105,218,0.16 ) )}:host( [ tone='success' ] ){--wpd-notice-accent:var( --wpd-notice-success,#1a7f37 );--wpd-notice-bg:var( --wpd-notice-success-bg,rgba( 26,127,55,0.08 ) );--wpd-notice-border:var( --wpd-notice-success-border,rgba( 26,127,55,0.16 ) )}:host( [ tone='warning' ] ){--wpd-notice-accent:var( --wpd-notice-warning,#9a6700 );--wpd-notice-bg:var( --wpd-notice-warning-bg,rgba( 154,103,0,0.08 ) );--wpd-notice-border:var( --wpd-notice-warning-border,rgba( 154,103,0,0.16 ) )}:host( [ tone='error' ] ),:host( [ tone='danger' ] ){--wpd-notice-accent:var( --wpd-notice-error,#cf222e );--wpd-notice-bg:var( --wpd-notice-error-bg,rgba( 207,34,46,0.08 ) );--wpd-notice-border:var( --wpd-notice-error-border,rgba( 207,34,46,0.16 ) )}:host( [ tone='neutral' ] ){--wpd-notice-accent:var( --wpd-notice-neutral,#57606a );--wpd-notice-bg:var( --wpd-notice-neutral-bg,rgba( 87,96,106,0.08 ) );--wpd-notice-border:var( --wpd-notice-neutral-border,rgba( 87,96,106,0.16 ) )}`;
+  const styles$6 = css`:host{display:flex;align-items:flex-start;gap:10px;width:100%;box-sizing:border-box;padding:10px 14px;font:var( --wpd-notice-font,13px/1.5 var( --desktop-mode-font,system-ui ) );color:var( --wpd-notice-color,var( --desktop-mode-text,#1d2327 ) );background:var( --wpd-notice-bg,rgba( 0,0,0,0.04 ) );border-block-end:1px solid var( --wpd-notice-border,rgba( 0,0,0,0.08 ) );border-inline-start:4px solid var( --wpd-notice-accent,#646970 )}:host( [ hidden ] ){display:none}.wpd-notice__icon{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var( --wpd-notice-accent,#646970 )}.wpd-notice__icon[ hidden ]{display:none}.wpd-notice__label{flex:1;min-width:0;word-wrap:break-word}::slotted( a ){color:var( --wpd-notice-link,var( --wp-admin-theme-color,#2271b1 ) )}::slotted( p:first-child ){margin-block-start:0}::slotted( p:last-child ){margin-block-end:0}.wpd-notice__close{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;background:transparent;color:inherit;opacity:0.6;cursor:pointer;border-radius:4px;transition:opacity 0.12s ease,background-color 0.12s ease}.wpd-notice__close:hover{opacity:1;background:rgba( 0,0,0,0.06 )}.wpd-notice__close:focus-visible{opacity:1;outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:1px}.wpd-notice__close[ hidden ]{display:none}.wpd-notice__close svg{width:14px;height:14px}:host( [ tone='info' ] ){--wpd-notice-accent:var( --wpd-notice-info,#0969da );--wpd-notice-bg:var( --wpd-notice-info-bg,rgba( 9,105,218,0.08 ) );--wpd-notice-border:var( --wpd-notice-info-border,rgba( 9,105,218,0.16 ) )}:host( [ tone='success' ] ){--wpd-notice-accent:var( --wpd-notice-success,#1a7f37 );--wpd-notice-bg:var( --wpd-notice-success-bg,rgba( 26,127,55,0.08 ) );--wpd-notice-border:var( --wpd-notice-success-border,rgba( 26,127,55,0.16 ) )}:host( [ tone='warning' ] ){--wpd-notice-accent:var( --wpd-notice-warning,#9a6700 );--wpd-notice-bg:var( --wpd-notice-warning-bg,rgba( 154,103,0,0.08 ) );--wpd-notice-border:var( --wpd-notice-warning-border,rgba( 154,103,0,0.16 ) )}:host( [ tone='error' ] ),:host( [ tone='danger' ] ){--wpd-notice-accent:var( --wpd-notice-error,#cf222e );--wpd-notice-bg:var( --wpd-notice-error-bg,rgba( 207,34,46,0.08 ) );--wpd-notice-border:var( --wpd-notice-error-border,rgba( 207,34,46,0.16 ) )}:host( [ tone='neutral' ] ){--wpd-notice-accent:var( --wpd-notice-neutral,#57606a );--wpd-notice-bg:var( --wpd-notice-neutral-bg,rgba( 87,96,106,0.08 ) );--wpd-notice-border:var( --wpd-notice-neutral-border,rgba( 87,96,106,0.16 ) )}`;
   const _WpdNotice = class _WpdNotice extends Component {
     connectedCallback() {
       super.connectedCallback();
@@ -10021,7 +10021,7 @@ var desktopMode = function(exports) {
     }
   };
   _WpdNotice.props = ["tone", "notDismissible", "icon", "noticeId"];
-  _WpdNotice.styles = [styles$4];
+  _WpdNotice.styles = [styles$6];
   _WpdNotice.help = {
     title: "Notice",
     summary: "Full-width banner placed inside a window (typically the after-titlebar slot). Tone-coded background + accent stripe, optional close button, optional dashicons leading glyph. Slotted content is HTML — links and basic formatting are supported.",
@@ -10556,7 +10556,14 @@ var desktopMode = function(exports) {
             doAction(HOOKS.CONNECTION_OPENED, {
               connectionId: id,
               targetWindowId,
-              topics
+              topics,
+              // Ship the live Connection alongside the id so
+              // iframe-initiated connections can be subscribed
+              // to directly from the hook handler — without
+              // `wp.desktop.getConnection(id)` plumbing the
+              // payload would carry the id but no way to call
+              // `.subscribe()` against it.
+              connection: conn
             });
             try {
               opts.onOpen?.();
@@ -10700,6 +10707,7 @@ var desktopMode = function(exports) {
         sendToIframe(iframe, {
           type: "desktop-mode-bridge-handshake",
           connectionId: id,
+          targetWindowId,
           topics
         });
       }
@@ -10775,6 +10783,7 @@ var desktopMode = function(exports) {
         sendToIframe(iframe, {
           type: "desktop-mode-bridge-handshake",
           connectionId: conn.id,
+          targetWindowId: conn.target,
           topics: []
           // already negotiated client-side; iframe re-uses
         });
@@ -10790,7 +10799,17 @@ var desktopMode = function(exports) {
         conn?._destroy("window-closed");
       }
     };
-    return { connect, routeIncomingFromIframe, onIframeReady, onWindowClosed };
+    const getConnection = (connectionId) => {
+      const conn = _connections.get(connectionId);
+      return conn ?? null;
+    };
+    return {
+      connect,
+      getConnection,
+      routeIncomingFromIframe,
+      onIframeReady,
+      onWindowClosed
+    };
   }
   const __vite_import_meta_env__ = {};
   function devLog(...args) {
@@ -11383,13 +11402,13 @@ var desktopMode = function(exports) {
       };
       const realLocation = window.location;
       const locationProxy = new Proxy(realLocation, {
-        get(target, prop) {
-          const value = target[prop];
+        get(target2, prop) {
+          const value = target2[prop];
           if (prop === "assign" || prop === "replace") {
             return (url) => setCaptured(url);
           }
           if (typeof value === "function") {
-            return value.bind(target);
+            return value.bind(target2);
           }
           return value;
         },
@@ -11516,11 +11535,11 @@ var desktopMode = function(exports) {
     document.body.appendChild(panel2);
     positionPanel(panel2, options.anchor);
     const onOutsidePointerDown = (e) => {
-      const target = e.target;
-      if (!target) {
+      const target2 = e.target;
+      if (!target2) {
         return;
       }
-      if (panel2.contains(target) || options.anchor.contains(target)) {
+      if (panel2.contains(target2) || options.anchor.contains(target2)) {
         return;
       }
       closeWidgetPicker();
@@ -11659,8 +11678,8 @@ var desktopMode = function(exports) {
   const RESIZING_CLASS = "desktop-mode-widgets__card--resizing";
   const DEFAULT_MIN_WIDTH = 160;
   const DEFAULT_MIN_HEIGHT = 80;
-  const DEFAULT_WIDTH = 280;
-  const DEFAULT_HEIGHT = 180;
+  const DEFAULT_WIDTH$1 = 280;
+  const DEFAULT_HEIGHT$1 = 180;
   const VIEWPORT_MARGIN = 20;
   const DRAG_THRESHOLD_PX$1 = 5;
   const DRAG_THRESHOLD_SQUARED = DRAG_THRESHOLD_PX$1 * DRAG_THRESHOLD_PX$1;
@@ -11798,8 +11817,8 @@ var desktopMode = function(exports) {
       if (e.button !== 0) {
         return;
       }
-      const target = e.target;
-      if (target && target.closest(DRAG_EXCLUDED_SELECTORS)) {
+      const target2 = e.target;
+      if (target2 && target2.closest(DRAG_EXCLUDED_SELECTORS)) {
         return;
       }
       e.preventDefault();
@@ -11818,8 +11837,8 @@ var desktopMode = function(exports) {
         const initial = {
           x: rect.left - parentRect.left,
           y: rect.top - parentRect.top,
-          width: rect.width || def.defaultWidth || DEFAULT_WIDTH,
-          height: rect.height || def.defaultHeight || DEFAULT_HEIGHT
+          width: rect.width || def.defaultWidth || DEFAULT_WIDTH$1,
+          height: rect.height || def.defaultHeight || DEFAULT_HEIGHT$1
         };
         applyGeometry(card, initial);
         card.classList.add(FLOATING_CLASS);
@@ -11999,22 +12018,22 @@ var desktopMode = function(exports) {
     let width = startW;
     let height = startH;
     if (dir === "e" || dir === "ne" || dir === "se") {
-      width = clamp(startW + dx, minW, Math.min(maxW, parentWidth - startLeft));
+      width = clamp$1(startW + dx, minW, Math.min(maxW, parentWidth - startLeft));
     }
     if (dir === "w" || dir === "nw" || dir === "sw") {
-      const nextWidth = clamp(startW - dx, minW, Math.min(maxW, startLeft + startW));
+      const nextWidth = clamp$1(startW - dx, minW, Math.min(maxW, startLeft + startW));
       x = startLeft + (startW - nextWidth);
       width = nextWidth;
     }
     if (dir === "s" || dir === "se" || dir === "sw") {
-      height = clamp(
+      height = clamp$1(
         startH + dy,
         minH,
         Math.min(maxH, parentHeight - startTop)
       );
     }
     if (dir === "n" || dir === "ne" || dir === "nw") {
-      const nextHeight = clamp(startH - dy, minH, Math.min(maxH, startTop + startH));
+      const nextHeight = clamp$1(startH - dy, minH, Math.min(maxH, startTop + startH));
       y = startTop + (startH - nextHeight);
       height = nextHeight;
     }
@@ -12024,14 +12043,14 @@ var desktopMode = function(exports) {
     }
     return { x, y, width, height };
   }
-  function clamp(value, min, max) {
+  function clamp$1(value, min, max) {
     if (max < min) {
       return min;
     }
     return Math.min(Math.max(value, min), max);
   }
   const IDS_KEY = "desktop-mode-widgets";
-  const GEOMETRY_KEY = "desktop-mode-widgets-geometry";
+  const GEOMETRY_KEY$1 = "desktop-mode-widgets-geometry";
   function readRawEnabled() {
     try {
       return window.localStorage.getItem(IDS_KEY);
@@ -12060,9 +12079,9 @@ var desktopMode = function(exports) {
     } catch {
     }
   }
-  function loadGeometry() {
+  function loadGeometry$1() {
     try {
-      const raw = window.localStorage.getItem(GEOMETRY_KEY);
+      const raw = window.localStorage.getItem(GEOMETRY_KEY$1);
       if (!raw) {
         return {};
       }
@@ -12082,9 +12101,9 @@ var desktopMode = function(exports) {
       return {};
     }
   }
-  function saveGeometry(geometry) {
+  function saveGeometry$1(geometry) {
     try {
-      window.localStorage.setItem(GEOMETRY_KEY, JSON.stringify(geometry));
+      window.localStorage.setItem(GEOMETRY_KEY$1, JSON.stringify(geometry));
     } catch {
     }
   }
@@ -12160,7 +12179,7 @@ var desktopMode = function(exports) {
       this.root = root;
       this.pluginUrl = pluginUrl;
       this.enabledIds = loadEnabledIds();
-      this.geometry = loadGeometry();
+      this.geometry = loadGeometry$1();
       this.floatingHost = floatingHost ?? root.parentElement ?? root;
       this.listEl = document.createElement("div");
       this.listEl.className = "desktop-mode-widgets__list";
@@ -12221,7 +12240,7 @@ var desktopMode = function(exports) {
       saveEnabledIds(this.enabledIds);
       if (this.geometry[id]) {
         delete this.geometry[id];
-        saveGeometry(this.geometry);
+        saveGeometry$1(this.geometry);
       }
       this.unmountById(id);
       this.paintEmptyState();
@@ -12491,7 +12510,7 @@ var desktopMode = function(exports) {
       record.floating = false;
       if (this.geometry[id]) {
         delete this.geometry[id];
-        saveGeometry(this.geometry);
+        saveGeometry$1(this.geometry);
       }
       const card = record.frame.card;
       card.classList.remove("desktop-mode-widgets__card--floating");
@@ -12504,7 +12523,7 @@ var desktopMode = function(exports) {
     }
     persistGeometry(id, geometry) {
       this.geometry[id] = geometry;
-      saveGeometry(this.geometry);
+      saveGeometry$1(this.geometry);
     }
     /**
      * Toggle a `--has-widgets` modifier so CSS can hide the column's
@@ -14042,12 +14061,12 @@ var desktopMode = function(exports) {
       payload: filteredPayload
     };
     for (const win of _manager._stack) {
-      const target = win.iframe?.contentWindow;
-      if (!target) {
+      const target2 = win.iframe?.contentWindow;
+      if (!target2) {
         continue;
       }
       try {
-        target.postMessage(message, ORIGIN);
+        target2.postMessage(message, ORIGIN);
       } catch (err) {
       }
     }
@@ -15086,6 +15105,25 @@ var desktopMode = function(exports) {
   function isPayloadRequest(m) {
     return !!m && typeof m === "object" && m.type === "desktop-mode-drag-payload-request";
   }
+  function normalizeLegacyPayload(payload) {
+    const obj = payload;
+    if (obj.kind !== void 0 && obj.kind !== null) {
+      return payload;
+    }
+    if (typeof obj.id === "number" && typeof obj.url === "string" && typeof obj.mime === "string") {
+      return {
+        kind: "attachment",
+        id: obj.id,
+        url: obj.url,
+        title: typeof obj.title === "string" ? obj.title : "",
+        alt: typeof obj.alt === "string" ? obj.alt : "",
+        mime: obj.mime,
+        thumbnailUrl: typeof obj.thumbnailUrl === "string" ? obj.thumbnailUrl : void 0,
+        sizes: obj.sizes && typeof obj.sizes === "object" ? obj.sizes : void 0
+      };
+    }
+    return payload;
+  }
   class DragBridge {
     constructor() {
       this._payload = null;
@@ -15131,9 +15169,12 @@ var desktopMode = function(exports) {
       this._endDrag();
     }
     _startDrag(payload) {
-      this._payload = payload;
+      const normalized = normalizeLegacyPayload(payload);
+      this._payload = normalized;
       document.dispatchEvent(
-        new CustomEvent(DRAG_BRIDGE_EVENTS.START, { detail: { payload } })
+        new CustomEvent(DRAG_BRIDGE_EVENTS.START, {
+          detail: { payload: normalized }
+        })
       );
     }
     _endDrag() {
@@ -15152,18 +15193,18 @@ var desktopMode = function(exports) {
       this._targets = /* @__PURE__ */ new Map();
       this._byElement = /* @__PURE__ */ new Map();
     }
-    register(target) {
-      const prev = this._targets.get(target.id);
+    register(target2) {
+      const prev = this._targets.get(target2.id);
       if (prev) {
         this._byElement.delete(prev.element);
       }
-      this._targets.set(target.id, target);
-      this._byElement.set(target.element, target);
+      this._targets.set(target2.id, target2);
+      this._byElement.set(target2.element, target2);
       return () => {
-        const cur = this._targets.get(target.id);
-        if (cur === target) {
-          this._targets.delete(target.id);
-          this._byElement.delete(target.element);
+        const cur = this._targets.get(target2.id);
+        if (cur === target2) {
+          this._targets.delete(target2.id);
+          this._byElement.delete(target2.element);
         }
       };
     }
@@ -15212,8 +15253,8 @@ var desktopMode = function(exports) {
      */
     hitTestPoint(clientX, clientY) {
       const el = document.elementFromPoint(clientX, clientY);
-      const target = this.hitTest(el);
-      return { target, element: el, accepted: false };
+      const target2 = this.hitTest(el);
+      return { target: target2, element: el, accepted: false };
     }
   }
   const GHOST_CLASS = "desktop-mode-drag-ghost";
@@ -15506,8 +15547,8 @@ var desktopMode = function(exports) {
       });
       return session;
     }
-    registerDropTarget(target) {
-      return this._registry.register(target);
+    registerDropTarget(target2) {
+      return this._registry.register(target2);
     }
     isDragging() {
       return this._active !== null && this._active._lifted;
@@ -15567,17 +15608,17 @@ var desktopMode = function(exports) {
     _hitTestNow(session, clientX, clientY) {
       const run = () => {
         const el = document.elementFromPoint(clientX, clientY);
-        const target = this._registry.hitTest(el);
-        if (!target) {
+        const target2 = this._registry.hitTest(el);
+        if (!target2) {
           return { target: null, accepted: false };
         }
         let accepted = false;
         try {
-          accepted = target.accept(session.payload);
+          accepted = target2.accept(session.payload);
         } catch (err) {
-          console.error("[desktop-mode] drop target accept() threw:", target.id, err);
+          console.error("[desktop-mode] drop target accept() threw:", target2.id, err);
         }
-        return { target, accepted };
+        return { target: target2, accepted };
       };
       if (session._ghost) {
         return session._ghost.withHidden(run);
@@ -15617,26 +15658,26 @@ var desktopMode = function(exports) {
         document.body.setAttribute(BODY_DRAG_MODE_ATTR, mode);
       }
     }
-    _commit(session, target, clientX, clientY) {
+    _commit(session, target2, clientX, clientY) {
       session._finished = true;
       this._lastLiftedEndAt = Date.now();
-      fireLeave(target, session);
+      fireLeave(target2, session);
       this._cleanupDom(session);
       const prevActive = this._active;
       this._active = null;
       try {
-        void target.onDrop(session, { clientX, clientY });
+        void target2.onDrop(session, { clientX, clientY });
       } catch (err) {
-        console.error("[desktop-mode] drop target onDrop threw:", target.id, err);
+        console.error("[desktop-mode] drop target onDrop threw:", target2.id, err);
       }
       try {
-        session._callbacks.onCommit?.(target);
+        session._callbacks.onCommit?.(target2);
       } catch (err) {
         console.error("[desktop-mode] drag onCommit threw:", err);
       }
       dispatchOnDocument(DRAG_EVENTS.COMMIT, {
         payload: session.payload,
-        targetId: target.id
+        targetId: target2.id
       });
       dispatchOnDocument(DRAG_EVENTS.END, { payload: session.payload, reason: "commit" });
       if (this._active === prevActive) {
@@ -15687,26 +15728,26 @@ var desktopMode = function(exports) {
     }
     document.dispatchEvent(new CustomEvent(type, { detail }));
   }
-  function fireEnter(target, session) {
+  function fireEnter(target2, session) {
     try {
-      target.onEnter?.(session);
+      target2.onEnter?.(session);
     } catch (err) {
-      console.error("[desktop-mode] drop target onEnter threw:", target.id, err);
+      console.error("[desktop-mode] drop target onEnter threw:", target2.id, err);
     }
     dispatchOnDocument(DRAG_EVENTS.ENTER, {
       payload: session.payload,
-      targetId: target.id
+      targetId: target2.id
     });
   }
-  function fireLeave(target, session) {
+  function fireLeave(target2, session) {
     try {
-      target.onLeave?.(session);
+      target2.onLeave?.(session);
     } catch (err) {
-      console.error("[desktop-mode] drop target onLeave threw:", target.id, err);
+      console.error("[desktop-mode] drop target onLeave threw:", target2.id, err);
     }
     dispatchOnDocument(DRAG_EVENTS.LEAVE, {
       payload: session.payload,
-      targetId: target.id
+      targetId: target2.id
     });
   }
   function findOrphans() {
@@ -15738,6 +15779,118 @@ var desktopMode = function(exports) {
   let _dragManager = null;
   const _suppressedIframes = /* @__PURE__ */ new Map();
   const _activeRegistrations = /* @__PURE__ */ new Map();
+  let _bridgeInterceptPayload = null;
+  let _lastHoveredBridgeIframe = null;
+  function suppressIframePointerEventsBridge() {
+    const iframes = document.querySelectorAll(
+      IFRAME_SELECTOR
+    );
+    iframes.forEach((iframe) => {
+      if (_suppressedIframes.has(iframe)) {
+        return;
+      }
+      _suppressedIframes.set(iframe, iframe.style.pointerEvents);
+      iframe.style.pointerEvents = "none";
+    });
+  }
+  function restoreIframePointerEvents() {
+    _suppressedIframes.forEach((prev, iframe) => {
+      iframe.style.pointerEvents = prev;
+    });
+    _suppressedIframes.clear();
+  }
+  function findIframeAtCursor(clientX, clientY) {
+    const el = document.elementFromPoint(clientX, clientY);
+    if (!el) {
+      return null;
+    }
+    const win = el.closest(".desktop-mode-window");
+    if (!(win instanceof HTMLElement)) {
+      return null;
+    }
+    const iframe = win.querySelector(IFRAME_SELECTOR);
+    return iframe instanceof HTMLIFrameElement ? iframe : null;
+  }
+  const onBridgeDragOver = (e) => {
+    if (!_bridgeInterceptPayload) {
+      return;
+    }
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+    const iframe = findIframeAtCursor(e.clientX, e.clientY);
+    if (iframe === _lastHoveredBridgeIframe) {
+      return;
+    }
+    if (_lastHoveredBridgeIframe) {
+      postIntoIframe(_lastHoveredBridgeIframe, {
+        type: "desktop-mode-drag-leave"
+      });
+    }
+    _lastHoveredBridgeIframe = iframe;
+    if (iframe) {
+      postIntoIframe(iframe, {
+        type: "desktop-mode-drag-over",
+        payload: _bridgeInterceptPayload
+      });
+    }
+  };
+  const onBridgeDrop = (e) => {
+    if (!_bridgeInterceptPayload) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") {
+      e.stopImmediatePropagation();
+    }
+    const iframe = findIframeAtCursor(e.clientX, e.clientY);
+    const payload = _bridgeInterceptPayload;
+    stopBridgeIntercept();
+    if (!iframe) {
+      return;
+    }
+    const rect = iframe.getBoundingClientRect();
+    postIntoIframe(iframe, {
+      type: "desktop-mode-drop",
+      payload,
+      position: {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      }
+    });
+  };
+  const onBridgeDragEnd = () => {
+    stopBridgeIntercept();
+  };
+  function startBridgeIntercept(payload) {
+    if (_bridgeInterceptPayload) {
+      _bridgeInterceptPayload = payload;
+      return;
+    }
+    _bridgeInterceptPayload = payload;
+    suppressIframePointerEventsBridge();
+    document.addEventListener("dragover", onBridgeDragOver, true);
+    document.addEventListener("drop", onBridgeDrop, true);
+    document.addEventListener("dragend", onBridgeDragEnd, true);
+  }
+  function stopBridgeIntercept() {
+    if (!_bridgeInterceptPayload) {
+      return;
+    }
+    _bridgeInterceptPayload = null;
+    if (_lastHoveredBridgeIframe) {
+      postIntoIframe(_lastHoveredBridgeIframe, {
+        type: "desktop-mode-drag-leave"
+      });
+      _lastHoveredBridgeIframe = null;
+    }
+    document.removeEventListener("dragover", onBridgeDragOver, true);
+    document.removeEventListener("drop", onBridgeDrop, true);
+    document.removeEventListener("dragend", onBridgeDragEnd, true);
+    restoreIframePointerEvents();
+  }
   function extractBridgePayload(payload) {
     if (!payload || typeof payload !== "object") {
       return void 0;
@@ -15759,28 +15912,28 @@ var desktopMode = function(exports) {
     } catch {
     }
   }
-  function registerDropTargetFor(dragManager, iframe, target, windowId) {
+  function registerDropTargetFor(dragManager, iframe, target2, windowId) {
     return dragManager.registerDropTarget({
       id: `${TARGET_ID_PREFIX}${windowId}`,
-      element: target,
+      element: target2,
       accept: (payload) => !!extractBridgePayload(payload),
       onEnter: (session) => {
         const bridge = extractBridgePayload(session.payload);
         if (!bridge) {
           return;
         }
-        target.setAttribute(DROP_ACTIVE_ATTR, "");
+        target2.setAttribute(DROP_ACTIVE_ATTR, "");
         postIntoIframe(iframe, {
           type: "desktop-mode-drag-over",
           payload: bridge
         });
       },
       onLeave: () => {
-        target.removeAttribute(DROP_ACTIVE_ATTR);
+        target2.removeAttribute(DROP_ACTIVE_ATTR);
         postIntoIframe(iframe, { type: "desktop-mode-drag-leave" });
       },
       onDrop: (session, ev) => {
-        target.removeAttribute(DROP_ACTIVE_ATTR);
+        target2.removeAttribute(DROP_ACTIVE_ATTR);
         const bridge = extractBridgePayload(session.payload);
         if (!bridge) {
           return;
@@ -15821,12 +15974,14 @@ var desktopMode = function(exports) {
       payload
     );
     iframes.forEach((iframe) => {
-      if (_suppressedIframes.has(iframe)) {
+      if (!_suppressedIframes.has(iframe)) {
+        _suppressedIframes.set(iframe, iframe.style.pointerEvents);
+        iframe.style.pointerEvents = "none";
+      }
+      if (!isBridgeable) {
         return;
       }
-      _suppressedIframes.set(iframe, iframe.style.pointerEvents);
-      iframe.style.pointerEvents = "none";
-      if (!isBridgeable) {
+      if (_activeRegistrations.has(iframe)) {
         return;
       }
       const dropTargetEl = iframe.parentElement;
@@ -15868,6 +16023,16 @@ var desktopMode = function(exports) {
     });
     document.addEventListener(DRAG_EVENTS.END, () => {
       onDragEnd();
+    });
+    document.addEventListener(DRAG_BRIDGE_EVENTS.START, (e) => {
+      const detail = e.detail;
+      if (!detail?.payload) {
+        return;
+      }
+      startBridgeIntercept(detail.payload);
+    });
+    document.addEventListener(DRAG_BRIDGE_EVENTS.END, () => {
+      stopBridgeIntercept();
     });
     addAction(
       HOOKS.WINDOW_CLOSED,
@@ -16055,8 +16220,8 @@ var desktopMode = function(exports) {
     }
   }
   function openPaletteOnly(id) {
-    const target = palettes.find((p) => p.id === id);
-    if (!target) {
+    const target2 = palettes.find((p) => p.id === id);
+    if (!target2) {
       return;
     }
     for (const p of palettes) {
@@ -16070,7 +16235,7 @@ var desktopMode = function(exports) {
       }
     }
     try {
-      target.open();
+      target2.open();
     } catch {
     }
   }
@@ -16468,8 +16633,8 @@ var desktopMode = function(exports) {
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
           return;
         }
-        const target = e.target;
-        const link = target && target.closest ? target.closest("a[href]") : null;
+        const target2 = e.target;
+        const link = target2 && target2.closest ? target2.closest("a[href]") : null;
         if (!link) {
           return;
         }
@@ -16802,6 +16967,25 @@ var desktopMode = function(exports) {
     };
     return refresh;
   }
+  function hasRestorableSession(session) {
+    if (!session) {
+      return false;
+    }
+    if (Array.isArray(session.windows) && session.windows.length > 0) {
+      return true;
+    }
+    if (typeof session.updated !== "number" || session.updated <= 0 || !Array.isArray(session.desktops) || session.desktops.length === 0) {
+      return false;
+    }
+    if (session.desktops.length > 1) {
+      return true;
+    }
+    const onlyDesktop = session.desktops[0];
+    if (onlyDesktop?.id && onlyDesktop.id !== "desktop-1") {
+      return true;
+    }
+    return !!session.activeDesktop && session.activeDesktop !== "desktop-1";
+  }
   async function restoreSession(manager, config, desktopArea) {
     const rect = desktopArea.getBoundingClientRect();
     if (Array.isArray(config.session.desktops) && config.session.desktops.length > 0) {
@@ -16883,15 +17067,15 @@ var desktopMode = function(exports) {
     if (opts?.silent) {
       return promise;
     }
-    let target = opts?.window;
-    if (!target && opts?.windowId) {
-      target = manager.getById(opts.windowId) ?? null;
+    let target2 = opts?.window;
+    if (!target2 && opts?.windowId) {
+      target2 = manager.getById(opts.windowId) ?? null;
     }
-    if (!target) {
-      target = manager.getFocused();
+    if (!target2) {
+      target2 = manager.getFocused();
     }
-    if (target && typeof target.trackActivity === "function") {
-      void target.trackActivity(promise).catch(() => {
+    if (target2 && typeof target2.trackActivity === "function") {
+      void target2.trackActivity(promise).catch(() => {
       });
     }
     return promise;
@@ -16968,6 +17152,9 @@ var desktopMode = function(exports) {
     document.addEventListener("desktop-mode-window-closed", save);
     document.addEventListener("desktop-mode-window-focused", save);
     document.addEventListener("desktop-mode-window-changed", save);
+    addAction(HOOKS.DESKTOP_CREATED, "desktop-mode/session-save", save);
+    addAction(HOOKS.DESKTOP_CLOSED, "desktop-mode/session-save", save);
+    addAction(HOOKS.DESKTOP_SWITCHED, "desktop-mode/session-save", save);
   }
   function bindShellLifecycle() {
     const shellEl = document.getElementById("desktop-mode-shell");
@@ -17059,11 +17246,11 @@ var desktopMode = function(exports) {
     ".desktop-mode-dock-submenu"
   ].join(",");
   const customSelectors = /* @__PURE__ */ new Set();
-  function isDockElement(target) {
-    if (!target || typeof target.closest !== "function") {
+  function isDockElement(target2) {
+    if (!target2 || typeof target2.closest !== "function") {
       return false;
     }
-    const el = target;
+    const el = target2;
     if (el.closest(DEFAULT_DOCK_SELECTOR)) {
       return true;
     }
@@ -17825,10 +18012,10 @@ var desktopMode = function(exports) {
         new Error("[desktop-mode] startOAuth requires a non-empty service slug.")
       );
     }
-    const restRoot = readRestRoot$1();
+    const restRoot2 = readRestRoot$1();
     const restNonce = readRestNonce$1();
     return trackedFetch$1(
-      joinRestUrl(restRoot, "desktop-mode/v1/oauth/start"),
+      joinRestUrl(restRoot2, "desktop-mode/v1/oauth/start"),
       {
         method: "POST",
         headers: {
@@ -18067,6 +18254,7 @@ var desktopMode = function(exports) {
       dragBridge,
       dragManager,
       connect,
+      getConnection,
       config
     } = deps2;
     const desktopApi = {
@@ -18286,6 +18474,7 @@ var desktopMode = function(exports) {
         win.setAppearanceChrome(chromeId);
       },
       connect,
+      getConnection,
       broadcast,
       subscribe: subscribe$2,
       registerPalette,
@@ -18938,14 +19127,14 @@ var desktopMode = function(exports) {
       }
     }
     const rawTarget = next.get(placement.parentId)?.slice() ?? [];
-    const target = rawTarget.filter(Boolean);
-    const idx = target.findIndex((p) => p.id === placement.id);
+    const target2 = rawTarget.filter(Boolean);
+    const idx = target2.findIndex((p) => p.id === placement.id);
     if (idx >= 0) {
-      target[idx] = placement;
+      target2[idx] = placement;
     } else {
-      target.push(placement);
+      target2.push(placement);
     }
-    next.set(placement.parentId, target);
+    next.set(placement.parentId, target2);
     store2.state = { ...store2.state, placementsByFolder: next };
     store2.notify();
     fireChanged({ kind: "placement-upserted", placementId: placement.id, folderId: placement.parentId, source });
@@ -19016,15 +19205,15 @@ var desktopMode = function(exports) {
     removePlacement,
     removeFolder
   };
-  const styles$3 = css`:host{display:inline-block}`;
-  const styles$2 = css`:host{position:absolute;width:var( --wpd-ribbon-size,90px );height:var( --wpd-ribbon-size,90px );overflow:hidden;pointer-events:none;z-index:var( --wpd-ribbon-z,2 )}:host( [ hidden ] ){display:none}.banner{position:absolute;display:block;width:var( --wpd-ribbon-banner-width,140px );padding:var( --wpd-ribbon-padding,4px 0 );text-align:center;font:var( --wpd-ribbon-font,700 10px/1.4 var( --desktop-mode-font,system-ui ) );letter-spacing:var( --wpd-ribbon-tracking,0.06em );text-transform:uppercase;color:var( --wpd-ribbon-fg,#fff );background:var( --wpd-ribbon-bg,var( --wp-admin-theme-color,#2271b1 ) );box-shadow:var( --wpd-ribbon-shadow,0 2px 4px rgba( 0,0,0,0.2 ) )}:host(:not( [ placement ] ) ),:host( [ placement='top-end' ] ){inset-block-start:0;inset-inline-end:0}:host(:not( [ placement ] ) ) .banner,:host( [ placement='top-end' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host( [ placement='top-start' ] ){inset-block-start:0;inset-inline-start:0}:host( [ placement='top-start' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-end' ] ){inset-block-end:0;inset-inline-end:0}:host( [ placement='bottom-end' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-start' ] ){inset-block-end:0;inset-inline-start:0}:host( [ placement='bottom-start' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host(:not( [ placement ] ) ) .banner,:host-context( [ dir='rtl' ] ):host( [ placement='top-end' ] ) .banner{transform:rotate( -45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='top-start' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-end' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-start' ] ) .banner{transform:rotate( -45deg )}:host( [ tone='success' ] ) .banner{background:var( --wpd-ribbon-success,#1a7f37 )}:host( [ tone='warning' ] ) .banner{background:var( --wpd-ribbon-warning,#9a6700 )}:host( [ tone='danger' ] ) .banner{background:var( --wpd-ribbon-danger,#cf222e )}:host( [ tone='info' ] ) .banner{background:var( --wpd-ribbon-info,#0969da )}:host( [ tone='neutral' ] ) .banner{background:var( --wpd-ribbon-neutral,#57606a )}`;
+  const styles$5 = css`:host{display:inline-block}`;
+  const styles$4 = css`:host{position:absolute;width:var( --wpd-ribbon-size,90px );height:var( --wpd-ribbon-size,90px );overflow:hidden;pointer-events:none;z-index:var( --wpd-ribbon-z,2 )}:host( [ hidden ] ){display:none}.banner{position:absolute;display:block;width:var( --wpd-ribbon-banner-width,140px );padding:var( --wpd-ribbon-padding,4px 0 );text-align:center;font:var( --wpd-ribbon-font,700 10px/1.4 var( --desktop-mode-font,system-ui ) );letter-spacing:var( --wpd-ribbon-tracking,0.06em );text-transform:uppercase;color:var( --wpd-ribbon-fg,#fff );background:var( --wpd-ribbon-bg,var( --wp-admin-theme-color,#2271b1 ) );box-shadow:var( --wpd-ribbon-shadow,0 2px 4px rgba( 0,0,0,0.2 ) )}:host(:not( [ placement ] ) ),:host( [ placement='top-end' ] ){inset-block-start:0;inset-inline-end:0}:host(:not( [ placement ] ) ) .banner,:host( [ placement='top-end' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host( [ placement='top-start' ] ){inset-block-start:0;inset-inline-start:0}:host( [ placement='top-start' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-end' ] ){inset-block-end:0;inset-inline-end:0}:host( [ placement='bottom-end' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-start' ] ){inset-block-end:0;inset-inline-start:0}:host( [ placement='bottom-start' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host(:not( [ placement ] ) ) .banner,:host-context( [ dir='rtl' ] ):host( [ placement='top-end' ] ) .banner{transform:rotate( -45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='top-start' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-end' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-start' ] ) .banner{transform:rotate( -45deg )}:host( [ tone='success' ] ) .banner{background:var( --wpd-ribbon-success,#1a7f37 )}:host( [ tone='warning' ] ) .banner{background:var( --wpd-ribbon-warning,#9a6700 )}:host( [ tone='danger' ] ) .banner{background:var( --wpd-ribbon-danger,#cf222e )}:host( [ tone='info' ] ) .banner{background:var( --wpd-ribbon-info,#0969da )}:host( [ tone='neutral' ] ) .banner{background:var( --wpd-ribbon-neutral,#57606a )}`;
   const _WpdRibbon = class _WpdRibbon extends Component {
     render() {
       return html`<span class="banner" part="banner"><slot></slot></span>`;
     }
   };
   _WpdRibbon.props = ["placement", "tone"];
-  _WpdRibbon.styles = [styles$2];
+  _WpdRibbon.styles = [styles$4];
   _WpdRibbon.help = {
     title: "Ribbon",
     summary: "45° corner ribbon. Wraps the top-end (default), top-start, bottom-end, or bottom-start corner of its positioned parent. The host owns clipping + rotation; consumers only set position-relative on the parent and drop a label inside.",
@@ -19313,7 +19502,7 @@ var desktopMode = function(exports) {
   };
   _WpdTile.shadow = false;
   _WpdTile.props = REACTIVE_PROPS;
-  _WpdTile.styles = [styles$3];
+  _WpdTile.styles = [styles$5];
   _WpdTile.help = {
     title: "Tile",
     summary: "Canonical file/entity tile. Used across the wallpaper, folder windows, every My WordPress section, and plugin surfaces. Renders the standard `.desktop-mode-file-tile` chrome + optional status ribbon and wires the shared drag-out helper.",
@@ -19744,9 +19933,9 @@ var desktopMode = function(exports) {
     };
   }
   function snapToEmptyCell(x, y, occupied, host) {
-    const target = pointToCell(x, y);
-    if (!occupied.has(cellKey(target.col, target.row))) {
-      return target;
+    const target2 = pointToCell(x, y);
+    if (!occupied.has(cellKey(target2.col, target2.row))) {
+      return target2;
     }
     const maxRows = host ? Math.max(1, Math.floor((host.clientHeight - GRID_PADDING) / GRID_CELL_H)) : 999;
     for (let col = 0; col < 999; col++) {
@@ -19756,7 +19945,7 @@ var desktopMode = function(exports) {
         }
       }
     }
-    return target;
+    return target2;
   }
   function nextRowMajorCell(occupied, host) {
     const cols = host ? Math.max(
@@ -20009,36 +20198,7 @@ var desktopMode = function(exports) {
       selectedId = newId;
       notifySelection(placement);
     };
-    const repaint = (state2) => {
-      const raw = state2.placementsByFolder.get(folderId) ?? [];
-      const list2 = raw.slice().sort((a, b) => {
-        const ap = isPinned(a) ? 0 : 1;
-        const bp = isPinned(b) ? 0 : 1;
-        return ap - bp;
-      });
-      const fp = fingerprint(list2);
-      if (fp === lastFingerprint) {
-        return;
-      }
-      lastFingerprint = fp;
-      if (tryPatchPositions(list2, container, host)) {
-        return;
-      }
-      container.replaceChildren();
-      for (const [, deregister] of folderDropDeregisters) {
-        try {
-          deregister();
-        } catch {
-        }
-      }
-      folderDropDeregisters.clear();
-      for (const [, deregister] of tileRejectDeregisters) {
-        try {
-          deregister();
-        } catch {
-        }
-      }
-      tileRejectDeregisters.clear();
+    const computeLayout = (list2) => {
       const pinnedSlots = /* @__PURE__ */ new Map();
       const occupiedCells = /* @__PURE__ */ new Set();
       let pinnedIdx = 0;
@@ -20056,8 +20216,8 @@ var desktopMode = function(exports) {
         if (pinnedSlots.has(placement.id)) {
           continue;
         }
-        const target = pointToCell(placement.x, placement.y);
-        const key = cellKey(target.col, target.row);
+        const target2 = pointToCell(placement.x, placement.y);
+        const key = cellKey(target2.col, target2.row);
         if (!occupiedCells.has(key)) {
           occupiedCells.add(key);
           continue;
@@ -20071,51 +20231,28 @@ var desktopMode = function(exports) {
         occupiedCells.add(cellKey(free.col, free.row));
         displaced.set(placement.id, { x: free.x, y: free.y });
       }
-      for (const placement of list2) {
-        const tile2 = buildTile(placement, folderId);
-        const pinnedSlot = pinnedSlots.get(placement.id);
-        if (pinnedSlot) {
-          setTilePosition(tile2, pinnedSlot.x, pinnedSlot.y);
-          tile2.classList.add(`${TILE_CLASS}--pinned`);
-          attachContextMenu(tile2, placement);
-          attachSelectOnClick(tile2, placement);
-          if (shouldRejectTileDrops(placement)) {
-            const dragManager = getDragManager();
-            if (dragManager) {
-              const deregister = dragManager.registerDropTarget({
-                id: `desktop-mode-files-tile-${placement.id}-reject`,
-                element: tile2,
-                accept: () => false,
-                onDrop: () => {
-                }
-              });
-              tileRejectDeregisters.set(placement.id, deregister);
-            }
-          }
-          container.appendChild(tile2);
-          continue;
-        }
-        const moved = displaced.get(placement.id);
-        if (moved) {
-          setTilePosition(tile2, moved.x, moved.y);
-        }
-        attachTileDrag(tile2, placement, folderId);
+      return { pinnedSlots, displaced };
+    };
+    const applyTilePosition = (tile2, placement, pinnedSlots, displaced) => {
+      const pinned = pinnedSlots.get(placement.id);
+      const moved = displaced.get(placement.id);
+      if (pinned) {
+        setTilePosition(tile2, pinned.x, pinned.y);
+      } else if (moved) {
+        setTilePosition(tile2, moved.x, moved.y);
+      } else {
+        setTilePosition(tile2, placement.x, placement.y);
+      }
+    };
+    const wireTile = (placement, pinnedSlots, displaced) => {
+      const tile2 = buildTile(placement, folderId);
+      const pinnedSlot = pinnedSlots.get(placement.id);
+      if (pinnedSlot) {
+        setTilePosition(tile2, pinnedSlot.x, pinnedSlot.y);
+        tile2.classList.add(`${TILE_CLASS}--pinned`);
         attachContextMenu(tile2, placement);
         attachSelectOnClick(tile2, placement);
-        if (placement.file.type === "folder") {
-          const targetFolderId = parseInt(placement.file.ref, 10);
-          if (targetFolderId > 0) {
-            const dragManager = getDragManager();
-            if (dragManager) {
-              const deregister = registerFolderDropTarget(
-                dragManager,
-                tile2,
-                targetFolderId
-              );
-              folderDropDeregisters.set(placement.id, deregister);
-            }
-          }
-        } else if (shouldRejectTileDrops(placement)) {
+        if (shouldRejectTileDrops(placement)) {
           const dragManager = getDragManager();
           if (dragManager) {
             const deregister = dragManager.registerDropTarget({
@@ -20128,7 +20265,160 @@ var desktopMode = function(exports) {
             tileRejectDeregisters.set(placement.id, deregister);
           }
         }
-        container.appendChild(tile2);
+        return tile2;
+      }
+      const moved = displaced.get(placement.id);
+      if (moved) {
+        setTilePosition(tile2, moved.x, moved.y);
+      }
+      attachTileDrag(tile2, placement, folderId);
+      attachContextMenu(tile2, placement);
+      attachSelectOnClick(tile2, placement);
+      if (placement.file.type === "folder") {
+        const targetFolderId = parseInt(placement.file.ref, 10);
+        if (targetFolderId > 0) {
+          const dragManager = getDragManager();
+          if (dragManager) {
+            const deregister = registerFolderDropTarget(
+              dragManager,
+              tile2,
+              targetFolderId
+            );
+            folderDropDeregisters.set(placement.id, deregister);
+          }
+        }
+      } else if (shouldRejectTileDrops(placement)) {
+        const dragManager = getDragManager();
+        if (dragManager) {
+          const deregister = dragManager.registerDropTarget({
+            id: `desktop-mode-files-tile-${placement.id}-reject`,
+            element: tile2,
+            accept: () => false,
+            onDrop: () => {
+            }
+          });
+          tileRejectDeregisters.set(placement.id, deregister);
+        }
+      }
+      return tile2;
+    };
+    const tryPatchIncremental = (list2) => {
+      const existing = /* @__PURE__ */ new Map();
+      for (const tile2 of container.querySelectorAll(
+        "[data-placement-id]"
+      )) {
+        const raw = tile2.dataset.placementId ?? "";
+        const id = parseInt(raw, 10);
+        if (raw === "" || Number.isNaN(id) && raw !== "-0") {
+          return false;
+        }
+        existing.set(id, tile2);
+      }
+      const wantIds = /* @__PURE__ */ new Set();
+      for (const placement of list2) {
+        wantIds.add(placement.id);
+      }
+      for (const placement of list2) {
+        const tile2 = existing.get(placement.id);
+        if (!tile2) {
+          continue;
+        }
+        if (tile2.dataset.fileType !== placement.file.type) {
+          return false;
+        }
+        if (tile2.dataset.fileRef !== placement.file.ref) {
+          return false;
+        }
+        const wasPinned = tile2.classList.contains(
+          `${TILE_CLASS}--pinned`
+        );
+        if (wasPinned !== isPinned(placement)) {
+          return false;
+        }
+      }
+      for (const [id, tile2] of existing) {
+        if (wantIds.has(id)) {
+          continue;
+        }
+        const folderDereg = folderDropDeregisters.get(id);
+        if (folderDereg) {
+          try {
+            folderDereg();
+          } catch {
+          }
+          folderDropDeregisters.delete(id);
+        }
+        const rejectDereg = tileRejectDeregisters.get(id);
+        if (rejectDereg) {
+          try {
+            rejectDereg();
+          } catch {
+          }
+          tileRejectDeregisters.delete(id);
+        }
+        tile2.remove();
+      }
+      const { pinnedSlots, displaced } = computeLayout(list2);
+      for (const placement of list2) {
+        const tile2 = existing.get(placement.id);
+        if (tile2) {
+          applyTilePosition(tile2, placement, pinnedSlots, displaced);
+          continue;
+        }
+        container.appendChild(
+          wireTile(placement, pinnedSlots, displaced)
+        );
+      }
+      if (selectedId !== null && !container.querySelector(
+        `[data-placement-id="${selectedId}"]`
+      )) {
+        selectedId = null;
+        notifySelection(null);
+      }
+      doAction("desktop-mode.files.grid-rendered", {
+        folderId,
+        count: list2.length
+      });
+      return true;
+    };
+    const repaint = (state2) => {
+      const raw = state2.placementsByFolder.get(folderId) ?? [];
+      const list2 = raw.slice().sort((a, b) => {
+        const ap = isPinned(a) ? 0 : 1;
+        const bp = isPinned(b) ? 0 : 1;
+        return ap - bp;
+      });
+      const fp = fingerprint(list2);
+      if (fp === lastFingerprint) {
+        return;
+      }
+      lastFingerprint = fp;
+      if (tryPatchPositions(list2, container, host)) {
+        return;
+      }
+      if (tryPatchIncremental(list2)) {
+        return;
+      }
+      container.replaceChildren();
+      for (const [, deregister] of folderDropDeregisters) {
+        try {
+          deregister();
+        } catch {
+        }
+      }
+      folderDropDeregisters.clear();
+      for (const [, deregister] of tileRejectDeregisters) {
+        try {
+          deregister();
+        } catch {
+        }
+      }
+      tileRejectDeregisters.clear();
+      const { pinnedSlots, displaced } = computeLayout(list2);
+      for (const placement of list2) {
+        container.appendChild(
+          wireTile(placement, pinnedSlots, displaced)
+        );
       }
       if (selectedId !== null && !container.querySelector(`[data-placement-id="${selectedId}"]`)) {
         selectedId = null;
@@ -20675,8 +20965,8 @@ var desktopMode = function(exports) {
       if (pinnedSlots.has(placement.id)) {
         continue;
       }
-      const target = pointToCell(placement.x, placement.y);
-      const key = cellKey(target.col, target.row);
+      const target2 = pointToCell(placement.x, placement.y);
+      const key = cellKey(target2.col, target2.row);
       if (!occupiedCells.has(key)) {
         occupiedCells.add(key);
         continue;
@@ -20717,7 +21007,7 @@ var desktopMode = function(exports) {
     api.updateOsSettings({ itemVisibility: next });
   }
   function registerFolderDropTarget(dragManager, tile2, targetFolderId, currentFolderId) {
-    const target = {
+    const target2 = {
       id: `desktop-mode-files-folder-${targetFolderId}-tile-${tile2.dataset.placementId ?? "?"}`,
       element: tile2,
       accept: (payload) => {
@@ -20803,7 +21093,7 @@ var desktopMode = function(exports) {
         }
       }
     };
-    return dragManager.registerDropTarget(target);
+    return dragManager.registerDropTarget(target2);
   }
   function attachTileDrag(tile2, placement, folderId) {
     tile2.addEventListener("pointerdown", (e) => {
@@ -21116,17 +21406,17 @@ var desktopMode = function(exports) {
       }
     };
   }
-  function isInsideTile(target) {
-    if (!(target instanceof Element)) {
+  function isInsideTile(target2) {
+    if (!(target2 instanceof Element)) {
       return false;
     }
-    return target.closest(".desktop-mode-file-tile") !== null;
+    return target2.closest(".desktop-mode-file-tile") !== null;
   }
-  function isInsideMenu(target) {
-    if (!(target instanceof Element)) {
+  function isInsideMenu(target2) {
+    if (!(target2 instanceof Element)) {
       return false;
     }
-    return target.closest(`.${MENU_CLASS$1}`) !== null;
+    return target2.closest(`.${MENU_CLASS$1}`) !== null;
   }
   function buildItems(deps2) {
     const sortItem = {
@@ -21457,8 +21747,8 @@ var desktopMode = function(exports) {
     wrap.appendChild(title);
     const sub = document.createElement("p");
     sub.className = "desktop-mode-files__access-gated-sub";
-    const target = placement.file.title || placement.file.type;
-    sub.textContent = `You don’t have access to "${target}". The folder owner shared this folder with you, but your role doesn’t include permission to open this item.`;
+    const target2 = placement.file.title || placement.file.type;
+    sub.textContent = `You don’t have access to "${target2}". The folder owner shared this folder with you, but your role doesn’t include permission to open this item.`;
     wrap.appendChild(sub);
     const hint = document.createElement("p");
     hint.className = "desktop-mode-files__access-gated-hint";
@@ -23178,7 +23468,7 @@ var desktopMode = function(exports) {
   };
   let WpdSegmented = _WpdSegmented;
   defineComponent("wpd-segmented", WpdSegmented);
-  const styles$1 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles$3 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
@@ -23191,7 +23481,7 @@ var desktopMode = function(exports) {
     }
   };
   _WpdButton.props = ["variant", "disabled", "type", "busy", "fill-cell"];
-  _WpdButton.styles = [styles$1];
+  _WpdButton.styles = [styles$3];
   _WpdButton.help = {
     title: "Button",
     summary: "Thin wrapper around <button> with consistent variant styling and a slot for the label.",
@@ -24089,6 +24379,1767 @@ var desktopMode = function(exports) {
     });
     return off;
   }
+  const styles$2 = css`:host{display:inline-flex;align-items:center;gap:6px;font-size:var( --wpd-save-status-font-size,11px );line-height:1;color:var( --wpd-save-status-fg,currentColor );vertical-align:middle;min-width:0;opacity:1;pointer-events:auto}.wpd-save-status__indicator{display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;flex-shrink:0;box-sizing:border-box;background:var( --wpd-save-status-bg,transparent );border:2px solid var( --wpd-save-status-idle-color,color-mix( in srgb,var( --wp-admin-theme-color,#2271b1 ) 55%,transparent ) );color:var( --wp-admin-theme-color,#2271b1 );transition:background-color 0.2s ease,border-color 0.2s ease,box-shadow 0.2s ease}:host( [ phase='pending' ] ) .wpd-save-status__indicator,:host( [ phase='saving' ] ) .wpd-save-status__indicator{background:var( --wpd-save-status-bg,var( --wp-admin-theme-color,#2271b1 ) );border-color:transparent;color:var( --wp-admin-theme-color,#2271b1 );animation:wpd-save-status-pulse 1.2s ease-in-out infinite}:host( [ animation='modem' ][ phase='pending' ] ) .wpd-save-status__indicator,:host( [ animation='modem' ][ phase='saving' ] ) .wpd-save-status__indicator{background:var( --wpd-save-status-bg,var( --wp-admin-theme-color,#2271b1 ) );border-color:transparent;color:var( --wp-admin-theme-color,#2271b1 );animation:wpd-save-status-modem-stutter 1.8s ease-in-out infinite,wpd-save-status-modem-glow 2.4s ease-in-out infinite}@keyframes wpd-save-status-modem-stutter{0%,4%{opacity:1}5%,30%{opacity:0.22}31%,36%{opacity:1}37%,39%{opacity:0.22}40%,44%{opacity:1}45%,67%{opacity:0.22}68%,76%{opacity:1}77%,100%{opacity:0.22}}@keyframes wpd-save-status-modem-glow{0%,12%{box-shadow:0 0 0 0 transparent}13%,22%{box-shadow:0 0 4px 0 currentColor}23%,50%{box-shadow:0 0 0 0 transparent}51%,58%{box-shadow:0 0 4px 0 currentColor}59%,84%{box-shadow:0 0 0 0 transparent}85%,94%{box-shadow:0 0 5px 0 currentColor}95%,100%{box-shadow:0 0 0 0 transparent}}@media ( prefers-reduced-motion:reduce ){:host( [ phase='pending' ] ) .wpd-save-status__indicator,:host( [ phase='saving' ] ) .wpd-save-status__indicator,:host( [ animation='modem' ][ phase='pending' ] ) .wpd-save-status__indicator,:host( [ animation='modem' ][ phase='saving' ] ) .wpd-save-status__indicator{animation:none;opacity:0.85}}:host( [ phase='saved' ] ) .wpd-save-status__indicator{background:var( --wpd-save-status-saved-bg,#1d6f42 );border-color:transparent;color:var( --wpd-save-status-saved-bg,#1d6f42 )}:host( [ phase='failed' ] ) .wpd-save-status__indicator{background:var( --wpd-save-status-failed-bg,#d63638 );border-color:transparent;color:var( --wpd-save-status-failed-bg,#d63638 );animation:wpd-save-status-pulse 0.8s ease-in-out 2}@keyframes wpd-save-status-pulse{0%,100%{opacity:0.55;transform:scale( 0.9 )}50%{opacity:1;transform:scale( 1 )}}:host( [ mode='pill' ] ) .wpd-save-status{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;background:var( --wpd-save-status-pill-bg,transparent );font-weight:500;white-space:nowrap}:host( [ mode='pill' ][ phase='saving' ] ) .wpd-save-status,:host( [ mode='pill' ][ phase='pending' ] ) .wpd-save-status{background:var( --wpd-save-status-pill-bg,rgba( 0,0,0,0.04 ) );color:var( --wpd-save-status-pill-fg,#50575e )}:host( [ mode='pill' ][ phase='saved' ] ) .wpd-save-status{background:var( --wpd-save-status-pill-bg,rgba( 30,132,73,0.12 ) );color:var( --wpd-save-status-pill-fg,#1d6f42 )}:host( [ mode='pill' ][ phase='failed' ] ) .wpd-save-status{background:var( --wpd-save-status-pill-bg,rgba( 214,54,56,0.12 ) );color:var( --wpd-save-status-pill-fg,#a02622 )}.wpd-save-status__label{min-width:0;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}:host( [ phase='saved' ] ) .wpd-save-status__glyph,:host( [ phase='failed' ] ) .wpd-save-status__glyph{display:inline-block;color:#fff;width:8px;height:8px}.wpd-save-status__glyph{display:none}.wpd-save-status__glyph svg{display:block;width:100%;height:100%}`;
+  const DEFAULT_EVENT = "desktop-mode-os-settings-save-lifecycle";
+  const DEFAULT_AUTO_CLEAR_SAVED_MS = 2200;
+  const DEFAULT_AUTO_CLEAR_FAILED_MS = 6e3;
+  const _WpdSaveStatus = class _WpdSaveStatus extends Component {
+    constructor() {
+      super(...arguments);
+      this._autoTimer = null;
+      this._docListener = null;
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      if (this.auto !== null) {
+        this._installAutoListener();
+      }
+    }
+    disconnectedCallback() {
+      this._removeAutoListener();
+      if (this._autoTimer !== null) {
+        window.clearTimeout(this._autoTimer);
+        this._autoTimer = null;
+      }
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+      super.attributeChangedCallback(name, oldValue, newValue);
+      if (name === "auto" || name === "event") {
+        this._removeAutoListener();
+        if (this.auto !== null) {
+          this._installAutoListener();
+        }
+      }
+      if (name === "phase") {
+        this._scheduleAutoClear();
+        const detail = {
+          phase: this.phase ?? "idle",
+          error: this.error ?? void 0
+        };
+        this.emit("wpd-save-status-change", detail);
+      }
+    }
+    render() {
+      const phase = this.phase ?? "idle";
+      const mode = this.mode ?? "dot";
+      const error = this.error ?? "";
+      const title = error || this._labelForPhase(phase);
+      if (title) {
+        this.setAttribute("title", title);
+      } else {
+        this.removeAttribute("title");
+      }
+      this.setAttribute("aria-live", phase === "failed" ? "assertive" : "polite");
+      this.setAttribute("role", phase === "failed" ? "alert" : "status");
+      return html`
+			<span class="wpd-save-status">
+				<span class="wpd-save-status__indicator" aria-hidden="true">
+					<span class="wpd-save-status__glyph">${this._renderGlyph(phase)}</span>
+				</span>
+				${mode === "pill" ? html`<span class="wpd-save-status__label"
+							>${this._labelForPhase(phase)}</span
+					  >` : html``}
+			</span>
+		`;
+    }
+    _renderGlyph(phase) {
+      if (phase === "saved") {
+        return _iconCheck();
+      }
+      if (phase === "failed") {
+        return _iconBang();
+      }
+      return "";
+    }
+    _labelForPhase(phase) {
+      switch (phase) {
+        case "pending":
+        case "saving":
+          return this["saving-label"] ?? "Saving…";
+        case "saved":
+          return this["saved-label"] ?? "Saved";
+        case "failed": {
+          const err = this.error ?? "";
+          return err || "Couldn’t save";
+        }
+        default:
+          return this["idle-label"] ?? "";
+      }
+    }
+    _installAutoListener() {
+      const eventName = this.event || DEFAULT_EVENT;
+      this._docListener = (e) => {
+        const detail = e.detail;
+        if (!detail || typeof detail.phase !== "string") {
+          return;
+        }
+        this.phase = detail.phase;
+        if (detail.error) {
+          this.error = detail.error;
+        } else if (detail.phase !== "failed" && this.error) {
+          this.removeAttribute("error");
+        }
+      };
+      document.addEventListener(eventName, this._docListener);
+    }
+    _removeAutoListener() {
+      if (!this._docListener) {
+        return;
+      }
+      const eventName = this.event || DEFAULT_EVENT;
+      document.removeEventListener(eventName, this._docListener);
+      this._docListener = null;
+    }
+    _scheduleAutoClear() {
+      if (this._autoTimer !== null) {
+        window.clearTimeout(this._autoTimer);
+        this._autoTimer = null;
+      }
+      const phase = this.phase ?? "idle";
+      const ms = this._autoClearMsFor(phase);
+      if (ms <= 0) {
+        return;
+      }
+      this._autoTimer = window.setTimeout(() => {
+        this._autoTimer = null;
+        this.phase = "idle";
+      }, ms);
+    }
+    _autoClearMsFor(phase) {
+      if (phase === "saved") {
+        const raw = this["auto-clear-saved-ms"];
+        return parseInt(raw || "", 10) || DEFAULT_AUTO_CLEAR_SAVED_MS;
+      }
+      if (phase === "failed") {
+        const raw = this["auto-clear-failed-ms"];
+        return parseInt(raw || "", 10) || DEFAULT_AUTO_CLEAR_FAILED_MS;
+      }
+      return 0;
+    }
+  };
+  _WpdSaveStatus.props = [
+    "phase",
+    "mode",
+    "animation",
+    "auto",
+    "event",
+    "error",
+    "saving-label",
+    "saved-label",
+    "idle-label",
+    "auto-clear-saved-ms",
+    "auto-clear-failed-ms"
+  ];
+  _WpdSaveStatus.styles = [styles$2];
+  _WpdSaveStatus.help = {
+    title: "Save status",
+    summary: 'Tiny status indicator for "is this change saved yet?" affordances. Three layouts (dot / icon / pill), four phases, optional auto-listen to a save-lifecycle CustomEvent so every input in the panel inherits feedback for free.',
+    status: "experimental",
+    since: "0.8.0",
+    props: [
+      {
+        name: "phase",
+        type: "'idle' | 'pending' | 'saving' | 'saved' | 'failed'",
+        default: "idle",
+        description: "Current lifecycle phase. Set manually for one-off integrations, or rely on `auto` to populate it from a CustomEvent."
+      },
+      {
+        name: "mode",
+        type: "'dot' | 'icon' | 'pill'",
+        default: "dot",
+        description: "Layout. `dot` is the smallest (10×10 colored dot); `icon` adds a glyph inside on saved/failed; `pill` adds an inline label."
+      },
+      {
+        name: "animation",
+        type: "'pulse' | 'modem'",
+        default: "pulse",
+        description: "Animation cadence during the saving phase. `pulse` (default) is a smooth ease-in-out; `modem` is an irregular activity-LED blink with a soft glow — suits a 'data-flowing' affordance in window title bars."
+      },
+      {
+        name: "auto",
+        type: "boolean attribute",
+        description: 'Subscribe to a CustomEvent on `document` and populate phase + error from its detail. Default event name is `desktop-mode-os-settings-save-lifecycle`; override with `event="…"`.'
+      },
+      {
+        name: "event",
+        type: "string",
+        default: "desktop-mode-os-settings-save-lifecycle",
+        description: "CustomEvent name to listen on when `auto` is set."
+      },
+      {
+        name: "error",
+        type: "string",
+        description: "Error message shown in `pill` mode and exposed as the host title attribute (so dot/icon modes still surface the message via tooltip)."
+      },
+      {
+        name: "saving-label",
+        type: "string",
+        default: "Saving…",
+        description: "Pill-mode label shown during `pending` / `saving`."
+      },
+      {
+        name: "saved-label",
+        type: "string",
+        default: "Saved",
+        description: "Pill-mode label shown during `saved`."
+      },
+      {
+        name: "idle-label",
+        type: "string",
+        description: 'Optional pill-mode label shown during `idle` (e.g. "All changes saved"). When unset, the pill collapses to invisible while idle.'
+      },
+      {
+        name: "auto-clear-saved-ms",
+        type: "integer",
+        default: "2200",
+        description: "How long the `saved` phase stays visible before auto-fading back to `idle`."
+      },
+      {
+        name: "auto-clear-failed-ms",
+        type: "integer",
+        default: "6000",
+        description: "How long the `failed` phase stays visible before auto-fading back to `idle`."
+      }
+    ],
+    events: [
+      {
+        name: "wpd-save-status-change",
+        description: "Fires when the phase changes (manually or via auto-listen).",
+        detail: "{ phase, error }"
+      }
+    ],
+    cssProps: [
+      {
+        name: "--wpd-save-status-bg",
+        description: "Indicator background color (saving/pending phase)."
+      },
+      {
+        name: "--wpd-save-status-saved-bg",
+        description: "Indicator background on saved."
+      },
+      {
+        name: "--wpd-save-status-failed-bg",
+        description: "Indicator background on failed."
+      },
+      {
+        name: "--wpd-save-status-pill-bg",
+        description: "Pill background (mode=pill)."
+      },
+      {
+        name: "--wpd-save-status-pill-fg",
+        description: "Pill foreground (mode=pill)."
+      }
+    ],
+    example: html`
+			<wpd-cluster gap="12">
+				<wpd-save-status phase="pending"></wpd-save-status>
+				<wpd-save-status phase="saving"></wpd-save-status>
+				<wpd-save-status phase="saved"></wpd-save-status>
+				<wpd-save-status phase="failed"></wpd-save-status>
+				<wpd-save-status mode="pill" phase="saving"></wpd-save-status>
+				<wpd-save-status mode="pill" phase="saved"></wpd-save-status>
+				<wpd-save-status mode="pill" phase="failed" error="Network error."></wpd-save-status>
+			</wpd-cluster>
+		`
+  };
+  let WpdSaveStatus = _WpdSaveStatus;
+  defineComponent("wpd-save-status", WpdSaveStatus);
+  function _iconCheck() {
+    return html`
+		<svg
+			viewBox="0 0 12 12"
+			aria-hidden="true"
+			focusable="false"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		>
+			<path d="M2.5 6 L5 8.5 L9.5 4" />
+		</svg>
+	`;
+  }
+  function _iconBang() {
+    return html`
+		<svg
+			viewBox="0 0 12 12"
+			aria-hidden="true"
+			focusable="false"
+			fill="currentColor"
+		>
+			<path
+				d="M5 2 H7 V7 H5 z M5 8.5 H7 V10.5 H5 z"
+			/>
+		</svg>
+	`;
+  }
+  const textareaStyles = css`:host{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var( --desktop-mode-text,#1d2327 );min-width:0}:host( [ hidden ] ){display:none}.wpd-textarea__label{font-size:12px;color:var( --desktop-mode-muted,#646970 )}textarea{appearance:none;-webkit-appearance:none;display:block;width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;background:var( --desktop-mode-window-bg,#fff );border:1px solid var( --desktop-mode-border,#dcdcde );border-radius:6px;font:inherit;font-size:13px;line-height:1.45;color:var( --desktop-mode-text,#1d2327 );resize:vertical;transition:border-color 0.12s ease,box-shadow 0.12s ease}textarea:hover{border-color:var( --desktop-mode-muted,#8c8f94 )}textarea:focus-visible{outline:none;border-color:var( --wp-admin-theme-color,#2271b1 );box-shadow:0 0 0 1px var( --wp-admin-theme-color,#2271b1 )}textarea:disabled{opacity:0.55;cursor:not-allowed;background:rgba( 0,0,0,0.03 )}textarea[ aria-invalid='true' ]{border-color:#d63638}textarea[ aria-invalid='true' ]:focus-visible{box-shadow:0 0 0 1px #d63638}:host( [ auto-grow ] ) textarea{resize:none;overflow:hidden}`;
+  const _WpdTextarea = class _WpdTextarea extends Component {
+    constructor() {
+      super(...arguments);
+      this._textareaEl = null;
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      ensureAutoId(this);
+    }
+    render() {
+      const label = this._attr("label") || "";
+      const value = this._attr("value") ?? "";
+      const placeholder = this._attr("placeholder") || "";
+      const disabled = this._boolAttr("disabled");
+      const readonly = this._boolAttr("readonly");
+      const ariaLabel = this._attr("aria-label") || label;
+      const name = this._attr("name") || "";
+      const rows = Number(this._attr("rows")) || 3;
+      const maxLength = this._attr("maxlength");
+      const minLength = this._attr("minlength");
+      const invalid = this._boolAttr("invalid");
+      const hostId = this.id || "wpd-unnamed";
+      const fieldId = `${hostId}__field`;
+      return html`
+			${label ? html`<label class="wpd-textarea__label" for=${fieldId}>${label}</label>` : html``}
+			<textarea
+				id=${fieldId}
+				part="textarea"
+				.value=${value}
+				placeholder=${placeholder}
+				?disabled=${disabled}
+				?readonly=${readonly}
+				rows=${rows}
+				maxlength=${maxLength ?? ""}
+				minlength=${minLength ?? ""}
+				name=${name}
+				aria-invalid=${invalid ? "true" : "false"}
+				aria-label=${ariaLabel || ""}
+				@input=${(e) => this._onInput(e)}
+				@change=${(e) => this._onChange(e)}
+				@keydown=${(e) => this._onKeyDown(e)}
+			></textarea>
+		`;
+    }
+    _attr(name) {
+      return this.getAttribute(name);
+    }
+    _boolAttr(name) {
+      return this.getAttribute(name) !== null;
+    }
+    _onInput(e) {
+      const ta = e.target;
+      this._textareaEl = ta;
+      this.setAttribute("value", ta.value);
+      this.emit("wpd-input-change", { value: ta.value });
+      if (this._boolAttr("auto-grow")) {
+        this._autosize(ta);
+      }
+    }
+    _onChange(e) {
+      const ta = e.target;
+      this.emit("wpd-input-commit", { value: ta.value });
+    }
+    _onKeyDown(e) {
+      if (!this._boolAttr("submit-on-enter")) {
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        const ta = e.target;
+        this.emit("wpd-submit", { value: ta.value });
+      }
+    }
+    /**
+     * Grow the textarea height to fit content, capped at `max-rows`.
+     * Resets to scroll-height each input then clamps; cheap because
+     * the browser caches layout.
+     */
+    _autosize(ta) {
+      const maxRows = Number(this._attr("max-rows")) || 8;
+      const cs = window.getComputedStyle(ta);
+      const fontSize = parseFloat(cs.fontSize) || 13;
+      const lineHeightRaw = cs.lineHeight;
+      const lineHeight = lineHeightRaw === "normal" ? fontSize * 1.45 : parseFloat(lineHeightRaw) || fontSize * 1.45;
+      const paddingTop = parseFloat(cs.paddingTop) || 0;
+      const paddingBottom = parseFloat(cs.paddingBottom) || 0;
+      const max = lineHeight * maxRows + paddingTop + paddingBottom;
+      ta.style.height = "auto";
+      const next = Math.min(ta.scrollHeight, max);
+      ta.style.height = `${next}px`;
+    }
+    /** Public helper for callers that programmatically set `.value` and want autosize to re-run. */
+    refreshAutosize() {
+      if (this._textareaEl && this._boolAttr("auto-grow")) {
+        this._autosize(this._textareaEl);
+      }
+    }
+    /** Imperatively focus the underlying textarea. */
+    focusInput() {
+      const root = this.shadowRoot ?? this;
+      const ta = root.querySelector("textarea");
+      ta?.focus();
+    }
+    /** Imperatively clear the value. */
+    clear() {
+      this.setAttribute("value", "");
+      const root = this.shadowRoot ?? this;
+      const ta = root.querySelector("textarea");
+      if (ta) {
+        ta.value = "";
+        if (this._boolAttr("auto-grow")) {
+          this._autosize(ta);
+        }
+      }
+    }
+  };
+  _WpdTextarea.props = [
+    "label",
+    "value",
+    "placeholder",
+    "disabled",
+    "readonly",
+    "ariaLabel",
+    "name",
+    "rows",
+    "maxlength",
+    "minlength",
+    "invalid",
+    "autoGrow",
+    "maxRows",
+    "submitOnEnter"
+  ];
+  _WpdTextarea.styles = [textareaStyles];
+  _WpdTextarea.help = {
+    title: "Textarea",
+    summary: "Multi-line text input. Same event shape as wpd-text-field. Optional auto-grow up to max-rows; optional submit-on-enter (Enter sends, Shift+Enter newlines).",
+    status: "stable",
+    since: "0.22.0",
+    props: [
+      { name: "label", type: "string", description: "Visible label above the textarea." },
+      { name: "value", type: "string", description: "Current value; reflected two-way." },
+      { name: "placeholder", type: "string", description: "Native placeholder." },
+      { name: "disabled", type: "boolean attribute" },
+      { name: "readonly", type: "boolean attribute" },
+      { name: "aria-label", type: "string", description: "Accessible label when no visible label is rendered." },
+      { name: "name", type: "string", description: "Forwarded to native textarea for form submission." },
+      { name: "rows", type: "integer (string)", default: "3", description: "Initial visible row count." },
+      { name: "maxlength", type: "integer (string)" },
+      { name: "minlength", type: "integer (string)" },
+      { name: "invalid", type: "boolean attribute", description: "Sets aria-invalid + error styling." },
+      { name: "auto-grow", type: "boolean attribute", description: "Grows up to max-rows as the user types." },
+      { name: "max-rows", type: "integer (string)", default: "8" },
+      {
+        name: "submit-on-enter",
+        type: "boolean attribute",
+        description: "Enter fires wpd-submit; Shift+Enter inserts a newline."
+      }
+    ],
+    events: [
+      { name: "wpd-input-change", description: "Fires on every keystroke.", detail: "{ value: string }" },
+      { name: "wpd-input-commit", description: "Fires on blur / native change.", detail: "{ value: string }" },
+      {
+        name: "wpd-submit",
+        description: "Fires on Enter (without Shift) when submit-on-enter is set.",
+        detail: "{ value: string }"
+      }
+    ],
+    example: html`
+			<wpd-textarea label="Message" rows="3" auto-grow max-rows="8" submit-on-enter></wpd-textarea>
+		`
+  };
+  let WpdTextarea = _WpdTextarea;
+  defineComponent("wpd-textarea", WpdTextarea);
+  const styles$1 = css`:host{display:inline-flex}button{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:none;border-radius:5px;background:transparent;color:var( --wpd-btn-color,currentColor );cursor:pointer;transition:background-color 0.15s ease,color 0.15s ease}button:hover{color:var( --wpd-btn-color-hover,currentColor );background:var( --wpd-btn-bg-hover,rgba( 0,0,0,0.06 ) )}button:focus-visible{color:var( --wpd-btn-color-hover,currentColor );background:var( --wpd-btn-bg-hover,rgba( 0,0,0,0.06 ) );outline:2px solid var( --wpd-btn-outline,currentColor );outline-offset:1px}:host( [ active ] ) button{color:var( --wpd-btn-color-hover,currentColor );background:var( --wpd-btn-bg-active,rgba( 0,0,0,0.08 ) )}:host( [ danger ] ) button:hover{color:#fff;background:var( --wpd-btn-danger-hover,#d63638 )}svg{display:block;pointer-events:none;flex-shrink:0}svg:empty{display:none}::slotted( span ){line-height:1}::slotted( svg ){display:block}`;
+  const ICONS = {
+    minimize: '<path d="M3 6h6" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>',
+    maximize: '<rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.25" fill="none"/>',
+    fullscreen: '<path d="M4.5 2H2v2.5M10 4.5V2H7.5M4.5 10H2V7.5M10 7.5V10H7.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+    "fullscreen-exit": '<path d="M2 4.5H4.5V2M7.5 2V4.5H10M2 7.5H4.5V10M7.5 10V7.5H10" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+    detach: '<path d="M5 2H2.5v7.5H10V7M6.5 2H10v3.5M10 2L5.5 6.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+    reload: (
+      // Filled icon scaled from a 512×512 source into the 12×12 viewBox
+      // shared with the other title-bar glyphs. The wrapping `<g>` does
+      // the math; the inner path is dropped in unmodified so its
+      // authoring tool can be re-edited and copy-pasted again.
+      // `scale(0.021)` ≈ 90% of full fit, with `translate(0.6)` to
+      // keep the result centered inside the 12×12 viewBox so the
+      // glyph reads slightly smaller than min/max/close — closer to
+      // the visual weight of the other title-bar buttons.
+      '<g transform="translate(0.6 0.6) scale(0.021)" fill="currentColor"><path d="m504.554 233.704-76.447 91.467c-6.329 7.572-15.417 11.479-24.571 11.479a31.872 31.872 0 0 1-20.504-7.447l-91.467-76.447c-13.561-11.334-15.366-31.515-4.032-45.075s31.515-15.366 45.075-4.032l37.506 31.347c-10.274-74.891-74.668-132.774-152.337-132.774C132.984 102.223 64 171.207 64 256s68.984 153.777 153.777 153.777c17.673 0 32 14.327 32 32s-14.327 32-32 32c-58.17 0-112.859-22.653-153.991-63.785C22.653 368.859 0 314.17 0 256s22.653-112.859 63.786-153.992c41.132-41.132 95.821-63.785 153.991-63.785s112.859 22.653 153.992 63.785c32.517 32.516 53.471 73.508 60.829 117.991l22.849-27.339c11.334-13.56 31.515-15.364 45.075-4.032 13.56 11.335 15.365 31.516 4.032 45.076z"/></g>'
+    ),
+    close: '<path d="M3.25 3.25l5.5 5.5M3.25 8.75l5.5-5.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>',
+    menu: '<circle cx="3" cy="6" r="1.2" fill="currentColor"/><circle cx="6" cy="6" r="1.2" fill="currentColor"/><circle cx="9" cy="6" r="1.2" fill="currentColor"/>'
+  };
+  const _WpdWindowButton = class _WpdWindowButton extends Component {
+    constructor() {
+      super(...arguments);
+      this._activateWired = false;
+    }
+    render() {
+      const iconKey = this.icon || "";
+      const svgInner = ICONS[iconKey] || "";
+      return html`
+			<button type="button">
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 12 12"
+					aria-hidden="true"
+					focusable="false"
+				></svg>
+				<slot></slot>
+			</button>
+			<span data-svg-buffer style="display:none">${svgInner}</span>
+		`;
+    }
+    /**
+     * After each render, copy the raw SVG markup into the actual
+     * `<svg>` element. The templater only writes text into slots,
+     * so we stash the intended markup in a hidden buffer and
+     * `innerHTML = ` the svg once here — a one-shot post-render
+     * hook that keeps the declarative template honest.
+     *
+     * Also wires up the `wpd-button-activate` CustomEvent that
+     * fires exactly once per gesture — the canonical contract
+     * for plugin-registered title-bar buttons. Plugin authors who
+     * use `addEventListener( 'click', cb )` directly still get
+     * what they expect (the title bar's drag-handler now excludes
+     * chrome buttons by class so static clicks land normally),
+     * but `wpd-button-activate` is the documented surface that
+     * documents the once-per-gesture contract explicitly. See
+     * the class-level docblock for rationale.
+     */
+    connectedCallback() {
+      super.connectedCallback();
+      queueMicrotask(() => this._paintSvg());
+      queueMicrotask(() => this._wireActivateEvent());
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+      super.attributeChangedCallback(name, oldValue, newValue);
+      queueMicrotask(() => this._paintSvg());
+    }
+    _paintSvg() {
+      const root = this.shadowRoot;
+      if (!root) {
+        return;
+      }
+      const svg = root.querySelector("svg");
+      const buffer = root.querySelector("[data-svg-buffer]");
+      if (svg && buffer) {
+        const markup = buffer.textContent || "";
+        if (svg.innerHTML !== markup) {
+          svg.innerHTML = markup;
+        }
+      }
+    }
+    _wireActivateEvent() {
+      if (this._activateWired) {
+        return;
+      }
+      const root = this.shadowRoot;
+      if (!root) {
+        return;
+      }
+      const button = root.querySelector("button");
+      if (!button) {
+        return;
+      }
+      this._activateWired = true;
+      button.addEventListener("click", () => {
+        this.dispatchEvent(
+          new CustomEvent("wpd-button-activate", {
+            bubbles: true,
+            composed: true,
+            cancelable: true
+          })
+        );
+      });
+    }
+  };
+  _WpdWindowButton.props = ["icon", "active", "danger"];
+  _WpdWindowButton.styles = [styles$1];
+  _WpdWindowButton.help = {
+    title: "Window button",
+    summary: "Chrome button used in native-window title bars. Built-in icons cover the standard controls (minimize, maximize, fullscreen, detach, close, menu). Focused/unfocused coloring is driven by --wpd-btn-* CSS custom properties the window shell owns.",
+    status: "stable",
+    since: "0.9.0",
+    props: [
+      {
+        name: "icon",
+        type: "'minimize' | 'maximize' | 'fullscreen' | 'fullscreen-exit' | 'detach' | 'reload' | 'close' | 'menu'",
+        description: "Which built-in inline SVG to paint. Omit to supply your own via the slot."
+      },
+      {
+        name: "active",
+        type: "boolean attribute",
+        description: "Applies the pressed-down look (used e.g. while a menu it triggers is open)."
+      },
+      {
+        name: "danger",
+        type: "boolean attribute",
+        description: "Swaps the hover wash to red — used by the close button."
+      }
+    ],
+    slots: [
+      { name: "(default)", description: "Optional custom icon markup (inline SVG) when `icon` is omitted." }
+    ],
+    cssProps: [
+      { name: "--wpd-btn-color", description: "Resting foreground." },
+      { name: "--wpd-btn-color-hover", description: "Hover foreground." },
+      { name: "--wpd-btn-bg-hover", description: "Hover background wash." },
+      { name: "--wpd-btn-bg-active", description: "Pressed background." },
+      { name: "--wpd-btn-danger-hover", description: "Hover background for danger variant." },
+      { name: "--wpd-btn-outline", description: "Focus outline colour." }
+    ],
+    example: html`
+			<wpd-cluster gap="2">
+				<wpd-window-button icon="minimize"></wpd-window-button>
+				<wpd-window-button icon="maximize"></wpd-window-button>
+				<wpd-window-button icon="menu"></wpd-window-button>
+				<wpd-window-button icon="close" danger></wpd-window-button>
+			</wpd-cluster>
+		`
+  };
+  let WpdWindowButton = _WpdWindowButton;
+  defineComponent("wpd-window-button", WpdWindowButton);
+  const DEFAULT_STICKY_TITLE = "Sticky Note";
+  const LEGACY_METADATA_PREFIX = "<!-- wpworkspace-sticky:";
+  const LEGACY_METADATA_SUFFIX = "-->";
+  const TITLE_MAX = 64;
+  const GENERATED_TITLE_MAX = 48;
+  const EXCERPT_MAX = 180;
+  function noteFromGuideline(guideline) {
+    const title = titleField(guideline.title);
+    const content = removeLegacyMetadataComment(
+      textFieldValue(guideline.content, { stripHtmlForRendered: true })
+    );
+    const modifiedMs = modifiedTimeMs(guideline);
+    return {
+      localId: `guideline:${guideline.id}`,
+      guidelineId: guideline.id,
+      title,
+      body: editorBody(title, content),
+      modified: guideline.modified,
+      ...modifiedMs > 0 ? { modifiedMs } : {},
+      link: guideline.link,
+      termIds: Array.isArray(guideline.wp_guideline_type) ? guideline.wp_guideline_type.filter(isFiniteNumber) : []
+    };
+  }
+  function titleField(field) {
+    const candidates = [];
+    if (typeof field === "string") {
+      candidates.push(field);
+    } else if (field && typeof field === "object") {
+      if (typeof field.raw === "string") {
+        candidates.push(field.raw);
+      }
+      if (typeof field.rendered === "string") {
+        candidates.push(stripHtml(field.rendered));
+      }
+    }
+    for (const candidate of candidates) {
+      const trimmed = stripHtml(candidate).trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+    return DEFAULT_STICKY_TITLE;
+  }
+  function textFieldValue(field, options = {}) {
+    if (typeof field === "string") {
+      return field;
+    }
+    if (!field || typeof field !== "object") {
+      return "";
+    }
+    if (typeof field.raw === "string" && field.raw.length > 0) {
+      return field.raw;
+    }
+    if (typeof field.rendered === "string") {
+      return options.stripHtmlForRendered ? stripHtml(field.rendered) : field.rendered;
+    }
+    return "";
+  }
+  function titleForBody(body) {
+    const line = body.split(/\r?\n/).find((item) => item.trim().length > 0)?.trim();
+    const title = line && line.length > 0 ? line : DEFAULT_STICKY_TITLE;
+    return truncate(title, TITLE_MAX);
+  }
+  function generatedTitle(body) {
+    const collapsed = body.replace(/\s+/g, " ").trim();
+    const title = collapsed || DEFAULT_STICKY_TITLE;
+    return truncate(title, GENERATED_TITLE_MAX);
+  }
+  function editorBody(title, content) {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      return content;
+    }
+    const firstLine = content.split(/\r?\n/)[0]?.trim();
+    if (firstLine === trimmedTitle) {
+      return content;
+    }
+    if (!content) {
+      return trimmedTitle;
+    }
+    return `${trimmedTitle}
+${content}`;
+  }
+  function noteComponentsForBody(editorValue, fallbackTitle = DEFAULT_STICKY_TITLE) {
+    const fallback = fallbackTitle.trim() || DEFAULT_STICKY_TITLE;
+    const title = titleForBody(editorValue);
+    const firstNewline = editorValue.search(/\r?\n/);
+    if (firstNewline === -1) {
+      const resolvedTitle = title === DEFAULT_STICKY_TITLE ? fallback : title;
+      return {
+        title: resolvedTitle,
+        content: "",
+        excerpt: excerptFor(resolvedTitle)
+      };
+    }
+    let content = editorValue.slice(firstNewline);
+    content = content.replace(/^\r?\n/, "");
+    if (content.startsWith("\n")) {
+      content = content.slice(1);
+    }
+    return {
+      title,
+      content,
+      excerpt: excerptFor(content.trim() ? content : title)
+    };
+  }
+  function excerptFor(body) {
+    const collapsed = body.replace(/[\n\t]+/g, " ").trim();
+    return truncate(collapsed, EXCERPT_MAX);
+  }
+  function removeLegacyMetadataComment(content) {
+    if (!content.startsWith(LEGACY_METADATA_PREFIX) || !content.includes(LEGACY_METADATA_SUFFIX)) {
+      return content;
+    }
+    const end = content.indexOf(LEGACY_METADATA_SUFFIX);
+    let body = content.slice(end + LEGACY_METADATA_SUFFIX.length);
+    if (body.startsWith("\r\n")) {
+      body = body.slice(2);
+    } else if (body.startsWith("\n")) {
+      body = body.slice(1);
+    }
+    return body;
+  }
+  function stripHtml(value) {
+    if (typeof document !== "undefined") {
+      const template = document.createElement("template");
+      template.innerHTML = value;
+      return (template.content.textContent ?? "").trim();
+    }
+    return value.replace(/<[^>]*>/g, "").trim();
+  }
+  function truncate(value, max) {
+    return value.length > max ? `${value.slice(0, max)}...` : value;
+  }
+  function modifiedTimeMs(guideline) {
+    if (typeof guideline.desktop_mode_modified_ms === "number" && Number.isFinite(guideline.desktop_mode_modified_ms)) {
+      return guideline.desktop_mode_modified_ms;
+    }
+    if (!guideline.modified) {
+      return 0;
+    }
+    const parsed = Date.parse(guideline.modified);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function isFiniteNumber(value) {
+    return typeof value === "number" && Number.isFinite(value);
+  }
+  class StickyNotesRestError extends Error {
+    constructor(message, status) {
+      super(message);
+      this.name = "StickyNotesRestError";
+      this.status = status;
+    }
+  }
+  async function resolveStickyTerms(config) {
+    const terms = await fetchStickyTermCandidates(config);
+    const picked = pickStickyTerms(
+      [...terms.artifactTerms, ...terms.artifactsTerms],
+      terms.noteTerms,
+      terms.stickyTerms
+    );
+    if (picked) {
+      return picked;
+    }
+    const artifact = await ensureTerm(config, {
+      slug: "artifact",
+      name: "Artifact",
+      parent: 0
+    });
+    const note = await ensureTerm(config, {
+      slug: "note",
+      name: "Note",
+      parent: artifact.id
+    });
+    const sticky = await ensureTerm(config, {
+      slug: "sticky",
+      name: "Sticky",
+      parent: artifact.id
+    });
+    return {
+      stickyTermId: sticky.id,
+      termIds: uniqueNumbers([artifact.id, note.id, sticky.id])
+    };
+  }
+  async function fetchStickyTermCandidates(config) {
+    const [artifactTerms, artifactsTerms, noteTerms, stickyTerms] = await Promise.all([
+      fetchTermsBySlug(config, "artifact"),
+      fetchTermsBySlug(config, "artifacts"),
+      fetchTermsBySlug(config, "note"),
+      fetchTermsBySlug(config, "sticky")
+    ]);
+    return {
+      artifactTerms,
+      artifactsTerms,
+      noteTerms,
+      stickyTerms
+    };
+  }
+  function pickStickyTerms(artifactTerms, noteTerms, stickyTerms) {
+    if (stickyTerms.length === 0) {
+      return null;
+    }
+    const artifact = artifactTerms.find(
+      (term) => ["artifact", "artifacts"].includes(term.slug)
+    ) ?? artifactTerms[0] ?? null;
+    const sticky = artifact ? stickyTerms.find((term) => Number(term.parent) === artifact.id) ?? stickyTerms[0] : stickyTerms[0];
+    if (!sticky) {
+      return null;
+    }
+    const note = artifact ? noteTerms.find((term) => Number(term.parent) === artifact.id) ?? null : null;
+    return {
+      stickyTermId: sticky.id,
+      termIds: uniqueNumbers([
+        artifact?.id,
+        note?.id,
+        sticky.id
+      ])
+    };
+  }
+  async function fetchStickyNotes(config, stickyTermId) {
+    const guidelines = await requestJson(
+      config,
+      pathWithQuery("wp/v2/guidelines", {
+        context: "edit",
+        status: "private",
+        per_page: "100",
+        orderby: "modified",
+        order: "desc",
+        wp_guideline_type: String(stickyTermId)
+      }),
+      void 0,
+      true
+    );
+    return guidelines.filter(
+      (guideline) => Array.isArray(guideline.wp_guideline_type) ? guideline.wp_guideline_type.includes(stickyTermId) : true
+    ).map(noteFromGuideline);
+  }
+  async function saveStickyNote(config, note, terms) {
+    const components = noteComponentsForBody(note.body, note.title);
+    const payload = {
+      status: "private",
+      title: components.title,
+      content: components.content,
+      excerpt: components.excerpt
+    };
+    if (note.guidelineId === null) {
+      payload.wp_guideline_type = terms.termIds;
+    }
+    const path = note.guidelineId === null ? "wp/v2/guidelines" : `wp/v2/guidelines/${note.guidelineId}`;
+    const guideline = await requestJson(
+      config,
+      path,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      },
+      false
+    );
+    return noteFromGuideline(guideline);
+  }
+  function buildGuidelineEditUrl(adminUrl, guidelineId) {
+    const url = new URL("post.php", adminUrl);
+    url.searchParams.set("post", String(guidelineId));
+    url.searchParams.set("action", "edit");
+    return url.toString();
+  }
+  async function fetchTermsBySlug(config, slug) {
+    try {
+      return await requestJson(
+        config,
+        pathWithQuery("wp/v2/wp_guideline_type", {
+          context: "edit",
+          slug,
+          per_page: "100"
+        }),
+        void 0,
+        true
+      );
+    } catch (error) {
+      if (error instanceof StickyNotesRestError && (error.status === 404 || error.status === 400)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+  async function ensureTerm(config, term) {
+    const existing = await fetchTermsBySlug(config, term.slug);
+    const byParent = existing.find(
+      (item) => Number(item.parent ?? 0) === term.parent
+    );
+    if (byParent) {
+      return byParent;
+    }
+    if (existing[0]) {
+      return existing[0];
+    }
+    try {
+      return await requestJson(
+        config,
+        "wp/v2/wp_guideline_type",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(term)
+        },
+        true
+      );
+    } catch (error) {
+      const fallback = await fetchTermsBySlug(config, term.slug);
+      if (fallback[0]) {
+        return fallback[0];
+      }
+      throw error;
+    }
+  }
+  async function requestJson(config, path, init2, silent = true) {
+    const response = await trackedFetch$1(
+      joinRestUrl(restRoot(config), path),
+      init2,
+      {
+        source: "desktop-mode/sticky-notes",
+        silent
+      }
+    );
+    if (!response.ok) {
+      throw new StickyNotesRestError(
+        response.statusText || `${DEFAULT_STICKY_TITLE} request failed`,
+        response.status
+      );
+    }
+    return await response.json();
+  }
+  function restRoot(config) {
+    if (config.restUrl) {
+      return config.restUrl;
+    }
+    return `${window.location.origin}/wp-json/`;
+  }
+  function pathWithQuery(path, query) {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => {
+      params.set(key, value);
+    });
+    return `${path}?${params.toString()}`;
+  }
+  function uniqueNumbers(values) {
+    const out = [];
+    values.forEach((value) => {
+      if (typeof value === "number" && Number.isFinite(value) && !out.includes(value)) {
+        out.push(value);
+      }
+    });
+    return out;
+  }
+  const SUBSCRIBE_FIELD = "desktop_mode_sticky_notes_subscribe";
+  const RESPONSE_FIELD = "desktop_mode_sticky_notes";
+  let started$3 = false;
+  let target = null;
+  function startStickyNotesHeartbeat(nextTarget) {
+    target = nextTarget;
+    if (started$3) {
+      return;
+    }
+    started$3 = true;
+    heartbeat.contribute(
+      SUBSCRIBE_FIELD,
+      () => target?.getHeartbeatSubscription()
+    );
+    heartbeat.subscribe(
+      RESPONSE_FIELD,
+      (payload) => {
+        target?.applyHeartbeatPayload(payload);
+      }
+    );
+  }
+  const GEOMETRY_KEY = "desktop-mode-sticky-notes-geometry";
+  const DEFAULT_WIDTH = 264;
+  const DEFAULT_HEIGHT = 176;
+  const MIN_WIDTH = 180;
+  const MIN_HEIGHT = 128;
+  const EDGE_PADDING = 16;
+  const SAVE_DEBOUNCE_MS = 1e3;
+  class StickyNotesLayer {
+    constructor(options) {
+      this.root = null;
+      this.terms = null;
+      this.controllers = /* @__PURE__ */ new Map();
+      this.contextMenuInstalled = false;
+      this.desktopHooksInstalled = false;
+      this.highWaterMs = 0;
+      this.zIndexCounter = 0;
+      this.host = options.host;
+      this.config = options.config;
+      this.openArtifact = options.openArtifact;
+      this.getActiveDesktopId = options.getActiveDesktopId ?? (() => "desktop-1");
+      this.onError = options.onError;
+    }
+    async boot() {
+      try {
+        this.terms = await resolveStickyTerms(this.config);
+        if (!this.terms) {
+          return;
+        }
+        this.installContextMenu();
+        this.installDesktopHooks();
+        const notes = await fetchStickyNotes(
+          this.config,
+          this.terms.stickyTermId
+        );
+        this.bumpHighWaterFromNotes(notes);
+        startStickyNotesHeartbeat(this);
+        if (notes.length === 0) {
+          return;
+        }
+        this.ensureRoot();
+        sortNotesByModified(notes).forEach(
+          (note, index2) => this.upsert(note, index2)
+        );
+      } catch (error) {
+        if (error instanceof Error) {
+          console.debug("[desktop-mode] Sticky notes unavailable:", error.message);
+        }
+      }
+    }
+    createNote(body = "") {
+      if (!this.terms) {
+        return;
+      }
+      const note = {
+        localId: `local:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        guidelineId: null,
+        title: body.trim() ? generatedTitle(body) : DEFAULT_STICKY_TITLE,
+        body,
+        termIds: this.terms.termIds
+      };
+      const controller = this.upsert(note, this.controllers.size, {
+        activate: true
+      });
+      controller.focus();
+    }
+    upsert(note, index2, options = {}) {
+      this.ensureRoot();
+      const key = noteKey(note);
+      const existing = this.controllers.get(key);
+      if (existing) {
+        existing.replace(note);
+        if (options.activate) {
+          this.bringToFront(existing);
+        }
+        return existing;
+      }
+      const controller = new StickyNoteController({
+        layer: this,
+        note,
+        index: index2
+      });
+      this.controllers.set(key, controller);
+      this.root?.appendChild(controller.element);
+      this.assignZIndex(controller);
+      this.applyDesktopVisibility(controller);
+      if (options.activate) {
+        this.bringToFront(controller);
+      }
+      return controller;
+    }
+    ensureRoot() {
+      if (this.root) {
+        return this.root;
+      }
+      const root = document.createElement("section");
+      root.className = "desktop-mode-sticky-notes";
+      root.setAttribute("aria-label", __("Sticky notes"));
+      this.host.appendChild(root);
+      this.root = root;
+      return root;
+    }
+    installContextMenu() {
+      if (this.contextMenuInstalled) {
+        return;
+      }
+      this.contextMenuInstalled = true;
+      addFilter(
+        "desktop-mode.wallpaper-context-menu",
+        "desktop-mode/sticky-notes",
+        (items) => {
+          if (!Array.isArray(items) || !this.terms) {
+            return items;
+          }
+          if (items.some(
+            (item) => item.id === "new-sticky-note"
+          )) {
+            return items;
+          }
+          return [
+            ...items,
+            {
+              id: "new-sticky-note",
+              label: __("New sticky note"),
+              icon: "dashicons-edit-page",
+              sort: 14,
+              onClick: () => this.createNote()
+            }
+          ];
+        }
+      );
+    }
+    installDesktopHooks() {
+      if (this.desktopHooksInstalled) {
+        return;
+      }
+      this.desktopHooksInstalled = true;
+      addAction(
+        HOOKS.DESKTOP_SWITCHED,
+        "desktop-mode/sticky-notes",
+        () => this.refreshDesktopVisibility()
+      );
+      addAction(
+        HOOKS.DESKTOP_CLOSED,
+        "desktop-mode/sticky-notes",
+        (detail) => {
+          this.migrateDesktopAssignments(detail?.desktopId, detail?.migratedTo);
+          this.refreshDesktopVisibility();
+        }
+      );
+    }
+    save(note) {
+      if (!this.terms) {
+        return Promise.reject(new Error(__("Sticky term is unavailable.")));
+      }
+      return saveStickyNote(this.config, note, this.terms);
+    }
+    getHeartbeatSubscription() {
+      if (!this.terms) {
+        return void 0;
+      }
+      return {
+        stickyTermId: this.terms.stickyTermId,
+        knownIds: this.knownGuidelineIds(),
+        version: this.highWaterMs
+      };
+    }
+    applyHeartbeatPayload(payload) {
+      for (const guideline of payload.notes ?? []) {
+        const note = noteFromGuideline(guideline);
+        this.upsertRemote(note);
+      }
+      for (const id of payload.removed ?? []) {
+        this.forgetGuidelineId(id);
+      }
+      if (typeof payload.serverTimeMs === "number" && Number.isFinite(payload.serverTimeMs) && payload.serverTimeMs > this.highWaterMs) {
+        this.highWaterMs = payload.serverTimeMs;
+      }
+      if (payload.truncated) {
+        void this.reloadFromServer();
+      }
+    }
+    openNoteArtifact(note) {
+      if (note.guidelineId === null) {
+        return;
+      }
+      this.openArtifact(
+        buildGuidelineEditUrl(this.config.adminUrl, note.guidelineId),
+        note.title,
+        note.guidelineId
+      );
+    }
+    notifyError(message) {
+      this.onError?.(message);
+    }
+    hostSize() {
+      return {
+        width: Math.max(1, this.host.clientWidth),
+        height: Math.max(1, this.host.clientHeight)
+      };
+    }
+    defaultGeometry(index2) {
+      const { width: hostWidth, height: hostHeight } = this.hostSize();
+      const width = Math.min(
+        DEFAULT_WIDTH,
+        Math.max(MIN_WIDTH, hostWidth - EDGE_PADDING * 2)
+      );
+      const height = Math.min(
+        DEFAULT_HEIGHT,
+        Math.max(MIN_HEIGHT, hostHeight - EDGE_PADDING * 2)
+      );
+      const offset = index2 % 8 * 28;
+      const left = clamp(
+        hostWidth - width - 32 - offset,
+        EDGE_PADDING,
+        Math.max(EDGE_PADDING, hostWidth - width - EDGE_PADDING)
+      );
+      const top = clamp(
+        32 + offset,
+        EDGE_PADDING,
+        Math.max(EDGE_PADDING, hostHeight - height - EDGE_PADDING)
+      );
+      return {
+        x: left / hostWidth,
+        y: top / hostHeight,
+        width,
+        height
+      };
+    }
+    forget(controller) {
+      this.controllers.delete(noteKey(controller.note));
+      controller.dispose();
+      controller.element.remove();
+      if (this.controllers.size === 0) {
+        this.root?.remove();
+        this.root = null;
+      }
+    }
+    replaceControllerKey(oldKey, controller) {
+      const newKey = noteKey(controller.note);
+      this.controllers.delete(oldKey);
+      this.controllers.set(newKey, controller);
+      moveStoredGeometry(oldKey, newKey);
+      this.applyDesktopVisibility(controller);
+    }
+    bumpHighWaterFromNote(note) {
+      const modifiedMs = noteModifiedMs(note);
+      if (modifiedMs > this.highWaterMs) {
+        this.highWaterMs = modifiedMs;
+      }
+    }
+    bringToFront(controller) {
+      controller.setZIndex(this.nextZIndex());
+    }
+    geometryForNote(note, index2) {
+      const key = noteKey(note);
+      const loaded = loadGeometry(key);
+      const desktopId = this.normalizeDesktopId(loaded?.desktopId);
+      const geometry = loaded ? { ...loaded, desktopId } : { ...this.defaultGeometry(index2), desktopId };
+      if (!loaded || loaded.desktopId !== geometry.desktopId) {
+        saveGeometry(key, geometry);
+      }
+      return geometry;
+    }
+    upsertRemote(note) {
+      const key = noteKey(note);
+      const existing = this.controllers.get(key);
+      if (existing) {
+        if (!existing.shouldReplaceFromRemote(note)) {
+          this.bumpHighWaterFromNote(note);
+          return existing;
+        }
+        existing.replace(note);
+        this.bumpHighWaterFromNote(note);
+        return existing;
+      }
+      const controller = this.upsert(note, this.controllers.size);
+      this.bumpHighWaterFromNote(note);
+      return controller;
+    }
+    forgetGuidelineId(guidelineId) {
+      for (const controller of this.controllers.values()) {
+        if (controller.note.guidelineId === guidelineId) {
+          this.forget(controller);
+          return;
+        }
+      }
+    }
+    knownGuidelineIds() {
+      const ids = [];
+      for (const controller of this.controllers.values()) {
+        if (controller.note.guidelineId !== null) {
+          ids.push(controller.note.guidelineId);
+        }
+      }
+      return ids;
+    }
+    bumpHighWaterFromNotes(notes) {
+      notes.forEach((note) => this.bumpHighWaterFromNote(note));
+    }
+    assignZIndex(controller) {
+      controller.setZIndex(this.nextZIndex());
+    }
+    nextZIndex() {
+      this.zIndexCounter += 1;
+      return this.zIndexCounter;
+    }
+    applyDesktopVisibility(controller) {
+      controller.setVisible(this.isNoteOnActiveDesktop(controller.note));
+    }
+    refreshDesktopVisibility() {
+      for (const controller of this.controllers.values()) {
+        this.applyDesktopVisibility(controller);
+      }
+    }
+    isNoteOnActiveDesktop(note) {
+      const key = noteKey(note);
+      const geometry = loadGeometry(key);
+      const desktopId = this.normalizeDesktopId(geometry?.desktopId);
+      if (geometry && geometry.desktopId !== desktopId) {
+        saveGeometry(key, { ...geometry, desktopId });
+      }
+      return desktopId === this.activeDesktopId();
+    }
+    migrateDesktopAssignments(desktopId, migratedTo) {
+      if (!desktopId || !migratedTo || desktopId === migratedTo) {
+        return;
+      }
+      const map = readGeometryMap();
+      let changed = false;
+      Object.entries(map).forEach(([key, geometry]) => {
+        if (geometry.desktopId === desktopId) {
+          map[key] = {
+            ...geometry,
+            desktopId: this.normalizeDesktopId(migratedTo)
+          };
+          changed = true;
+        }
+      });
+      if (changed) {
+        writeGeometryMap(map);
+      }
+    }
+    activeDesktopId() {
+      try {
+        const id = this.getActiveDesktopId();
+        return typeof id === "string" && id ? id : "desktop-1";
+      } catch {
+        return "desktop-1";
+      }
+    }
+    normalizeDesktopId(desktopId) {
+      if (!desktopId) {
+        return this.activeDesktopId();
+      }
+      return desktopId;
+    }
+    async reloadFromServer() {
+      if (!this.terms) {
+        return;
+      }
+      try {
+        const notes = await fetchStickyNotes(
+          this.config,
+          this.terms.stickyTermId
+        );
+        const ids = /* @__PURE__ */ new Set();
+        sortNotesByModified(notes).forEach((note) => {
+          if (note.guidelineId !== null) {
+            ids.add(note.guidelineId);
+          }
+          this.upsertRemote(note);
+        });
+        this.knownGuidelineIds().forEach((id) => {
+          if (!ids.has(id)) {
+            this.forgetGuidelineId(id);
+          }
+        });
+      } catch {
+      }
+    }
+  }
+  class StickyNoteController {
+    constructor(options) {
+      this.saveTimer = null;
+      this.geometryTimer = null;
+      this.saving = false;
+      this.saveAgain = false;
+      this.resizeObserver = null;
+      this.disposed = false;
+      this.layer = options.layer;
+      this.note = options.note;
+      this.index = options.index;
+      this.element = document.createElement("article");
+      this.element.className = "desktop-mode-sticky-note";
+      this.element.dataset.stickyNoteId = noteKey(this.note);
+      this.titleEl = document.createElement("span");
+      this.editor = document.createElement("wpd-textarea");
+      this.statusEl = document.createElement("wpd-save-status");
+      this.openButton = document.createElement("wpd-window-button");
+      this.paint();
+      this.applyGeometry(this.layer.geometryForNote(this.note, this.index));
+      this.element.addEventListener(
+        "pointerdown",
+        () => this.layer.bringToFront(this),
+        { capture: true }
+      );
+      this.element.addEventListener("focusin", () => this.layer.bringToFront(this));
+      this.watchResize();
+    }
+    focus() {
+      window.setTimeout(() => this.editor.focusInput?.(), 0);
+    }
+    replace(note) {
+      this.note = note;
+      this.element.dataset.stickyNoteId = noteKey(this.note);
+      this.titleEl.textContent = this.note.title;
+      this.editor.setAttribute("value", this.note.body);
+      this.refreshOpenButton();
+    }
+    shouldReplaceFromRemote(note) {
+      if (this.hasLocalChanges()) {
+        return false;
+      }
+      const currentMs = noteModifiedMs(this.note);
+      const incomingMs = noteModifiedMs(note);
+      if (currentMs > 0 && incomingMs > 0 && incomingMs <= currentMs && this.note.title === note.title && this.note.body === note.body) {
+        return false;
+      }
+      return true;
+    }
+    setZIndex(zIndex) {
+      this.element.style.zIndex = String(zIndex);
+    }
+    setVisible(visible) {
+      this.element.style.display = visible ? "" : "none";
+    }
+    dispose() {
+      this.disposed = true;
+      if (this.saveTimer !== null) {
+        window.clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
+      if (this.geometryTimer !== null) {
+        window.clearTimeout(this.geometryTimer);
+        this.geometryTimer = null;
+      }
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = null;
+    }
+    paint() {
+      this.element.innerHTML = "";
+      this.element.style.minWidth = `${MIN_WIDTH}px`;
+      this.element.style.minHeight = `${MIN_HEIGHT}px`;
+      const header = document.createElement("div");
+      header.className = "desktop-mode-sticky-note__header";
+      const grip = document.createElement("span");
+      grip.className = "desktop-mode-sticky-note__grip";
+      grip.setAttribute("aria-hidden", "true");
+      this.titleEl.className = "desktop-mode-sticky-note__title";
+      this.titleEl.textContent = this.note.title;
+      this.statusEl.setAttribute("mode", "icon");
+      this.statusEl.setAttribute("phase", "idle");
+      this.statusEl.className = "desktop-mode-sticky-note__status";
+      this.openButton.setAttribute("icon", "detach");
+      this.openButton.setAttribute("title", __("Open artifact"));
+      this.openButton.className = "desktop-mode-sticky-note__open";
+      this.openButton.addEventListener("wpd-button-activate", () => {
+        this.layer.openNoteArtifact(this.note);
+      });
+      const close = document.createElement("wpd-window-button");
+      close.setAttribute("icon", "close");
+      close.setAttribute("danger", "");
+      close.setAttribute("title", __("Hide sticky note"));
+      close.className = "desktop-mode-sticky-note__close";
+      close.addEventListener("wpd-button-activate", () => this.close());
+      header.append(grip, this.titleEl, this.statusEl, this.openButton, close);
+      header.addEventListener("pointerdown", (event) => this.startDrag(event));
+      this.editor.className = "desktop-mode-sticky-note__editor";
+      this.editor.setAttribute("aria-label", __("Sticky note text"));
+      this.editor.setAttribute("rows", "8");
+      this.editor.setAttribute("value", this.note.body);
+      this.installEditorKeyboardGuard();
+      this.editor.addEventListener("wpd-input-change", (event) => {
+        const detail = event.detail;
+        this.note.body = detail.value;
+        this.note.title = titleForBody(detail.value);
+        this.titleEl.textContent = this.note.title;
+        this.setPhase("pending");
+        this.scheduleSave();
+      });
+      this.editor.addEventListener("wpd-input-commit", () => this.flushSave());
+      this.element.append(header, this.editor);
+      this.refreshOpenButton();
+    }
+    installEditorKeyboardGuard() {
+      ["keydown", "keypress", "keyup"].forEach((eventName) => {
+        this.editor.addEventListener(eventName, (event) => {
+          event.stopPropagation();
+        });
+      });
+    }
+    refreshOpenButton() {
+      const disabled = this.note.guidelineId === null;
+      this.openButton.classList.toggle("is-disabled", disabled);
+      this.openButton.setAttribute("aria-disabled", disabled ? "true" : "false");
+    }
+    close() {
+      if (this.note.guidelineId === null && this.note.body.trim().length === 0) {
+        this.layer.forget(this);
+        return;
+      }
+      this.flushSave();
+      this.layer.forget(this);
+    }
+    scheduleSave() {
+      if (this.note.guidelineId === null && this.note.body.trim().length === 0) {
+        this.setPhase("idle");
+        return;
+      }
+      if (this.saveTimer !== null) {
+        window.clearTimeout(this.saveTimer);
+      }
+      this.saveTimer = window.setTimeout(() => {
+        this.saveTimer = null;
+        void this.save();
+      }, SAVE_DEBOUNCE_MS);
+    }
+    flushSave() {
+      if (this.saveTimer !== null) {
+        window.clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
+      if (this.note.guidelineId !== null || this.note.body.trim().length > 0) {
+        void this.save();
+      }
+    }
+    async save() {
+      if (this.saving) {
+        this.saveAgain = true;
+        this.setPhase("pending");
+        return;
+      }
+      this.saving = true;
+      this.setPhase("saving");
+      const bodyAtSave = this.note.body;
+      try {
+        const saved = await this.layer.save({
+          ...this.note,
+          body: bodyAtSave
+        });
+        if (this.disposed) {
+          return;
+        }
+        const oldKey = noteKey(this.note);
+        this.note.guidelineId = saved.guidelineId;
+        this.note.modified = saved.modified;
+        this.note.link = saved.link;
+        this.note.termIds = saved.termIds.length > 0 ? saved.termIds : this.note.termIds;
+        if (this.note.body === bodyAtSave) {
+          this.note.title = saved.title;
+          this.titleEl.textContent = saved.title;
+        }
+        if (oldKey !== noteKey(this.note)) {
+          this.element.dataset.stickyNoteId = noteKey(this.note);
+          this.layer.replaceControllerKey(oldKey, this);
+        }
+        this.layer.bumpHighWaterFromNote(this.note);
+        this.refreshOpenButton();
+        this.setPhase("saved");
+      } catch (error) {
+        if (this.disposed) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : __("Could not save sticky note.");
+        this.setPhase("failed", message);
+        this.layer.notifyError(message);
+      } finally {
+        this.saving = false;
+        if (!this.disposed && this.saveAgain) {
+          this.saveAgain = false;
+          this.scheduleSave();
+        }
+      }
+    }
+    setPhase(phase, error) {
+      this.statusEl.setAttribute("phase", phase);
+      if (error) {
+        this.statusEl.setAttribute("error", error);
+        this.statusEl.setAttribute("title", error);
+      } else {
+        this.statusEl.removeAttribute("error");
+        this.statusEl.removeAttribute("title");
+      }
+    }
+    hasLocalChanges() {
+      const phase = this.statusEl.getAttribute("phase");
+      return this.saveTimer !== null || this.saving || this.saveAgain || phase === "pending" || phase === "failed";
+    }
+    startDrag(event) {
+      if (event.button !== 0) {
+        return;
+      }
+      const target2 = event.target;
+      if (target2?.closest("wpd-window-button, wpd-save-status")) {
+        return;
+      }
+      event.preventDefault();
+      const startRect = this.element.getBoundingClientRect();
+      const hostRect = this.layerHostRect();
+      const startLeft = startRect.left - hostRect.left;
+      const startTop = startRect.top - hostRect.top;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      this.element.classList.add("desktop-mode-sticky-note--dragging");
+      this.element.setPointerCapture?.(event.pointerId);
+      const move = (moveEvent) => {
+        const width = this.element.offsetWidth;
+        const height = this.element.offsetHeight;
+        const { width: hostWidth, height: hostHeight } = this.layer.hostSize();
+        const left = clamp(
+          startLeft + moveEvent.clientX - startX,
+          EDGE_PADDING,
+          Math.max(EDGE_PADDING, hostWidth - width - EDGE_PADDING)
+        );
+        const top = clamp(
+          startTop + moveEvent.clientY - startY,
+          EDGE_PADDING,
+          Math.max(EDGE_PADDING, hostHeight - height - EDGE_PADDING)
+        );
+        this.element.style.left = `${left}px`;
+        this.element.style.top = `${top}px`;
+      };
+      const up = (upEvent) => {
+        this.element.classList.remove("desktop-mode-sticky-note--dragging");
+        this.element.releasePointerCapture?.(upEvent.pointerId);
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        this.persistGeometry();
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    }
+    applyGeometry(geometry) {
+      const { width: hostWidth, height: hostHeight } = this.layer.hostSize();
+      const width = clamp(geometry.width, MIN_WIDTH, hostWidth - EDGE_PADDING * 2);
+      const height = clamp(geometry.height, MIN_HEIGHT, hostHeight - EDGE_PADDING * 2);
+      const left = clamp(
+        geometry.x * hostWidth,
+        EDGE_PADDING,
+        Math.max(EDGE_PADDING, hostWidth - width - EDGE_PADDING)
+      );
+      const top = clamp(
+        geometry.y * hostHeight,
+        EDGE_PADDING,
+        Math.max(EDGE_PADDING, hostHeight - height - EDGE_PADDING)
+      );
+      this.element.style.left = `${left}px`;
+      this.element.style.top = `${top}px`;
+      this.element.style.width = `${width}px`;
+      this.element.style.height = `${height}px`;
+    }
+    watchResize() {
+      if (typeof ResizeObserver === "undefined") {
+        return;
+      }
+      this.resizeObserver = new ResizeObserver(() => {
+        if (this.geometryTimer !== null) {
+          window.clearTimeout(this.geometryTimer);
+        }
+        this.geometryTimer = window.setTimeout(() => {
+          this.geometryTimer = null;
+          this.persistGeometry();
+        }, 150);
+      });
+      this.resizeObserver.observe(this.element);
+    }
+    persistGeometry() {
+      const { width: hostWidth, height: hostHeight } = this.layer.hostSize();
+      const left = parseFloat(this.element.style.left) || 0;
+      const top = parseFloat(this.element.style.top) || 0;
+      const existing = loadGeometry(noteKey(this.note));
+      saveGeometry(noteKey(this.note), {
+        ...existing ?? {},
+        x: clamp(left / hostWidth, 0, 1),
+        y: clamp(top / hostHeight, 0, 1),
+        width: this.element.offsetWidth,
+        height: this.element.offsetHeight
+      });
+    }
+    layerHostRect() {
+      const parent = this.element.parentElement?.parentElement;
+      return (parent ?? document.body).getBoundingClientRect();
+    }
+  }
+  function bootStickyNotes(options) {
+    const layer = new StickyNotesLayer(options);
+    void layer.boot();
+    return layer;
+  }
+  function noteKey(note) {
+    return note.guidelineId === null ? note.localId : `guideline:${note.guidelineId}`;
+  }
+  function noteModifiedMs(note) {
+    if (typeof note.modifiedMs === "number" && Number.isFinite(note.modifiedMs)) {
+      return note.modifiedMs;
+    }
+    if (!note.modified) {
+      return 0;
+    }
+    const parsed = Date.parse(note.modified);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function sortNotesByModified(notes) {
+    return [...notes].sort((a, b) => noteModifiedMs(a) - noteModifiedMs(b));
+  }
+  function loadGeometry(key) {
+    const map = readGeometryMap();
+    const value = map[key];
+    if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.y) || !Number.isFinite(value.width) || !Number.isFinite(value.height)) {
+      return null;
+    }
+    return value;
+  }
+  function saveGeometry(key, geometry) {
+    const map = readGeometryMap();
+    map[key] = geometry;
+    writeGeometryMap(map);
+  }
+  function moveStoredGeometry(oldKey, newKey) {
+    if (oldKey === newKey) {
+      return;
+    }
+    const map = readGeometryMap();
+    if (map[oldKey]) {
+      map[newKey] = map[oldKey];
+      delete map[oldKey];
+      writeGeometryMap(map);
+    }
+  }
+  function readGeometryMap() {
+    try {
+      const raw = window.localStorage.getItem(GEOMETRY_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+  function writeGeometryMap(map) {
+    try {
+      window.localStorage.setItem(GEOMETRY_KEY, JSON.stringify(map));
+    } catch {
+    }
+  }
+  function clamp(value, min, max) {
+    if (max < min) {
+      return min;
+    }
+    return Math.min(max, Math.max(min, value));
+  }
   const clock = {
     id: "clock",
     // Labels/descriptions on built-in defs stay string-literal at
@@ -24614,7 +26665,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     );
   }
   function getRegisteredElementId(dragManager) {
-    const t = dragManager.debug().listTargets().find((target) => target.id === "recycle-bin-dock");
+    const t = dragManager.debug().listTargets().find((target2) => target2.id === "recycle-bin-dock");
     return t ? t.element : null;
   }
   let started$1 = false;
@@ -25564,7 +27615,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     void syncNativeWindows(
       Array.isArray(config.nativeWindows) ? config.nativeWindows : []
     );
-    const hasSession = !!(config.session && config.session.windows && config.session.windows.length > 0);
+    const hasSession = hasRestorableSession(config.session);
     const sessionRestore = hasSession ? restoreSession(manager, config, desktopArea).catch((err) => {
       if (typeof console !== "undefined") {
         console.error("[desktop-mode] session restore failed:", err);
@@ -25805,12 +27856,31 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       dragBridge,
       dragManager,
       connect: connectionBridge.connect,
+      getConnection: connectionBridge.getConnection,
       config
     });
     installPublicApi(desktopApi);
     installRecycleBinDropTargets(dragManager);
     bootHeartbeatBus();
     bootNonceRefresh();
+    bootStickyNotes({
+      host: desktopArea,
+      config,
+      getActiveDesktopId: () => manager.getActiveDesktopId(),
+      openArtifact: (url, title) => {
+        const id = deriveWindowId(url, config.adminUrl);
+        void manager.open({
+          id,
+          baseId: id,
+          url,
+          title,
+          icon: "dashicons-edit-page"
+        });
+      },
+      onError: (message) => {
+        showToast({ message });
+      }
+    });
     installOpenDeps({
       openUrl: ({ id, url, title, icon }) => {
         if (tryNativeUrlRemap(url)) {
@@ -26513,8 +28583,8 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       if (!dragHasFiles(ev)) {
         return;
       }
-      const target = ev.target;
-      if (target?.closest && IFRAME_PASSTHROUGH_SELECTORS.some((s) => target.closest(s))) {
+      const target2 = ev.target;
+      if (target2?.closest && IFRAME_PASSTHROUGH_SELECTORS.some((s) => target2.closest(s))) {
         return;
       }
       ev.preventDefault();
@@ -27451,177 +29521,6 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
 		</svg>
 	`;
   }
-  const textareaStyles = css`:host{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var( --desktop-mode-text,#1d2327 );min-width:0}:host( [ hidden ] ){display:none}.wpd-textarea__label{font-size:12px;color:var( --desktop-mode-muted,#646970 )}textarea{appearance:none;-webkit-appearance:none;display:block;width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;background:var( --desktop-mode-window-bg,#fff );border:1px solid var( --desktop-mode-border,#dcdcde );border-radius:6px;font:inherit;font-size:13px;line-height:1.45;color:var( --desktop-mode-text,#1d2327 );resize:vertical;transition:border-color 0.12s ease,box-shadow 0.12s ease}textarea:hover{border-color:var( --desktop-mode-muted,#8c8f94 )}textarea:focus-visible{outline:none;border-color:var( --wp-admin-theme-color,#2271b1 );box-shadow:0 0 0 1px var( --wp-admin-theme-color,#2271b1 )}textarea:disabled{opacity:0.55;cursor:not-allowed;background:rgba( 0,0,0,0.03 )}textarea[ aria-invalid='true' ]{border-color:#d63638}textarea[ aria-invalid='true' ]:focus-visible{box-shadow:0 0 0 1px #d63638}:host( [ auto-grow ] ) textarea{resize:none;overflow:hidden}`;
-  const _WpdTextarea = class _WpdTextarea extends Component {
-    constructor() {
-      super(...arguments);
-      this._textareaEl = null;
-    }
-    connectedCallback() {
-      super.connectedCallback();
-      ensureAutoId(this);
-    }
-    render() {
-      const label = this._attr("label") || "";
-      const value = this._attr("value") ?? "";
-      const placeholder = this._attr("placeholder") || "";
-      const disabled = this._boolAttr("disabled");
-      const readonly = this._boolAttr("readonly");
-      const name = this._attr("name") || "";
-      const rows = Number(this._attr("rows")) || 3;
-      const maxLength = this._attr("maxlength");
-      const minLength = this._attr("minlength");
-      const invalid = this._boolAttr("invalid");
-      const hostId = this.id || "wpd-unnamed";
-      const fieldId = `${hostId}__field`;
-      return html`
-			${label ? html`<label class="wpd-textarea__label" for=${fieldId}>${label}</label>` : html``}
-			<textarea
-				id=${fieldId}
-				part="textarea"
-				.value=${value}
-				placeholder=${placeholder}
-				?disabled=${disabled}
-				?readonly=${readonly}
-				rows=${rows}
-				maxlength=${maxLength ?? ""}
-				minlength=${minLength ?? ""}
-				name=${name}
-				aria-invalid=${invalid ? "true" : "false"}
-				aria-label=${label || ""}
-				@input=${(e) => this._onInput(e)}
-				@change=${(e) => this._onChange(e)}
-				@keydown=${(e) => this._onKeyDown(e)}
-			></textarea>
-		`;
-    }
-    _attr(name) {
-      return this.getAttribute(name);
-    }
-    _boolAttr(name) {
-      return this.getAttribute(name) !== null;
-    }
-    _onInput(e) {
-      const ta = e.target;
-      this._textareaEl = ta;
-      this.setAttribute("value", ta.value);
-      this.emit("wpd-input-change", { value: ta.value });
-      if (this._boolAttr("auto-grow")) {
-        this._autosize(ta);
-      }
-    }
-    _onChange(e) {
-      const ta = e.target;
-      this.emit("wpd-input-commit", { value: ta.value });
-    }
-    _onKeyDown(e) {
-      if (!this._boolAttr("submit-on-enter")) {
-        return;
-      }
-      if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        const ta = e.target;
-        this.emit("wpd-submit", { value: ta.value });
-      }
-    }
-    /**
-     * Grow the textarea height to fit content, capped at `max-rows`.
-     * Resets to scroll-height each input then clamps; cheap because
-     * the browser caches layout.
-     */
-    _autosize(ta) {
-      const maxRows = Number(this._attr("max-rows")) || 8;
-      const cs = window.getComputedStyle(ta);
-      const fontSize = parseFloat(cs.fontSize) || 13;
-      const lineHeightRaw = cs.lineHeight;
-      const lineHeight = lineHeightRaw === "normal" ? fontSize * 1.45 : parseFloat(lineHeightRaw) || fontSize * 1.45;
-      const paddingTop = parseFloat(cs.paddingTop) || 0;
-      const paddingBottom = parseFloat(cs.paddingBottom) || 0;
-      const max = lineHeight * maxRows + paddingTop + paddingBottom;
-      ta.style.height = "auto";
-      const next = Math.min(ta.scrollHeight, max);
-      ta.style.height = `${next}px`;
-    }
-    /** Public helper for callers that programmatically set `.value` and want autosize to re-run. */
-    refreshAutosize() {
-      if (this._textareaEl && this._boolAttr("auto-grow")) {
-        this._autosize(this._textareaEl);
-      }
-    }
-    /** Imperatively focus the underlying textarea. */
-    focusInput() {
-      const root = this.shadowRoot ?? this;
-      const ta = root.querySelector("textarea");
-      ta?.focus();
-    }
-    /** Imperatively clear the value. */
-    clear() {
-      this.setAttribute("value", "");
-      const root = this.shadowRoot ?? this;
-      const ta = root.querySelector("textarea");
-      if (ta) {
-        ta.value = "";
-        if (this._boolAttr("auto-grow")) {
-          this._autosize(ta);
-        }
-      }
-    }
-  };
-  _WpdTextarea.props = [
-    "label",
-    "value",
-    "placeholder",
-    "disabled",
-    "readonly",
-    "name",
-    "rows",
-    "maxlength",
-    "minlength",
-    "invalid",
-    "autoGrow",
-    "maxRows",
-    "submitOnEnter"
-  ];
-  _WpdTextarea.styles = [textareaStyles];
-  _WpdTextarea.help = {
-    title: "Textarea",
-    summary: "Multi-line text input. Same event shape as wpd-text-field. Optional auto-grow up to max-rows; optional submit-on-enter (Enter sends, Shift+Enter newlines).",
-    status: "stable",
-    since: "0.22.0",
-    props: [
-      { name: "label", type: "string", description: "Visible label above the textarea." },
-      { name: "value", type: "string", description: "Current value; reflected two-way." },
-      { name: "placeholder", type: "string", description: "Native placeholder." },
-      { name: "disabled", type: "boolean attribute" },
-      { name: "readonly", type: "boolean attribute" },
-      { name: "name", type: "string", description: "Forwarded to native textarea for form submission." },
-      { name: "rows", type: "integer (string)", default: "3", description: "Initial visible row count." },
-      { name: "maxlength", type: "integer (string)" },
-      { name: "minlength", type: "integer (string)" },
-      { name: "invalid", type: "boolean attribute", description: "Sets aria-invalid + error styling." },
-      { name: "auto-grow", type: "boolean attribute", description: "Grows up to max-rows as the user types." },
-      { name: "max-rows", type: "integer (string)", default: "8" },
-      {
-        name: "submit-on-enter",
-        type: "boolean attribute",
-        description: "Enter fires wpd-submit; Shift+Enter inserts a newline."
-      }
-    ],
-    events: [
-      { name: "wpd-input-change", description: "Fires on every keystroke.", detail: "{ value: string }" },
-      { name: "wpd-input-commit", description: "Fires on blur / native change.", detail: "{ value: string }" },
-      {
-        name: "wpd-submit",
-        description: "Fires on Enter (without Shift) when submit-on-enter is set.",
-        detail: "{ value: string }"
-      }
-    ],
-    example: html`
-			<wpd-textarea label="Message" rows="3" auto-grow max-rows="8" submit-on-enter></wpd-textarea>
-		`
-  };
-  let WpdTextarea = _WpdTextarea;
-  defineComponent("wpd-textarea", WpdTextarea);
   async function uploadFile(args) {
     const initial = {
       file: args.file,

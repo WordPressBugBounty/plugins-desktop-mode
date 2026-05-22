@@ -520,6 +520,9 @@
             "Could not load reviews.": [
                 "No se pudieron cargar tus medios."
             ],
+            "Could not save sticky note.": [
+                "No se pudieron cargar tus medios."
+            ],
             "Could not toggle auto-updates for %1$s: %2$s": [
                 ""
             ],
@@ -853,6 +856,9 @@
             "Hide from dock": [
                 ""
             ],
+            "Hide sticky note": [
+                ""
+            ],
             "How often the WordPress Heartbeat API runs. Faster = quicker live updates (autosaves, lock checks, the heartbeat widget) at the cost of more server traffic. 15 s triples server load vs. the 60 s default — use sparingly. 30 s and 45 s require a page reload to apply exactly; 15 s and 60 s take effect immediately.": [
                 ""
             ],
@@ -1093,6 +1099,9 @@
             "New %s": [
                 ""
             ],
+            "New sticky note": [
+                ""
+            ],
             "Newest first": [
                 ""
             ],
@@ -1239,6 +1248,9 @@
             ],
             "Open another %s": [
                 "Abrir otra ventana de %s"
+            ],
+            "Open artifact": [
+                ""
             ],
             "Open file": [
                 "Abrir"
@@ -1709,6 +1721,15 @@
                 ""
             ],
             "Steps to reproduce (bug only)": [
+                ""
+            ],
+            "Sticky note text": [
+                ""
+            ],
+            "Sticky notes": [
+                ""
+            ],
+            "Sticky term is unavailable.": [
                 ""
             ],
             "Submitted on": [

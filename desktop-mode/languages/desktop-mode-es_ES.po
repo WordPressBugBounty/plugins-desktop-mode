@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Desktop Mode 0.4.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/alcazaba-plugin\n"
-"POT-Creation-Date: 2026-05-21T11:04:30+00:00\n"
+"POT-Creation-Date: 2026-05-22T09:14:40+00:00\n"
 "PO-Revision-Date: 2026-04-19 20:42+0200\n"
 "Last-Translator: Desktop Mode team\n"
 "Language-Team: Español\n"
@@ -886,7 +886,7 @@ msgstr "Escritorio 1"
 
 #. %d is the number of pending items in a desktop-icon badge.
 #. %d is the number of pending items in a dock badge.
-#: src/desktop-icons.ts:402 src/dock.ts:2059 src/dock.ts:2072
+#: src/desktop-icons.ts:402 src/dock.ts:2090 src/dock.ts:2103
 msgid "%d notification"
 msgid_plural "%d notifications"
 msgstr[0] ""
@@ -915,7 +915,7 @@ msgid "New %s"
 msgstr ""
 
 #. %d is the number of pending updates / items.
-#: src/dock.ts:918
+#: src/dock.ts:949
 msgid "%d update"
 msgid_plural "%d updates"
 msgstr[0] "%d actualización"
@@ -4679,6 +4679,35 @@ msgstr ""
 "El fondo tras tus ventanas. Elige un preestablecido, mezcla tu propio "
 "gradiente o suelta una imagen."
 
+#: src/sticky-notes/layer.ts:157
+msgid "Sticky notes"
+msgstr ""
+
+#: src/sticky-notes/layer.ts:186
+msgid "New sticky note"
+msgstr ""
+
+#: src/sticky-notes/layer.ts:218
+msgid "Sticky term is unavailable."
+msgstr ""
+
+#: src/sticky-notes/layer.ts:599
+msgid "Open artifact"
+msgstr ""
+
+#: src/sticky-notes/layer.ts:608
+msgid "Hide sticky note"
+msgstr ""
+
+#: src/sticky-notes/layer.ts:616
+msgid "Sticky note text"
+msgstr ""
+
+#: src/sticky-notes/layer.ts:729
+#, fuzzy
+msgid "Could not save sticky note."
+msgstr "No se pudieron cargar tus medios."
+
 #: src/ui/components/wpd-notice/wpd-notice.ts:169
 msgid "Dismiss notice"
 msgstr ""
@@ -5176,7 +5205,7 @@ msgid "Content Graph"
 msgstr ""
 
 #. translators: 1: kind ("Command"/"Settings-tab"/"Title-bar button"), 2: handle.
-#: includes/core/payload.php:1409
+#: includes/core/payload.php:1427
 #, php-format
 msgid ""
 "%1$s script handle \"%2$s\" is not registered with WordPress (no "
@@ -6153,7 +6182,7 @@ msgid ""
 msgstr ""
 
 #. translators: 1: parent menu label, 2: submenu label
-#: includes/render/assets.php:632
+#: includes/render/assets.php:634
 #, php-format
 msgid "%1$s > %2$s"
 msgstr ""

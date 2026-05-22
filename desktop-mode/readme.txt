@@ -4,7 +4,7 @@ Tags: desktop, admin, ui, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.8.7
+Stable tag: 0.8.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -106,6 +106,16 @@ The plugin bundles the following third-party JavaScript library, loaded on deman
 * **[PixiJS](https://pixijs.com/)** (MIT License) — used by the interactive **OS Settings → About** scene, the **Content Graph** window, and built-in canvas wallpapers (e.g. the animated WordPress logo). PixiJS is loaded from the plugin's own `assets/vendor/` directory; no CDN requests are made.
 
 == Changelog ==
+
+= 0.8.8 =
+* Align dock badge with in-window update count
+* Make every dock scrollable, keep system tiles pinned
+* No more flash when you create, move, or delete a file or shortcut on the desktop
+* Trashing a folder that contained other folders now works (used to silently fail)
+* Drag an image from the Media Library straight into a Gutenberg post, it now inserts
+* Edit User screen: the form is centered instead of pinned to the left
+* Title-bar icons (Help, etc.) are now visually centered
+* Sticky notes powered by WP Guidelines
 
 = 0.8.7 =
 * Bump Tested up to WordPress 7.0

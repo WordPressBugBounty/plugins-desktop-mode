@@ -345,6 +345,14 @@
 	width: 18px;
 	height: 18px;
 }
+/* The flex-centring override for the dashicon glyph lives in
+ * `windows.css` rather than here. `windows.css` is mtime-stamped
+ * (per `desktop_mode_register_assets` in includes/assets.php) so
+ * its URL changes whenever it does, but `@import`-ed sub-sheets
+ * like this one are fetched without a version query and the
+ * browser will serve a stale cached copy across edits to this
+ * file. Co-locating cache-sensitive overrides with the parent
+ * stylesheet is the rule of the road here. */
 
 /* Focused window: meta buttons visible. */
 .desktop-mode-window--focused .desktop-mode-window__meta-btn {
