@@ -433,6 +433,25 @@
 	border-radius: 2px;
 }
 
+/*
+ * "All instances minimized" — the tile still has windows, they're
+ * just hidden. Swap the solid dot for a hollow ring so the user sees
+ * "I have something here, currently tucked away" instead of "I have
+ * a focused / visible window here." `--all-minimized` is layered on
+ * top of `--active`; the rule below wins on selector specificity.
+ *
+ * Sized slightly larger than the solid dot so the ring is legible at
+ * dock size — a 4×4 outline reads as a dirty pixel.
+ */
+.desktop-mode-dock[ data-desktop-mode-dock-placement="left" ]
+	.desktop-mode-dock__item--all-minimized::before {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: transparent;
+	border: 1px solid rgba( 255, 255, 255, 0.85 );
+}
+
 /* Right dock: indicator on the opposite edge (inside-facing). */
 .desktop-mode-dock[ data-desktop-mode-dock-placement="right" ]
 	.desktop-mode-dock__item--active::before {
@@ -452,6 +471,15 @@
 	width: 4px;
 	height: 16px;
 	border-radius: 2px;
+}
+
+.desktop-mode-dock[ data-desktop-mode-dock-placement="right" ]
+	.desktop-mode-dock__item--all-minimized::before {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: transparent;
+	border: 1px solid rgba( 255, 255, 255, 0.85 );
 }
 
 /* "Open another" chip — left: right of tile; right: left of tile. */
@@ -618,6 +646,45 @@
 	width: 16px;
 	height: 4px;
 	border-radius: 2px;
+}
+
+/*
+ * "All instances minimized" on the bottom dock — solid dot becomes
+ * a hollow ring. Matches the vertical-dock treatment so the cue is
+ * consistent across placements.
+ */
+.desktop-mode-dock[ data-desktop-mode-dock-placement="bottom" ]
+	.desktop-mode-dock__item--all-minimized::before {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: transparent;
+	border: 1px solid rgba( 255, 255, 255, 0.85 );
+}
+
+/*
+ * Global "Show Desktop" indicator — set on `<body>` by the dock when
+ * every live window on the active desktop is in the minimized state.
+ * The bottom-dock pill picks up a soft theme-color ring so the user
+ * has a global cue that the windows haven't disappeared, they're just
+ * minimized. ArrowUp / a wallpaper click / clicking any dock tile
+ * brings them back; without this the empty wallpaper looks identical
+ * to a freshly-loaded desktop with no windows open.
+ */
+body.desktop-mode-show-desktop-active
+	.desktop-mode-dock[ data-desktop-mode-dock-placement="bottom" ] {
+	box-shadow:
+		inset 0 0 0 1px var( --wp-admin-theme-color, rgba( 255, 255, 255, 0.45 ) ),
+		inset 0 1px 0 rgba( 255, 255, 255, 0.08 ),
+		0 10px 32px rgba( 0, 0, 0, 0.45 );
+}
+
+/* Vertical docks get the same treatment along their inner edge. */
+body.desktop-mode-show-desktop-active
+	.desktop-mode-dock[ data-desktop-mode-dock-placement="left" ],
+body.desktop-mode-show-desktop-active
+	.desktop-mode-dock[ data-desktop-mode-dock-placement="right" ] {
+	box-shadow: inset 0 0 0 1px var( --wp-admin-theme-color, rgba( 255, 255, 255, 0.45 ) );
 }
 
 /* "Open another" chip — floats above the tile's top-right corner so

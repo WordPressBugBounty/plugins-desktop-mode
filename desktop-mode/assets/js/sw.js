@@ -1,7 +1,7 @@
 (function() {
   "use strict";
   const sw = globalThis;
-  const VERSION = "0.8.0-pwa-3";
+  const VERSION = "0.8.0-pwa-5";
   const STATIC_CACHE = `desktop-mode-static-${VERSION}`;
   const RUNTIME_CACHE = `desktop-mode-runtime-${VERSION}`;
   const OFFLINE_URL = "/desktop-mode/?offline=1";
@@ -10,6 +10,9 @@
     "assets/css/variables.css",
     "assets/css/dock.css",
     "assets/css/windows.css",
+    "assets/js/desktop.min.js",
+    "assets/js/window-system.min.js",
+    "assets/js/shell-overlays.min.js",
     "assets/images/wp-logo.png"
   ];
   sw.addEventListener("install", (event) => {
@@ -90,13 +93,7 @@
     }
   }
   function pluginAssetBase() {
-    const here = sw.location.pathname;
-    const idx = here.indexOf("/desktop-mode/");
-    const origin = sw.location.origin;
-    if (idx >= 0) {
-      return origin + "/wp-content/plugins/desktop-mode/";
-    }
-    return origin + "/wp-content/plugins/desktop-mode/";
+    return sw.location.origin + "/wp-content/plugins/desktop-mode/";
   }
   function isStaticAssetPath(pathname) {
     return /\.(css|png|jpg|jpeg|svg|webp|woff2?|ttf|gif|ico)$/i.test(
@@ -115,16 +112,25 @@
       }
       return fresh;
     } catch {
-      const cached = await cache.match(req);
-      if (cached) {
-        return cached;
+      const cachedRuntime = await cache.match(req);
+      if (cachedRuntime) {
+        return cachedRuntime;
+      }
+      const staticCache = await caches.open(STATIC_CACHE);
+      const cachedStatic = await staticCache.match(req, { ignoreSearch: true });
+      if (cachedStatic) {
+        return cachedStatic;
       }
       return new Response("", { status: 504 });
     }
   }
   async function staleWhileRevalidate(req) {
     const cache = await caches.open(RUNTIME_CACHE);
-    const cached = await cache.match(req);
+    let cached = await cache.match(req);
+    if (!cached) {
+      const staticCache = await caches.open(STATIC_CACHE);
+      cached = await staticCache.match(req, { ignoreSearch: true });
+    }
     const network = fetch(req).then((res) => {
       if (res && res.status === 200) {
         cache.put(req, res.clone()).catch(() => void 0);

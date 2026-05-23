@@ -56,10 +56,21 @@ defined( 'ABSPATH' ) || exit;
  * inside chromeless. We've never seen one in the wild, and if a
  * site hits it, the filter below lets them narrow the scan.
  *
- * Scoped via the `desktop-mode-chromeless` body class, runs at
- * DOMContentLoaded and again at `load` to catch React-mounted
- * components. No MutationObserver yet — we'll add one if a plugin
- * surfaces that mounts new offending elements after `load`.
+ * Scoped via the `desktop-mode-chromeless` body class. Runs ONE
+ * full walk at DOMContentLoaded, then watches for late additions
+ * with a `MutationObserver` so React-mounted components are
+ * corrected as they appear instead of via a second full-DOM walk
+ * at `load`. The observer only inspects added nodes, not the
+ * whole document, which is roughly two orders of magnitude
+ * cheaper than the old double-walk on a busy Gutenberg or
+ * WooCommerce admin page (~2,000+ `getComputedStyle()` calls
+ * collapsed into a one-time initial walk plus per-addition
+ * checks).
+ *
+ * Fallback for very old browsers without `MutationObserver`:
+ * keep the second walk at `load`. The current minimum (IE 11+)
+ * already ships MO, so the fallback only fires on extreme
+ * outliers — but it's free insurance.
  *
  * @since 0.6.1
  */
@@ -95,7 +106,59 @@ function desktop_mode_chromeless_offset_neutralizer_script() {
 		return;
 	}
 
-	$js = "(function(C){function fix(){if(!document.body||!document.body.classList.contains('desktop-mode-chromeless'))return;var TOPS={};for(var t=0;t<C.tops.length;t++){TOPS[C.tops[t]]=1;}var els=document.querySelectorAll('*');for(var i=0;i<els.length;i++){var el=els[i];var cs=getComputedStyle(el);if(cs.position==='static')continue;if(TOPS[cs.top]){el.style.setProperty('top','0px','important');}}}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',fix,{once:true});}else{fix();}window.addEventListener('load',fix,{once:true});})({$config});";
+	// Build the inline JS as a concatenated single-quoted string —
+	// Plugin Check disallows heredoc syntax (PluginCheck.CodeAnalysis.
+	// Heredoc.NotAllowed), so the source is uglier than the original
+	// `<<<JS … JS;` block but functionally identical. The trailing
+	// `$config` JSON is appended at the end so the whole body is a
+	// closure receiving a `{tops: [...]}` argument.
+	$js  = '(function(C){';
+	$js .= 'var TOPS={};';
+	$js .= 'for(var t=0;t<C.tops.length;t++){TOPS[C.tops[t]]=1;}';
+	$js .= 'function fixOne(el){';
+	$js .=   'if(!el||el.nodeType!==1)return;';
+	$js .=   'var cs;';
+	$js .=   'try{cs=getComputedStyle(el);}catch(_e){return;}';
+	$js .=   "if(cs.position==='static')return;";
+	$js .=   "if(TOPS[cs.top]){el.style.setProperty('top','0px','important');}";
+	$js .= '}';
+	$js .= 'function walkSubtree(root){';
+	$js .=   'if(!root)return;';
+	$js .=   'if(root.nodeType===1){fixOne(root);}';
+	$js .=   "var els=root.querySelectorAll?root.querySelectorAll('*'):[];";
+	$js .=   'for(var i=0;i<els.length;i++){fixOne(els[i]);}';
+	$js .= '}';
+	$js .= 'var started=false;';
+	$js .= 'function start(){';
+	$js .=   'if(started)return;';
+	$js .=   "if(!document.body||!document.body.classList.contains('desktop-mode-chromeless'))return;";
+	$js .=   'started=true;';
+	$js .=   'var MO=window.MutationObserver;';
+	$js .=   'if(MO){';
+	$js .=     'var observer=new MO(function(records){';
+	$js .=       'for(var r=0;r<records.length;r++){';
+	$js .=         'var rec=records[r];';
+	$js .=         "if(rec.type!=='childList')continue;";
+	$js .=         'var added=rec.addedNodes;';
+	$js .=         'for(var n=0;n<added.length;n++){walkSubtree(added[n]);}';
+	$js .=       '}';
+	$js .=     '});';
+	$js .=     'observer.observe(document.body,{childList:true,subtree:true});';
+	$js .=   '}';
+	$js .=   'walkSubtree(document.body);';
+	// Defense in depth — pre-MutationObserver browsers fall back to the
+	// original double-walk so React-mounted components added between
+	// DOMContentLoaded and load still get neutralized.
+	$js .=   'if(!MO){';
+	$js .=     "window.addEventListener('load',function(){walkSubtree(document.body);},{once:true});";
+	$js .=   '}';
+	$js .= '}';
+	$js .= "if(document.readyState==='loading'){";
+	$js .=   "document.addEventListener('DOMContentLoaded',start,{once:true});";
+	$js .= '}else{';
+	$js .=   'start();';
+	$js .= '}';
+	$js .= '})(' . $config . ');';
 
 	wp_print_inline_script_tag( $js );
 }
@@ -1211,6 +1274,28 @@ function desktop_mode_chromeless_bridge_script() {
 		}
 		return false;
 	}
+	/*
+	 * Bubble phase (not capture): the inner-most handler — Gutenberg's
+	 * drop zone, the legacy media uploader, or a third-party plugin
+	 * like "Administrador de archivos WP" — runs FIRST and gets the
+	 * chance to call `preventDefault()` to claim the drop. Our
+	 * forwarder then runs LAST at the document level and yields to
+	 * anyone who already took ownership.
+	 *
+	 * Two bail conditions, in order:
+	 *   1. `bridgeDropTargetWantsFile()` — the curated allowlist
+	 *      (Gutenberg, wp.media, anything tagged `[data-drop-zone]`).
+	 *      Kept as the primary check so the well-known core surfaces
+	 *      behave identically to before, even if some edge case skips
+	 *      the `preventDefault()` step.
+	 *   2. `ev.defaultPrevented` — the universal HTML5 contract: any
+	 *      drop zone willing to receive a file calls `preventDefault()`
+	 *      on `dragover` (mandatory per spec) and `drop` (to suppress
+	 *      the browser's default navigate-to-file). When that's true,
+	 *      some inner handler has taken the drop — yield so plugins
+	 *      outside the allowlist (WP File Manager, Yoast, etc.) keep
+	 *      their native UX.
+	 */
 	document.addEventListener( 'dragover', function ( ev ) {
 		if ( ! bridgeHasFiles( ev ) ) {
 			return;
@@ -1218,16 +1303,22 @@ function desktop_mode_chromeless_bridge_script() {
 		if ( bridgeDropTargetWantsFile( ev.target ) ) {
 			return;
 		}
+		if ( ev.defaultPrevented ) {
+			return;
+		}
 		ev.preventDefault();
 		if ( ev.dataTransfer ) {
 			ev.dataTransfer.dropEffect = 'copy';
 		}
-	}, true );
+	}, false );
 	document.addEventListener( 'drop', function ( ev ) {
 		if ( ! bridgeHasFiles( ev ) ) {
 			return;
 		}
 		if ( bridgeDropTargetWantsFile( ev.target ) ) {
+			return;
+		}
+		if ( ev.defaultPrevented ) {
 			return;
 		}
 		ev.preventDefault();
@@ -1252,7 +1343,7 @@ function desktop_mode_chromeless_bridge_script() {
 				window.location.origin
 			);
 		} catch ( err ) { /* cross-origin parent; swallow */ }
-	}, true );
+	}, false );
 
 	/*
 	 * Cmd+K / Ctrl+K forwarder — single-press, unconditional.

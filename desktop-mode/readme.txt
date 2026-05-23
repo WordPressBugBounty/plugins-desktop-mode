@@ -4,7 +4,7 @@ Tags: desktop, admin, ui, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.8.8
+Stable tag: 0.8.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -106,6 +106,18 @@ The plugin bundles the following third-party JavaScript library, loaded on deman
 * **[PixiJS](https://pixijs.com/)** (MIT License) — used by the interactive **OS Settings → About** scene, the **Content Graph** window, and built-in canvas wallpapers (e.g. the animated WordPress logo). PixiJS is loaded from the plugin's own `assets/vendor/` directory; no CDN requests are made.
 
 == Changelog ==
+
+= 0.8.9 =
+* Improve drag-and-drop handling in chromeless bridge and iframe bridge
+* The whole shell loads faster, especially the first time you open wp-admin
+* Open an app from the wallpaper or from the dock — it's the same window now (no more two copies floating around)
+* Minimize a window and the dock icon shows it's minimized — even if you opened it from the desktop icon
+* Click "+ New" twice and you get two editors. Drafting a post and want to start another? Just click again
+* "Switch to Desktop Mode" always takes you to the dashboard, so you know where you're starting from
+* Resizing a window and accidentally letting go over the desktop no longer minimizes everything
+* WooCommerce: the "Add Order" button is back on the Orders page
+* "Add New" buttons (Add Post, Add Order, Add anything) stay visible inside every plugin page
+* After we ship a fix, you get it on your next page load — no more "try refreshing twice"
 
 = 0.8.8 =
 * Align dock badge with in-window update count

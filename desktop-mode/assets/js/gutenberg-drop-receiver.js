@@ -131,6 +131,26 @@ var desktopModeGutenbergDropReceiver = function(exports) {
     }
     return p.kind === "attachment" || p.kind === "post" || p.kind === "user";
   }
+  let stashedBridgePayload = null;
+  function dragCarriesOsFiles(e) {
+    const types = e.dataTransfer?.types;
+    if (!types) {
+      return false;
+    }
+    const list = types;
+    if (typeof list.includes === "function") {
+      return list.includes("Files");
+    }
+    if (typeof list.contains === "function") {
+      return list.contains("Files");
+    }
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] === "Files") {
+        return true;
+      }
+    }
+    return false;
+  }
   function isDragOverMsg(m) {
     if (!m || typeof m !== "object") {
       return false;
@@ -146,25 +166,28 @@ var desktopModeGutenbergDropReceiver = function(exports) {
     return p.kind === "attachment" || p.kind === "post" || p.kind === "user";
   }
   function isDragLeaveMsg(m) {
-    if (!m || typeof m !== "object") {
-      return false;
-    }
-    return m.type === "desktop-mode-drag-leave";
+    return !!m && typeof m === "object" && m.type === "desktop-mode-drag-leave";
   }
-  let stashedBridgePayload = null;
-  const _debugCounters = {
-    dragOverMsgs: 0,
-    dragLeaveMsgs: 0,
-    nativeDrops: 0,
-    nativeDropsWithStash: 0,
-    docsAttached: 0
-  };
-  function onNativeDrop(e) {
-    _debugCounters.nativeDrops++;
+  function onNativeDragOver(e) {
     if (!stashedBridgePayload) {
       return;
     }
-    _debugCounters.nativeDropsWithStash++;
+    if (dragCarriesOsFiles(e)) {
+      return;
+    }
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }
+  function onNativeDrop(e) {
+    if (!stashedBridgePayload) {
+      return;
+    }
+    if (dragCarriesOsFiles(e)) {
+      stashedBridgePayload = null;
+      return;
+    }
     const payload = stashedBridgePayload;
     stashedBridgePayload = null;
     e.preventDefault();
@@ -181,15 +204,6 @@ var desktopModeGutenbergDropReceiver = function(exports) {
       notifyParentOfFailure(reason);
     });
   }
-  function onNativeDragOver(e) {
-    if (!stashedBridgePayload) {
-      return;
-    }
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = "copy";
-    }
-  }
   function attachToDocument(doc) {
     const sentinel = doc;
     if (sentinel.__desktopModeDropReceiverAttached) {
@@ -198,7 +212,6 @@ var desktopModeGutenbergDropReceiver = function(exports) {
     sentinel.__desktopModeDropReceiverAttached = true;
     doc.addEventListener("drop", onNativeDrop, true);
     doc.addEventListener("dragover", onNativeDragOver, true);
-    _debugCounters.docsAttached++;
   }
   function attachToAllFrames() {
     attachToDocument(document);
@@ -220,12 +233,10 @@ var desktopModeGutenbergDropReceiver = function(exports) {
       }
       if (isDragOverMsg(e.data)) {
         stashedBridgePayload = e.data.payload;
-        _debugCounters.dragOverMsgs++;
         return;
       }
       if (isDragLeaveMsg(e.data)) {
         stashedBridgePayload = null;
-        _debugCounters.dragLeaveMsgs++;
         return;
       }
       if (!isDropMsg(e.data)) {
@@ -243,10 +254,19 @@ var desktopModeGutenbergDropReceiver = function(exports) {
     });
     attachToAllFrames();
     if (typeof MutationObserver !== "undefined" && document.documentElement) {
-      new MutationObserver(() => attachToAllFrames()).observe(
-        document.documentElement,
-        { childList: true, subtree: true }
-      );
+      new MutationObserver((records) => {
+        for (const r of records) {
+          for (const node of Array.from(r.addedNodes)) {
+            if (node instanceof HTMLIFrameElement || node instanceof Element && node.querySelector?.("iframe")) {
+              attachToAllFrames();
+              return;
+            }
+          }
+        }
+      }).observe(document.documentElement, {
+        childList: true,
+        subtree: true
+      });
     }
     document.addEventListener(
       "load",
@@ -257,12 +277,6 @@ var desktopModeGutenbergDropReceiver = function(exports) {
       },
       true
     );
-    window.__desktopModeDropReceiverDebug = () => ({
-      ..._debugCounters,
-      hasStash: stashedBridgePayload !== null,
-      stashKind: stashedBridgePayload?.kind ?? null,
-      iframesNow: document.querySelectorAll("iframe").length
-    });
   }
   install();
   exports.buildBlockSpec = buildBlockSpec;

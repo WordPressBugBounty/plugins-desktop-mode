@@ -1551,6 +1551,7 @@
             ref: payload.ref,
             title: payload.title,
             icon: payload.icon,
+            entityId: payload.entityId,
             bridgePayload: payload.bridgePayload
           },
           ghost: {
@@ -4866,6 +4867,11 @@
         ref: String(item.id),
         title: titleText,
         icon: entity.icon,
+        // Source entity id (`'posts'` / `'pages'` / future
+        // CPT-backed entities). Lets the recycle bin's drop
+        // handler resolve the right REST endpoint when the user
+        // drags this tile to the bin to trash it.
+        entityId: entity.id,
         // Cross-frame bridge payload — the Gutenberg drop-receiver
         // turns this into a `core/paragraph` with an `<a href>` to
         // the permalink. Tiles without a `link` (very old REST
@@ -6647,6 +6653,25 @@
       n.remove();
     });
   }
+  async function trashEntityById(entityId, id) {
+    const cfg = getConfig();
+    const entity = cfg.entities.find((e) => e.id === entityId);
+    if (!entity) {
+      throw new Error(
+        sprintf(
+          // translators: %s is the entity id (e.g. 'posts').
+          __("Unknown My WordPress entity: %s", "desktop-mode"),
+          entityId
+        )
+      );
+    }
+    await trashEntity(entity, id);
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-my-wordpress-entity-trashed", {
+        detail: { entityId, id }
+      })
+    );
+  }
   async function confirmTrash(state, ctx, entity, id, title) {
     const ok = await wpdConfirmGlobal({
       title: __("Move to Trash", "desktop-mode"),
@@ -8418,7 +8443,23 @@
     desktopGlobal.myWordpress = {
       openDetail,
       openMedia,
-      registerEntityKind
+      registerEntityKind,
+      trashEntity: trashEntityById
     };
+    document.addEventListener(
+      "desktop-mode-my-wordpress-entity-trashed",
+      (e) => {
+        const detail = e.detail;
+        if (!detail || typeof detail.id !== "number") {
+          return;
+        }
+        for (const state of liveStates.values()) {
+          const tile = state.body.querySelector(
+            `[data-entry-id="${detail.id}"]`
+          );
+          tile?.remove();
+        }
+      }
+    );
   }
 })();

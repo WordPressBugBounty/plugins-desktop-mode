@@ -292,17 +292,41 @@
      * @since 0.5.5
      */
     WINDOW_BLURRED: "desktop-mode.window.blurred",
-    /** Action, fires when a window is minimized. */
+    /**
+     * Action, fires when a window is minimized. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     *
+     * The element ride-along matches {@link WINDOW_CLOSING}'s shape so
+     * wallpaper plugins anchored to window tops (snow, leaves, rain
+     * splash) can match stuck particles by element identity and run
+     * their teardown — minimized windows render at `opacity: 0` so
+     * `offsetParent === null` checks miss them.
+     */
     WINDOW_MINIMIZED: "desktop-mode.window.minimized",
-    /** Action, fires when a window is restored from minimized. */
+    /**
+     * Action, fires when a window is restored from minimized. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_RESTORED: "desktop-mode.window.restored",
-    /** Action, fires when a window is maximized (fills desktop area). */
+    /**
+     * Action, fires when a window is maximized (fills desktop area).
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_MAXIMIZED: "desktop-mode.window.maximized",
-    /** Action, fires when a window exits maximized state. */
+    /**
+     * Action, fires when a window exits maximized state. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_UNMAXIMIZED: "desktop-mode.window.unmaximized",
-    /** Action, fires when a window enters fullscreen / focus mode. */
+    /**
+     * Action, fires when a window enters fullscreen / focus mode.
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_FULLSCREEN_ENTERED: "desktop-mode.window.fullscreen-entered",
-    /** Action, fires when a window exits fullscreen / focus mode. */
+    /**
+     * Action, fires when a window exits fullscreen / focus mode.
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_FULLSCREEN_EXITED: "desktop-mode.window.fullscreen-exited",
     /**
      * Filter, decides whether a fullscreen ("focus mode") window
@@ -4296,7 +4320,10 @@
       }
       this.onMinimize?.(this);
       this._emitChange("state");
-      doAction(HOOKS.WINDOW_MINIMIZED, { windowId: this.id });
+      doAction(HOOKS.WINDOW_MINIMIZED, {
+        windowId: this.id,
+        element: this.element
+      });
     }
     /**
      * Restore the window from minimized state. Returns the window to
@@ -4323,7 +4350,10 @@
       this.onFocusRequest?.(this);
       this._emitChange("state");
       if (wasMinimized) {
-        doAction(HOOKS.WINDOW_RESTORED, { windowId: this.id });
+        doAction(HOOKS.WINDOW_RESTORED, {
+          windowId: this.id,
+          element: this.element
+        });
       }
     }
     /**
@@ -4356,7 +4386,10 @@
       }
       this.state = "maximized";
       this._emitChange("state");
-      doAction(HOOKS.WINDOW_MAXIMIZED, { windowId: this.id });
+      doAction(HOOKS.WINDOW_MAXIMIZED, {
+        windowId: this.id,
+        element: this.element
+      });
     }
     /**
      * Apply the maximize visuals (state class + inline geometry against
@@ -4408,7 +4441,10 @@
         }
         this.state = "normal";
         this._emitChange("state");
-        doAction(HOOKS.WINDOW_UNMAXIMIZED, { windowId: this.id });
+        doAction(HOOKS.WINDOW_UNMAXIMIZED, {
+          windowId: this.id,
+          element: this.element
+        });
         return;
       }
       if (this.state === "fullscreen") {
@@ -4418,8 +4454,14 @@
         updateFullscreenBodyClass();
         this.updateFocusButtonState();
         this._emitChange("state");
-        doAction(HOOKS.WINDOW_FULLSCREEN_EXITED, { windowId: this.id });
-        doAction(HOOKS.WINDOW_MAXIMIZED, { windowId: this.id });
+        doAction(HOOKS.WINDOW_FULLSCREEN_EXITED, {
+          windowId: this.id,
+          element: this.element
+        });
+        doAction(HOOKS.WINDOW_MAXIMIZED, {
+          windowId: this.id,
+          element: this.element
+        });
         return;
       }
       this.maximize();
@@ -4458,9 +4500,15 @@
         updateFullscreenBodyClass();
         this.updateFocusButtonState();
         this._emitChange("state");
-        doAction(HOOKS.WINDOW_FULLSCREEN_EXITED, { windowId: this.id });
+        doAction(HOOKS.WINDOW_FULLSCREEN_EXITED, {
+          windowId: this.id,
+          element: this.element
+        });
         if (landedOnMaximize) {
-          doAction(HOOKS.WINDOW_MAXIMIZED, { windowId: this.id });
+          doAction(HOOKS.WINDOW_MAXIMIZED, {
+            windowId: this.id,
+            element: this.element
+          });
         }
         return;
       }
@@ -4489,7 +4537,10 @@
       updateFullscreenBodyClass();
       this.updateFocusButtonState();
       this._emitChange("state");
-      doAction(HOOKS.WINDOW_FULLSCREEN_ENTERED, { windowId: this.id });
+      doAction(HOOKS.WINDOW_FULLSCREEN_ENTERED, {
+        windowId: this.id,
+        element: this.element
+      });
     }
     /**
      * Reflect fullscreen state on the focus-mode button (active class,

@@ -433,12 +433,15 @@
           if (targetWantsFile(ev.target)) {
             return;
           }
+          if (ev.defaultPrevented) {
+            return;
+          }
           ev.preventDefault();
           if (ev.dataTransfer) {
             ev.dataTransfer.dropEffect = "copy";
           }
         },
-        true
+        false
       );
       document.addEventListener(
         "drop",
@@ -447,6 +450,9 @@
             return;
           }
           if (targetWantsFile(ev.target)) {
+            return;
+          }
+          if (ev.defaultPrevented) {
             return;
           }
           ev.preventDefault();
@@ -473,7 +479,7 @@
           } catch {
           }
         },
-        true
+        false
       );
     }
     try {

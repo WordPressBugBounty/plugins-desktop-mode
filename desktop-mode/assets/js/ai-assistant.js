@@ -281,17 +281,41 @@
      * @since 0.5.5
      */
     WINDOW_BLURRED: "desktop-mode.window.blurred",
-    /** Action, fires when a window is minimized. */
+    /**
+     * Action, fires when a window is minimized. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     *
+     * The element ride-along matches {@link WINDOW_CLOSING}'s shape so
+     * wallpaper plugins anchored to window tops (snow, leaves, rain
+     * splash) can match stuck particles by element identity and run
+     * their teardown — minimized windows render at `opacity: 0` so
+     * `offsetParent === null` checks miss them.
+     */
     WINDOW_MINIMIZED: "desktop-mode.window.minimized",
-    /** Action, fires when a window is restored from minimized. */
+    /**
+     * Action, fires when a window is restored from minimized. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_RESTORED: "desktop-mode.window.restored",
-    /** Action, fires when a window is maximized (fills desktop area). */
+    /**
+     * Action, fires when a window is maximized (fills desktop area).
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_MAXIMIZED: "desktop-mode.window.maximized",
-    /** Action, fires when a window exits maximized state. */
+    /**
+     * Action, fires when a window exits maximized state. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_UNMAXIMIZED: "desktop-mode.window.unmaximized",
-    /** Action, fires when a window enters fullscreen / focus mode. */
+    /**
+     * Action, fires when a window enters fullscreen / focus mode.
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_FULLSCREEN_ENTERED: "desktop-mode.window.fullscreen-entered",
-    /** Action, fires when a window exits fullscreen / focus mode. */
+    /**
+     * Action, fires when a window exits fullscreen / focus mode.
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_FULLSCREEN_EXITED: "desktop-mode.window.fullscreen-exited",
     /**
      * Filter, decides whether a fullscreen ("focus mode") window

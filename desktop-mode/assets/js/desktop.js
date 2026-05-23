@@ -341,17 +341,41 @@ var desktopMode = function(exports) {
      * @since 0.5.5
      */
     WINDOW_BLURRED: "desktop-mode.window.blurred",
-    /** Action, fires when a window is minimized. */
+    /**
+     * Action, fires when a window is minimized. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     *
+     * The element ride-along matches {@link WINDOW_CLOSING}'s shape so
+     * wallpaper plugins anchored to window tops (snow, leaves, rain
+     * splash) can match stuck particles by element identity and run
+     * their teardown — minimized windows render at `opacity: 0` so
+     * `offsetParent === null` checks miss them.
+     */
     WINDOW_MINIMIZED: "desktop-mode.window.minimized",
-    /** Action, fires when a window is restored from minimized. */
+    /**
+     * Action, fires when a window is restored from minimized. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_RESTORED: "desktop-mode.window.restored",
-    /** Action, fires when a window is maximized (fills desktop area). */
+    /**
+     * Action, fires when a window is maximized (fills desktop area).
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_MAXIMIZED: "desktop-mode.window.maximized",
-    /** Action, fires when a window exits maximized state. */
+    /**
+     * Action, fires when a window exits maximized state. Payload:
+     * `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_UNMAXIMIZED: "desktop-mode.window.unmaximized",
-    /** Action, fires when a window enters fullscreen / focus mode. */
+    /**
+     * Action, fires when a window enters fullscreen / focus mode.
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_FULLSCREEN_ENTERED: "desktop-mode.window.fullscreen-entered",
-    /** Action, fires when a window exits fullscreen / focus mode. */
+    /**
+     * Action, fires when a window exits fullscreen / focus mode.
+     * Payload: `{ windowId: string, element: HTMLElement }`.
+     */
     WINDOW_FULLSCREEN_EXITED: "desktop-mode.window.fullscreen-exited",
     /**
      * Filter, decides whether a fullscreen ("focus mode") window
@@ -7135,10 +7159,13 @@ var desktopMode = function(exports) {
           icon: item.icon,
           url: ""
         },
-        getInstances: () => {
-          const win = this.windowManager.getById(item.id);
-          return win ? [win] : [];
-        },
+        // System tiles target a single native-window id; that id
+        // is also the baseId the manager stores duplicates under
+        // when the user opens additional instances via the Ghost
+        // Card. `getAllByBaseId` returns `[]` / `[one]` for the
+        // singleton cases and the full set when a multi-capable
+        // system tile (`multi: true`) has been duplicated.
+        getInstances: () => this.windowManager.getAllByBaseId(item.id),
         enableGhost: !!item.multi,
         windowManager: this.windowManager,
         getOrientation: () => this.orientation,
@@ -7235,13 +7262,17 @@ var desktopMode = function(exports) {
           icon: item.icon,
           url: item.url
         },
-        getInstances: () => {
-          if (item.multi) {
-            return this.windowManager.getAllByBaseId(baseId);
-          }
-          const single = this.windowManager.getById(baseId) || this.windowManager.getById(item.id);
-          return single ? [single] : [];
-        },
+        // Source instances from `getAllByBaseId` regardless of
+        // `item.multi`. The Ghost Card spawns duplicates on every
+        // tile (the `enableGhost: true` below), so any tile —
+        // including ones synthesized from a desktop icon, where
+        // `multi` is never set — can end up with >1 open instance.
+        // A `multi`-gated singleton lookup would only return the
+        // first window and the peek would silently underreport.
+        // For genuine singletons that never get duplicated, the
+        // returned array is just `[one]` (or `[]`), same shape the
+        // old branch produced.
+        getInstances: () => this.windowManager.getAllByBaseId(baseId),
         // Ghost Card on EVERY tile, regardless of `multi`. The
         // affordance reads consistently across the dock — every
         // hover-peek surfaces a "+ open another <Page>" card. For
@@ -7901,11 +7932,18 @@ var desktopMode = function(exports) {
       return remapped ?? this.deriveWindowId(item.url);
     }
     /**
-     * Listen to window events to update active/focused indicators on dock items.
+     * Listen to window events to update active/focused/minimized
+     * indicators on dock items, plus the global Show Desktop body class.
      *
      * The event detail isn't used — we just need to re-query the
      * window manager on every change — so the handlers take no
      * argument and the type cast is gone with it.
+     *
+     * `WINDOW_MINIMIZED` / `WINDOW_RESTORED` route through the hook bus
+     * (no DOM CustomEvent equivalent today). Without these, minimizing
+     * a window via Show Desktop / the title-bar minimize button left
+     * the dock's active-dot rendering stuck on "visible window" — the
+     * user had no cue that everything had collapsed to minimized.
      */
     bindWindowEvents() {
       const refresh = () => this.updateActiveStates();
@@ -7920,6 +7958,16 @@ var desktopMode = function(exports) {
       );
       window.wp?.hooks?.addAction?.(
         "desktop-mode.desktop.closed",
+        this.hooksNamespace,
+        refresh
+      );
+      window.wp?.hooks?.addAction?.(
+        HOOKS.WINDOW_MINIMIZED,
+        this.hooksNamespace,
+        refresh
+      );
+      window.wp?.hooks?.addAction?.(
+        HOOKS.WINDOW_RESTORED,
         this.hooksNamespace,
         refresh
       );
@@ -7955,6 +8003,14 @@ var desktopMode = function(exports) {
         "desktop-mode.desktop.closed",
         this.hooksNamespace
       );
+      window.wp?.hooks?.removeAction?.(
+        HOOKS.WINDOW_MINIMIZED,
+        this.hooksNamespace
+      );
+      window.wp?.hooks?.removeAction?.(
+        HOOKS.WINDOW_RESTORED,
+        this.hooksNamespace
+      );
       for (const handle of this.attentionTimers.values()) {
         window.clearTimeout(handle);
       }
@@ -7974,42 +8030,82 @@ var desktopMode = function(exports) {
       this.container.removeAttribute("data-desktop-mode-dock-placement");
     }
     /**
-     * Update the active/focused classes and multi-instance rail on every
-     * dock item in response to a window lifecycle event.
+     * Update the active/focused/minimized classes on every dock item in
+     * response to a window lifecycle event, and toggle the global Show
+     * Desktop body class.
      *
      * For singletons the rail is absent; "active" means "the one window
      * is open". For multi-capable items, active means "≥1 instance is
      * open" and focused means "the focused window belongs to this item".
+     *
+     * `--all-minimized` is layered on top of `--active` and fires only
+     * when EVERY open instance of the tile is minimized — so a partial
+     * minimize (one of two windows hidden) keeps the solid dot. CSS
+     * swaps the dot for a hollow ring on minimized-only tiles so the
+     * user can tell at a glance "I have something here, it's just
+     * hidden right now."
      */
     updateActiveStates() {
       const focused = this.windowManager.getFocused();
       const focusedBaseId = focused ? focused.config.baseId || focused.id : null;
       const activeDesktopId = this.windowManager.getActiveDesktopId();
       const onActiveDesktop = (w) => (w.config.desktopId || activeDesktopId) === activeDesktopId;
+      const isMinimized = (w) => w.state === "minimized";
       for (const item of this.items) {
         const tile2 = this.itemElements.get(item.id);
         if (!tile2) {
           continue;
         }
         const baseId = this.resolveItemBaseId(item);
-        const instances = item.multi ? this.windowManager.getAllByBaseId(baseId).filter(onActiveDesktop) : [];
-        const single = this.windowManager.getById(baseId);
-        const singleOpen = !item.multi && !!single && onActiveDesktop(single);
-        const isOpen = item.multi ? instances.length > 0 : singleOpen;
-        const isFocused = focusedBaseId === baseId && !!focused && onActiveDesktop(focused);
+        const instances = this.windowManager.getAllByBaseId(baseId).filter(onActiveDesktop);
+        const isOpen = instances.length > 0;
+        const allMinimized = isOpen && instances.every(isMinimized);
+        const isFocused = focusedBaseId === baseId && !!focused && onActiveDesktop(focused) && !isMinimized(focused);
         tile2.classList.toggle("desktop-mode-dock__item--active", isOpen);
         tile2.classList.toggle("desktop-mode-dock__item--focused", isFocused);
+        tile2.classList.toggle(
+          "desktop-mode-dock__item--all-minimized",
+          allMinimized
+        );
       }
       for (const sys of this.systemItems) {
         const tile2 = this.systemItemElements.get(sys.id);
         if (!tile2) {
           continue;
         }
-        const isOpen = sys.isOpen ? sys.isOpen() : false;
-        const isFocused = !!focused && focused.id === sys.id;
+        const sysWin = this.windowManager.getById(sys.id);
+        const isOpen = sys.isOpen ? sys.isOpen() : !!sysWin;
+        const allMinimized = !!sysWin && isMinimized(sysWin);
+        const isFocused = !!focused && focused.id === sys.id && !isMinimized(focused);
         tile2.classList.toggle("desktop-mode-dock__item--active", isOpen);
         tile2.classList.toggle("desktop-mode-dock__item--focused", isFocused);
+        tile2.classList.toggle(
+          "desktop-mode-dock__item--all-minimized",
+          allMinimized
+        );
       }
+      this.updateShowDesktopBodyClass();
+    }
+    /**
+     * Toggle `body.desktop-mode-show-desktop-active` based on whether
+     * every live window on the active desktop is minimized. Mirrors
+     * the heuristic inside {@link WindowManager.toggleShowDesktop} so
+     * the visual cue tracks the actual state — set by Show Desktop
+     * gestures, restored when any window is brought back, automatically
+     * cleared when no windows exist.
+     *
+     * @internal
+     */
+    updateShowDesktopBodyClass() {
+      const activeDesktopId = this.windowManager.getActiveDesktopId();
+      const live = this.windowManager.getAll().filter(
+        (w) => (w.config.desktopId || activeDesktopId) === activeDesktopId
+      );
+      const showDesktop = live.length > 0 && live.every((w) => w.state === "minimized");
+      document.body.classList.toggle(
+        "desktop-mode-show-desktop-active",
+        showDesktop
+      );
     }
   };
   _Dock.instanceCounter = 0;
@@ -13327,8 +13423,10 @@ var desktopMode = function(exports) {
       }
       try {
         const parsed = new URL(entry.url, window.location.origin);
+        const windowId = deps2.deriveWindowId(parsed.toString());
         void deps2.manager.open({
-          id: `desktop-icon-${entry.id}`,
+          id: windowId,
+          baseId: windowId,
           url: parsed.toString(),
           title: entry.title,
           icon: entry.icon
@@ -15295,7 +15393,7 @@ var desktopMode = function(exports) {
           hint.style.transform = `translate3d(${cx + HINT_OFFSET_X}px, ${cy + HINT_OFFSET_Y}px, 0)`;
         }
       },
-      setMode(mode) {
+      setMode(mode, overrides) {
         ghost.classList.remove(GHOST_ACCEPT_CLASS, GHOST_REJECT_CLASS);
         if (mode === "accept") {
           ghost.classList.add(GHOST_ACCEPT_CLASS);
@@ -15310,7 +15408,7 @@ var desktopMode = function(exports) {
           );
           if (mode === "accept") {
             hint.classList.add(HINT_ACCEPT_CLASS);
-            hint.textContent = labels.accept;
+            hint.textContent = overrides?.acceptLabel ?? labels.accept;
           } else if (mode === "reject") {
             hint.classList.add(HINT_REJECT_CLASS);
             hint.textContent = labels.reject;
@@ -15640,7 +15738,9 @@ var desktopMode = function(exports) {
       if (next.target) {
         if (next.accepted) {
           fireEnter(next.target, session);
-          session._ghost?.setMode("accept");
+          session._ghost?.setMode("accept", {
+            acceptLabel: next.target.acceptLabel
+          });
           mode = "accept";
         } else {
           session._ghost?.setMode("reject");
@@ -16702,16 +16802,22 @@ var desktopMode = function(exports) {
         const windowId = deriveWindowId(url.href, config.adminUrl);
         const dockEntry = findDockEntryForUrl(url.href, config);
         const fallbackTitle = (anchor.textContent || "").trim() || dockEntry?.title || "";
-        void manager.open({
+        const isAdminBarNew = !!anchor.closest("#wp-admin-bar-new-content");
+        const openOpts = {
           id: windowId,
           baseId: windowId,
-          multi: !!dockEntry?.multi,
+          multi: !!dockEntry?.multi || isAdminBarNew,
           url: url.href,
           parentUrl: dockEntry?.url ?? url.href,
           title: dockEntry?.title || fallbackTitle,
           icon: dockEntry?.icon || "dashicons-admin-generic",
           submenu: dockEntry?.submenu
-        });
+        };
+        if (isAdminBarNew) {
+          void manager.openNew(openOpts);
+          return;
+        }
+        void manager.open(openOpts);
       },
       true
     );
@@ -22617,7 +22723,8 @@ var desktopMode = function(exports) {
                 window.open(u.toString(), "_blank", "noopener,noreferrer");
                 return;
               }
-              const id = `desktop-icon-${file.ref()}`;
+              const adminUrl = wp.config?.adminUrl;
+              const id = adminUrl ? deriveWindowId(u.toString(), adminUrl) : `desktop-icon-${file.ref()}`;
               wp.windowManager.open({
                 id,
                 baseId: id,
@@ -26530,6 +26637,11 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     patchAttachShadow();
     observeRoot(document);
   }
+  const TRASHABLE_SHORTCUT_KINDS = /* @__PURE__ */ new Set(["post"]);
+  function getMyWordpressTrashApi() {
+    const api = window.wp?.desktop?.myWordpress;
+    return api && typeof api.trashEntity === "function" ? api : null;
+  }
   const TRASH_DROP_ACTIVE_ATTR = "data-desktop-mode-trash-drop-active";
   const RECYCLE_BIN_WINDOW_ID = "desktop-mode-recycle-bin";
   const BIN_TILE_SELECTORS = [
@@ -26553,10 +26665,33 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
   function isDesktopFilePayload(session) {
     return session.payload.type === "desktop-file";
   }
+  function isShortcutPayload(session) {
+    return session.payload.type === "shortcut";
+  }
+  function isTrashableShortcut(data) {
+    if (!data.kind || !data.ref || !data.entityId) {
+      return false;
+    }
+    if (!TRASHABLE_SHORTCUT_KINDS.has(data.kind)) {
+      return false;
+    }
+    const numericRef = Number.parseInt(data.ref, 10);
+    if (!Number.isFinite(numericRef) || numericRef <= 0) {
+      return false;
+    }
+    return getMyWordpressTrashApi() !== null;
+  }
   function registerOn(dragManager, id, el) {
     return dragManager.registerDropTarget({
       id,
       element: el,
+      // Override the ghost-chip label: while the cursor is over
+      // the bin the user is trashing, not creating a shortcut /
+      // moving the placement. The DragManager swaps this in for
+      // the payload-default "Drop here to create shortcut" /
+      // "Drop here to move" chip text whenever this target is the
+      // current accept-mode target.
+      acceptLabel: __("Move to Trash", "desktop-mode"),
       // Reject the drop UP FRONT when the viewer can't trash the
       // payload's placement (e.g. an item inside a read-only
       // shared folder, or someone else's tile in a shared
@@ -26566,18 +26701,22 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       // The user sees the icon snap back instead of attempting a
       // REST call that would 403 and only log to the console.
       accept: (payload) => {
-        if (payload.type !== "desktop-file") {
-          return false;
+        if (payload.type === "desktop-file") {
+          const data = payload.data;
+          const placement = data?.placement;
+          if (!placement) {
+            return false;
+          }
+          if (placement.file?.ref === RECYCLE_BIN_WINDOW_ID) {
+            return false;
+          }
+          return placement.canTrash !== false;
         }
-        const data = payload.data;
-        const placement = data?.placement;
-        if (!placement) {
-          return false;
+        if (payload.type === "shortcut") {
+          const data = payload.data;
+          return isTrashableShortcut(data);
         }
-        if (placement.file?.ref === RECYCLE_BIN_WINDOW_ID) {
-          return false;
-        }
-        return placement.canTrash !== false;
+        return false;
       },
       onEnter: () => {
         el.setAttribute(TRASH_DROP_ACTIVE_ATTR, "");
@@ -26587,11 +26726,30 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       },
       onDrop: (session) => {
         el.removeAttribute(TRASH_DROP_ACTIVE_ATTR);
-        if (!isDesktopFilePayload(session)) {
+        if (isDesktopFilePayload(session)) {
+          const placement = session.payload.data.placement;
+          void trashByFileType(placement);
           return;
         }
-        const placement = session.payload.data.placement;
-        void trashByFileType(placement);
+        if (isShortcutPayload(session)) {
+          const data = session.payload.data;
+          const api = getMyWordpressTrashApi();
+          if (!api?.trashEntity || !data.entityId) {
+            return;
+          }
+          const numericRef = Number.parseInt(data.ref, 10);
+          if (!Number.isFinite(numericRef) || numericRef <= 0) {
+            return;
+          }
+          void api.trashEntity(data.entityId, numericRef).catch(
+            (err) => {
+              console.error(
+                "[desktop-mode] recycle-bin: shortcut trash failed:",
+                err
+              );
+            }
+          );
+        }
       }
     });
   }
@@ -27226,6 +27384,42 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     w.wp.desktop = shim;
   })();
   const OS_SETTINGS_WINDOW_ID = "desktop-mode-os-settings";
+  let _idleBootQueue = [];
+  let _idleBootTimeout = Number.POSITIVE_INFINITY;
+  let _idleBootScheduled = false;
+  function scheduleIdleBoot(cb, timeout = 1500) {
+    _idleBootQueue.push(cb);
+    if (timeout < _idleBootTimeout) {
+      _idleBootTimeout = timeout;
+    }
+    if (_idleBootScheduled) {
+      return;
+    }
+    _idleBootScheduled = true;
+    const drain = () => {
+      const callbacks = _idleBootQueue;
+      _idleBootQueue = [];
+      _idleBootTimeout = Number.POSITIVE_INFINITY;
+      _idleBootScheduled = false;
+      for (const fn of callbacks) {
+        try {
+          fn();
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] scheduleIdleBoot callback threw:",
+              err
+            );
+          }
+        }
+      }
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(drain, { timeout: _idleBootTimeout });
+    } else {
+      window.setTimeout(drain, 0);
+    }
+  }
   function init() {
     const config = window.desktopModeConfig;
     if (!config) {
@@ -27316,7 +27510,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     document.addEventListener(DRAG_EVENTS.END, () => {
       dragBridge.end();
     });
-    installIframeDropTargets(dragManager);
+    scheduleIdleBoot(() => installIframeDropTargets(dragManager));
     window.addEventListener("message", (e) => {
       if (e.origin !== window.location.origin) {
         return;
@@ -27339,14 +27533,16 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     installPaletteShortcut();
     installWindowSwitcherShortcut(manager);
     installDesktopArrowShortcuts(manager);
-    new IframeCommandBridge({
-      manager,
-      adminUrl: config.adminUrl
-    }).install();
-    new ShellCommandHarvester({
-      manager,
-      adminUrl: config.adminUrl
-    }).install();
+    scheduleIdleBoot(() => {
+      new IframeCommandBridge({
+        manager,
+        adminUrl: config.adminUrl
+      }).install();
+      new ShellCommandHarvester({
+        manager,
+        adminUrl: config.adminUrl
+      }).install();
+    });
     document.addEventListener("desktop-mode-open-ai", () => {
       openPaletteOnly("desktop-mode-ai-assistant");
     });
@@ -27489,7 +27685,8 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       const renderIcons2 = (icons) => {
         renderDesktopIcons(desktopArea, icons, {
           openWindow: nativeWindows.openById,
-          manager
+          manager,
+          deriveWindowId: (url) => deriveWindowId(url, config.adminUrl)
         });
       };
       layoutDispatcher = createLayoutDispatcher(
@@ -27754,7 +27951,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     );
     const connectionBridge = createConnectionBridge(manager);
     attachBroadcastBus(manager);
-    installBroadcastReceiver();
+    scheduleIdleBoot(() => installBroadcastReceiver());
     installWindowLoadingTransitions();
     addAction(
       "desktop-mode.shell.toast",
@@ -27798,7 +27995,8 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       }
       renderDesktopIcons(desktopArea, icons, {
         openWindow: nativeWindows.openById,
-        manager
+        manager,
+        deriveWindowId: (url) => deriveWindowId(url, config.adminUrl)
       });
     };
     const refreshMenu = bindMenuRefresh({
@@ -27860,9 +28058,9 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       config
     });
     installPublicApi(desktopApi);
-    installRecycleBinDropTargets(dragManager);
+    scheduleIdleBoot(() => installRecycleBinDropTargets(dragManager));
     bootHeartbeatBus();
-    bootNonceRefresh();
+    scheduleIdleBoot(() => bootNonceRefresh());
     bootStickyNotes({
       host: desktopArea,
       config,
@@ -27918,9 +28116,9 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         });
       }
     }
-    startFilesHeartbeat();
-    startFilesRestoreSync();
-    bootPresenceProbe();
+    scheduleIdleBoot(() => startFilesHeartbeat());
+    scheduleIdleBoot(() => startFilesRestoreSync());
+    scheduleIdleBoot(() => bootPresenceProbe());
     doAction(HOOKS.COMPONENTS_REGISTERED, { tags: [...WPD_COMPONENT_TAGS] });
     registerBuiltInCommands();
     bootstrapPwa(config, showToast);
@@ -28067,11 +28265,21 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       });
       ro.observe(desktopArea);
     }
+    let pointerdownOnWallpaper = false;
+    desktopArea.addEventListener("pointerdown", (e) => {
+      if (!e.isPrimary) {
+        return;
+      }
+      pointerdownOnWallpaper = e.target === desktopArea;
+    });
     desktopArea.addEventListener("click", (e) => {
       if (!osSettings.state.showDesktopOnWallpaperClick) {
         return;
       }
       if (e.target !== desktopArea) {
+        return;
+      }
+      if (!pointerdownOnWallpaper) {
         return;
       }
       if (desktopArea.classList.contains("desktop-mode-area--overview")) {
