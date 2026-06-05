@@ -4418,6 +4418,7 @@
       });
       updateDockBadge(result.counts.pending);
       await refresh(state.tab, { force: true });
+      state.table?.clearSelection();
     } catch (err) {
       const fallback = sprintf(__("Bulk %s failed."), action);
       showToast(err instanceof Error ? err.message : fallback);

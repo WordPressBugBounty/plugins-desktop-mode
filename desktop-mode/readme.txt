@@ -4,7 +4,7 @@ Tags: desktop, admin, ui, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.8.9
+Stable tag: 0.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -106,6 +106,13 @@ The plugin bundles the following third-party JavaScript library, loaded on deman
 * **[PixiJS](https://pixijs.com/)** (MIT License) — used by the interactive **OS Settings → About** scene, the **Content Graph** window, and built-in canvas wallpapers (e.g. the animated WordPress logo). PixiJS is loaded from the plugin's own `assets/vendor/` directory; no CDN requests are made.
 
 == Changelog ==
+
+= 0.9.0 =
+* Gate per-user REST routes on desktop mode enabled
+* Refine recycle bin badge styling and sync on stop
+* Clear comments selection after applying action
+* Don't let a failing sync block the agent
+* Make the AI-disabled error link to AI Settings
 
 = 0.8.9 =
 * Improve drag-and-drop handling in chromeless bridge and iframe bridge

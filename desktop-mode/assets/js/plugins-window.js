@@ -9918,7 +9918,7 @@
   function openOsSettingsFeatures() {
     const api2 = window.wp?.desktop;
     if (typeof api2?.openOsSettings === "function") {
-      api2.openOsSettings("features");
+      api2.openOsSettings({ tabId: "features" });
     }
   }
   const registry = window.desktopModeNativeWindows ?? (window.desktopModeNativeWindows = {});

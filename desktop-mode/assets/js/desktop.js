@@ -8398,6 +8398,27 @@ var desktopMode = function(exports) {
      * that actually shrinks `desktop.min.js`. See the Stage 8
      * section of `BUNDLE-SIZE-REPORT.md` for the full picture.
      */
+    /**
+     * Switch the active settings tab. Records the choice on
+     * {@link activeTabId} (so the next render mounts on it) and, when
+     * the panel is currently mounted, flips the live `<wpd-tabs>` value
+     * in place so an already-open OS Settings window jumps to the tab
+     * without a full re-render. Deep-linking entry points
+     * (`openOsSettings({ tabId })`) call this after opening the window.
+     *
+     * @param tabId Settings tab id, e.g. `'ai'`, `'apps-icons'`.
+     */
+    focusTab(tabId) {
+      this.activeTabId = tabId;
+      const body = this._lastRenderedBody;
+      if (!body?.isConnected) {
+        return;
+      }
+      const tabs = body.querySelector("wpd-tabs");
+      if (tabs) {
+        tabs.value = tabId;
+      }
+    }
     renderPanel(body) {
       this._lastRenderedBody = body;
       const fn = window.desktopModeRenderOsSettingsPanel;
@@ -27753,7 +27774,10 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         }
       });
     }
-    function openOsSettings() {
+    function openOsSettings(opts = {}) {
+      if (opts.tabId) {
+        osSettings.activeTabId = opts.tabId;
+      }
       void manager.open({
         id: OS_SETTINGS_WINDOW_ID,
         baseId: OS_SETTINGS_WINDOW_ID,
@@ -27767,6 +27791,9 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         minWidth: 560,
         minHeight: 480
       });
+      if (opts.tabId) {
+        osSettings.focusTab(opts.tabId);
+      }
     }
     function openBugReport() {
       void manager.open({

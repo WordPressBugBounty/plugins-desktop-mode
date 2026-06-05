@@ -1784,7 +1784,7 @@
             finish();
             break;
           case "error":
-            this._showError(data.message ?? "Something went wrong.");
+            this._showError(data.message ?? "Something went wrong.", data.code);
             finish();
             break;
         }
@@ -1820,7 +1820,7 @@
         );
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          this._showError(err.message ?? `Server returned ${res.status}`);
+          this._showError(err.message ?? `Server returned ${res.status}`, err.code);
           return;
         }
         this._showResult(query, await res.json());
@@ -1846,6 +1846,19 @@
     _getDesktopShell() {
       const shell = window.wp?.desktop;
       return shell ?? null;
+    }
+    /**
+     * Open OS Settings on the AI tab so the user can enable AI in one
+     * click from the "AI features are not enabled" error state. Closes
+     * the assistant first so the settings window isn't hidden behind
+     * it, and drops the stored focus target so closing doesn't bounce
+     * focus back to the launcher away from the settings window.
+     */
+    _openAiSettings() {
+      const shell = this._getDesktopShell();
+      this._previousFocus = null;
+      this.close();
+      shell?.openOsSettings?.({ tabId: "ai" });
     }
     _openInLegacyWindow(url, title, icon) {
       const shell = this._getDesktopShell();
@@ -2121,8 +2134,21 @@
 			</div>
 		`;
     }
-    _showError(message) {
+    _showError(message, code) {
       this._resultsEl.hidden = false;
+      if (code === "desktop_mode_ai_disabled") {
+        const escaped = this._esc(message);
+        const linkify = (text) => `<button type="button" class="desktop-mode-ai__settings-link">${text}</button>`;
+        const phrase = /OS Settings.*?AI Settings/;
+        const withLink = phrase.test(escaped) ? escaped.replace(phrase, (match) => linkify(match)) : `${escaped} ${linkify("AI Settings")}`;
+        this._resultsEl.innerHTML = `
+				<div class="desktop-mode-ai__state desktop-mode-ai__state--error">
+					<span>${withLink}</span>
+				</div>
+			`;
+        this._resultsEl.querySelector(".desktop-mode-ai__settings-link")?.addEventListener("click", () => this._openAiSettings());
+        return;
+      }
       this._resultsEl.innerHTML = `
 			<div class="desktop-mode-ai__state desktop-mode-ai__state--error">
 				<span>${this._esc(message)}</span>
