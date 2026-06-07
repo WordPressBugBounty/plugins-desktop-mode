@@ -80,6 +80,8 @@ var desktopMode = function(exports) {
     INIT: "desktop-mode.init",
     /** Filter, receives the wallpaper registry array. */
     WALLPAPERS: "desktop-mode.wallpapers",
+    /** Filter, receives the unfocused-window effect registry array. */
+    UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects",
     /** Action before a canvas wallpaper mounts. */
     WALLPAPER_MOUNTING: "desktop-mode.wallpaper.mounting",
     /** Action after a canvas wallpaper mounts successfully. */
@@ -3045,8 +3047,17 @@ var desktopMode = function(exports) {
       if (idx > -1) {
         this._stack.splice(idx, 1);
       }
-      if (this._stack.length > 0) {
-        this.focus(this._stack[this._stack.length - 1]);
+      for (let i = this._stack.length - 1; i >= 0; i--) {
+        const candidate = this._stack[i];
+        if (candidate.state === "minimized") {
+          continue;
+        }
+        const candidateDesktop = candidate.config.desktopId || this._activeDesktopId;
+        if (candidateDesktop !== this._activeDesktopId) {
+          continue;
+        }
+        this.focus(candidate);
+        break;
       }
       const closingDetail = { windowId: win.id, element: win.element };
       document.dispatchEvent(
@@ -4375,7 +4386,7 @@ var desktopMode = function(exports) {
     document.body.appendChild(el);
     return el;
   }
-  const store$d = createSharedStore(
+  const store$e = createSharedStore(
     "desktop-mode/destructive-admin-actions",
     () => ({ entries: [] })
   );
@@ -4388,7 +4399,7 @@ var desktopMode = function(exports) {
       return () => {
       };
     }
-    const entries = store$d.state.entries;
+    const entries = store$e.state.entries;
     const idx = entries.findIndex((e) => e.id === entry.id);
     if (idx >= 0) {
       entries.splice(idx, 1);
@@ -4397,14 +4408,14 @@ var desktopMode = function(exports) {
     return () => unregisterDestructiveAdminAction(entry.id);
   }
   function unregisterDestructiveAdminAction(id) {
-    const entries = store$d.state.entries;
+    const entries = store$e.state.entries;
     const idx = entries.findIndex((e) => e.id === id);
     if (idx >= 0) {
       entries.splice(idx, 1);
     }
   }
   function listDestructiveAdminActions() {
-    return store$d.state.entries.slice();
+    return store$e.state.entries.slice();
   }
   const adminLinkDepsStore = createSharedStore(
     "desktop-mode/admin-link-deps",
@@ -4443,15 +4454,15 @@ var desktopMode = function(exports) {
     }
     throw new RegistrationError(kind, errors, def);
   }
-  const store$c = createSharedStore(
+  const store$d = createSharedStore(
     "desktop-mode/wallpaper-registry",
     () => ({
       seed: [],
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const seed$3 = store$c.state.seed;
-  const listeners$b = store$c.state.listeners;
+  const seed$3 = store$d.state.seed;
+  const listeners$c = store$d.state.listeners;
   function register$2(def) {
     throwOnRegistrationErrors(
       "Wallpaper",
@@ -4464,17 +4475,17 @@ var desktopMode = function(exports) {
     } else {
       seed$3.push(def);
     }
-    notify$d();
+    notify$e();
   }
   function unregister$2(id) {
     const idx = seed$3.findIndex((w) => w.id === id);
     if (idx >= 0) {
       seed$3.splice(idx, 1);
-      notify$d();
+      notify$e();
     }
   }
-  function notify$d() {
-    const snapshot = Array.from(listeners$b);
+  function notify$e() {
+    const snapshot = Array.from(listeners$c);
     for (const cb of snapshot) {
       try {
         cb();
@@ -4592,6 +4603,7 @@ var desktopMode = function(exports) {
     dockSize: "default",
     desktopLayout: "classic",
     dockRailRenderer: "default",
+    unfocusEffect: "darken",
     customGradient: {
       from: "#2271b1",
       to: "#7c3aed",
@@ -4606,29 +4618,30 @@ var desktopMode = function(exports) {
       apiKeys: {},
       transport: "off"
     },
-    // Opt-out as of 0.8.0. Fresh installs land on the native Posts
-    // window — same screen the rest of desktop mode is built for. A
-    // user can still flip this off to fall back to the chromeless
-    // `edit.php` iframe, but the new default is "use the native UI."
+    // Opt-IN Beta as of 0.10.0. Fresh installs land on the classic
+    // chromeless `edit.php` iframe; a user opts in via OS Settings →
+    // Features → Beta features to get the native Posts window. The
+    // native windows used to default ON (opt-out, 0.8.0) but are now
+    // opt-in so the redesign is a deliberate choice, not imposed.
     heartbeatRate: 60,
-    nativePostsEnabled: true,
+    nativePostsEnabled: false,
     nativePostsHiddenColumns: [],
-    // Same opt-out posture as Posts — fresh installs land on the
-    // native Pages window, users can flip back to the iframe.
-    nativePagesEnabled: true,
-    // Native Users window — same opt-out posture. Capability-gated
+    // Same opt-in Beta posture as Posts — fresh installs keep the
+    // iframe; users opt in to the native Pages window.
+    nativePagesEnabled: false,
+    // Native Users window — same opt-in Beta posture. Capability-gated
     // server-side (the window is only registered for users with
-    // `list_users`), so flipping this off only affects the small set
-    // of users who can see the Users tile in the first place.
-    nativeUsersEnabled: true,
+    // `list_users`), so this toggle only affects the small set of
+    // users who can see the Users tile in the first place.
+    nativeUsersEnabled: false,
     // Native Plugins window — replaces `plugins.php` and
-    // `plugin-install.php`. Same opt-out posture; cap-gated on
-    // `activate_plugins` server-side, so flipping this off only
-    // affects users who could see the Plugins tile anyway.
-    nativePluginsEnabled: true,
+    // `plugin-install.php`. Same opt-in Beta posture; cap-gated on
+    // `activate_plugins` server-side, so this toggle only affects
+    // users who could see the Plugins tile anyway.
+    nativePluginsEnabled: false,
     // Native Comments window — replaces `edit-comments.php`. Same
-    // opt-out posture; cap-gated on `edit_posts` server-side.
-    nativeCommentsEnabled: true,
+    // opt-in Beta posture; cap-gated on `edit_posts` server-side.
+    nativeCommentsEnabled: false,
     showDesktopOnWallpaperClick: false,
     showPostStatusRibbons: true,
     foldersSharingEnabled: true,
@@ -4765,6 +4778,10 @@ var desktopMode = function(exports) {
       // survives; the registry resolves at use time and falls back
       // to `'default'` when the picked renderer isn't registered.
       dockRailRenderer: typeof parsed.dockRailRenderer === "string" && /^[a-z0-9_-]+$/.test(parsed.dockRailRenderer) ? parsed.dockRailRenderer : DEFAULTS.dockRailRenderer,
+      // Unfocus effect — any registry id (`vendor/sub-id` allowed) or
+      // the `'none'` sentinel survives; the engine resolves at use
+      // time and treats an unknown id as "no effect".
+      unfocusEffect: typeof parsed.unfocusEffect === "string" && /^[a-z0-9_/-]+$/.test(parsed.unfocusEffect) ? parsed.unfocusEffect : DEFAULTS.unfocusEffect,
       customGradient: sanitizeCustomGradient(parsed.customGradient),
       customImage: sanitizeCustomImage(parsed.customImage),
       libraryHdOnly: typeof parsed.libraryHdOnly === "boolean" ? parsed.libraryHdOnly : DEFAULTS.libraryHdOnly,
@@ -4970,7 +4987,21 @@ var desktopMode = function(exports) {
       ...DEFAULTS,
       customGradient: { ...DEFAULTS.customGradient },
       customImage: null,
-      ai: { ...DEFAULTS.ai }
+      ai: { ...DEFAULTS.ai },
+      // Clone the collection fields too. A shallow `...DEFAULTS`
+      // aliases these nested objects, so a later in-place mutation
+      // (e.g. dragging the gradient editor after a Reset, which spreads
+      // these defaults into live state) would corrupt the module-level
+      // DEFAULTS singleton for the rest of the session.
+      //
+      // These are one-level clones, which is sufficient *because* all
+      // three defaults are empty (`{}` / `[]`) — there are no inner
+      // objects to share. If `DEFAULTS.dockPromotedPositions` ever
+      // ships seeded entries, its `{ x, y }` values would need a
+      // deeper clone here.
+      itemVisibility: { ...DEFAULTS.itemVisibility },
+      dockOrder: [...DEFAULTS.dockOrder],
+      dockPromotedPositions: { ...DEFAULTS.dockPromotedPositions }
     };
   }
   function sanitizeAi(raw) {
@@ -5021,7 +5052,7 @@ var desktopMode = function(exports) {
     }
     return { id, url };
   }
-  const store$b = createSharedStore(
+  const store$c = createSharedStore(
     "desktop-mode/dock-rail-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
@@ -5029,8 +5060,8 @@ var desktopMode = function(exports) {
       activeId: "default"
     })
   );
-  const registry$8 = store$b.state.registry;
-  const listeners$a = store$b.state.listeners;
+  const registry$9 = store$c.state.registry;
+  const listeners$b = store$c.state.listeners;
   const ID_RE = /^[a-z0-9_-]+$/;
   function register$1(renderer) {
     if (!renderer || typeof renderer !== "object") {
@@ -5058,12 +5089,12 @@ var desktopMode = function(exports) {
         `[desktop-mode] registerDockRailRenderer: unsupported apiVersion ${renderer.apiVersion} (this shell speaks v1).`
       );
     }
-    registry$8.set(renderer.id, renderer);
-    notify$c();
+    registry$9.set(renderer.id, renderer);
+    notify$d();
   }
   function unregister$1(id) {
-    if (registry$8.delete(id)) {
-      notify$c();
+    if (registry$9.delete(id)) {
+      notify$d();
     }
   }
   function unregisterByOwner$1(owner) {
@@ -5071,38 +5102,38 @@ var desktopMode = function(exports) {
       return 0;
     }
     let removed = 0;
-    for (const [id, renderer] of Array.from(registry$8.entries())) {
+    for (const [id, renderer] of Array.from(registry$9.entries())) {
       if (renderer.owner === owner) {
-        registry$8.delete(id);
+        registry$9.delete(id);
         removed++;
       }
     }
     if (removed > 0) {
-      notify$c();
+      notify$d();
     }
     return removed;
   }
   function list() {
-    return Array.from(registry$8.values());
+    return Array.from(registry$9.values());
   }
   function subscribe$3(cb) {
-    listeners$a.add(cb);
+    listeners$b.add(cb);
     return () => {
-      listeners$a.delete(cb);
+      listeners$b.delete(cb);
     };
   }
   function setActiveRenderer(id) {
-    if (store$b.state.activeId === id) {
+    if (store$c.state.activeId === id) {
       return;
     }
-    store$b.state.activeId = id;
-    notify$c();
+    store$c.state.activeId = id;
+    notify$d();
   }
   function resolveActive() {
-    return registry$8.get(store$b.state.activeId) ?? registry$8.get("default") ?? registry$8.values().next().value;
+    return registry$9.get(store$c.state.activeId) ?? registry$9.get("default") ?? registry$9.values().next().value;
   }
-  function notify$c() {
-    const snapshot = Array.from(listeners$a);
+  function notify$d() {
+    const snapshot = Array.from(listeners$b);
     for (const cb of snapshot) {
       try {
         cb();
@@ -6444,6 +6475,22 @@ var desktopMode = function(exports) {
     next[canonicalId] = placement;
     api.updateOsSettings({ itemVisibility: next });
   }
+  function railFromId(id, surface) {
+    if (id.startsWith("dock:")) {
+      return "dock";
+    }
+    if (id.startsWith("desktop:")) {
+      return "desktop";
+    }
+    return surface;
+  }
+  function computeHideTarget(canonicalId, nativeRail, hideSurface, visibility) {
+    const current = resolvePlacement(canonicalId, nativeRail, visibility);
+    if (current === "both") {
+      return hideSurface === "dock" ? "desktop" : "dock";
+    }
+    return "hidden";
+  }
   let openGeneration$2 = 0;
   function openItemVisibilityMenu(opts) {
     closeMenu$1();
@@ -6456,33 +6503,59 @@ var desktopMode = function(exports) {
   function openItemVisibilityMenuImmediate(opts) {
     closeMenu$1();
     const canonical = canonicalItemId(opts.id);
+    const nativeRail = railFromId(opts.id, opts.surface);
+    const currentPlacement = resolvePlacement(
+      canonical,
+      nativeRail,
+      getApi()?.getOsSettings?.().itemVisibility ?? {}
+    );
     const options = [];
     if (opts.surface === "dock") {
       options.push({
         id: "hide-from-dock",
         label: __("Hide from dock"),
         icon: "dashicons-hidden",
-        onPick: () => writeVisibility(canonical, "desktop")
+        onPick: () => writeVisibility(
+          canonical,
+          computeHideTarget(
+            canonical,
+            nativeRail,
+            "dock",
+            getApi()?.getOsSettings?.().itemVisibility ?? {}
+          )
+        )
       });
-      options.push({
-        id: "show-on-desktop-too",
-        label: __("Also show on desktop"),
-        icon: "dashicons-desktop",
-        onPick: () => writeVisibility(canonical, "both")
-      });
+      if (currentPlacement !== "both") {
+        options.push({
+          id: "show-on-desktop-too",
+          label: __("Also show on desktop"),
+          icon: "dashicons-desktop",
+          onPick: () => writeVisibility(canonical, "both")
+        });
+      }
     } else {
       options.push({
         id: "hide-from-desktop",
         label: __("Hide from desktop"),
         icon: "dashicons-hidden",
-        onPick: () => writeVisibility(canonical, "dock")
+        onPick: () => writeVisibility(
+          canonical,
+          computeHideTarget(
+            canonical,
+            nativeRail,
+            "desktop",
+            getApi()?.getOsSettings?.().itemVisibility ?? {}
+          )
+        )
       });
-      options.push({
-        id: "show-on-dock-too",
-        label: __("Also show on dock"),
-        icon: "dashicons-menu",
-        onPick: () => writeVisibility(canonical, "both")
-      });
+      if (currentPlacement !== "both") {
+        options.push({
+          id: "show-on-dock-too",
+          label: __("Also show on dock"),
+          icon: "dashicons-menu",
+          onPick: () => writeVisibility(canonical, "both")
+        });
+      }
     }
     options.push({
       id: "hide-everywhere",
@@ -8301,6 +8374,7 @@ var desktopMode = function(exports) {
         dockSize: this.state.dockSize,
         desktopLayout: this.state.desktopLayout,
         dockRailRenderer: this.state.dockRailRenderer,
+        unfocusEffect: this.state.unfocusEffect,
         ai: { ...this.state.ai },
         nativePostsEnabled: this.state.nativePostsEnabled,
         nativePostsHiddenColumns: this.state.nativePostsHiddenColumns.slice(),
@@ -8607,7 +8681,7 @@ var desktopMode = function(exports) {
     }
     return value.replace(/["\\]/g, "\\$&");
   }
-  const registry$7 = /* @__PURE__ */ new Map();
+  const registry$8 = /* @__PURE__ */ new Map();
   function registerModule(def) {
     if (!def || typeof def.id !== "string" || def.id === "") {
       if (typeof console !== "undefined") {
@@ -8623,16 +8697,16 @@ var desktopMode = function(exports) {
       }
       return;
     }
-    registry$7.set(def.id, def);
+    registry$8.set(def.id, def);
   }
   function moduleIds() {
-    return Array.from(registry$7.keys());
+    return Array.from(registry$8.keys());
   }
   async function loadModules(ids) {
     if (!ids || ids.length === 0) {
       return;
     }
-    const unknown = ids.filter((id) => !registry$7.has(id));
+    const unknown = ids.filter((id) => !registry$8.has(id));
     if (unknown.length > 0) {
       throw new Error(
         `[desktop-mode] Unknown module(s) in needs: ${unknown.map((id) => `"${id}"`).join(", ")}. Known modules: ${moduleIds().join(", ") || "(none)"}.`
@@ -8640,7 +8714,7 @@ var desktopMode = function(exports) {
     }
     await Promise.all(
       ids.map((id) => {
-        const def = registry$7.get(id);
+        const def = registry$8.get(id);
         if (!def) {
           return Promise.resolve();
         }
@@ -8904,8 +8978,8 @@ var desktopMode = function(exports) {
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const registry$6 = commandRegistryStore.state.registry;
-  const listeners$9 = commandRegistryStore.state.listeners;
+  const registry$7 = commandRegistryStore.state.registry;
+  const listeners$a = commandRegistryStore.state.listeners;
   function registerCommand(cmd) {
     const errors = [];
     const slug = typeof cmd?.slug === "string" ? cmd.slug.trim().toLowerCase() : "";
@@ -8927,12 +9001,12 @@ var desktopMode = function(exports) {
       }
     }
     throwOnRegistrationErrors("Command", errors, cmd);
-    registry$6.set(slug, { ...cmd, slug });
-    notify$b();
+    registry$7.set(slug, { ...cmd, slug });
+    notify$c();
   }
   function unregisterCommand(slug) {
-    if (registry$6.delete(slug.toLowerCase())) {
-      notify$b();
+    if (registry$7.delete(slug.toLowerCase())) {
+      notify$c();
     }
   }
   function unregisterByOwner(owner) {
@@ -8940,23 +9014,23 @@ var desktopMode = function(exports) {
       return 0;
     }
     let removed = 0;
-    for (const [slug, cmd] of Array.from(registry$6.entries())) {
+    for (const [slug, cmd] of Array.from(registry$7.entries())) {
       if (cmd.owner === owner) {
-        registry$6.delete(slug);
+        registry$7.delete(slug);
         removed++;
       }
     }
     if (removed > 0) {
-      notify$b();
+      notify$c();
     }
     return removed;
   }
   function listCommands() {
-    return Array.from(registry$6.values());
+    return Array.from(registry$7.values());
   }
   function listAiCallableCommands() {
     const out = [];
-    for (const cmd of registry$6.values()) {
+    for (const cmd of registry$7.values()) {
       if (cmd.aiCallable !== true) {
         continue;
       }
@@ -8970,10 +9044,10 @@ var desktopMode = function(exports) {
     return out;
   }
   function findCommand(slug) {
-    return registry$6.get(slug.toLowerCase()) ?? null;
+    return registry$7.get(slug.toLowerCase()) ?? null;
   }
-  function notify$b() {
-    const snapshot = Array.from(listeners$9);
+  function notify$c() {
+    const snapshot = Array.from(listeners$a);
     for (const cb of snapshot) {
       try {
         cb();
@@ -9070,15 +9144,15 @@ var desktopMode = function(exports) {
       prevSlugsByHandle = slugsByHandleFrom(commands);
     };
   }
-  const store$a = createSharedStore(
+  const store$b = createSharedStore(
     "desktop-mode/settings-tab-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const registry$5 = store$a.state.registry;
-  const listeners$8 = store$a.state.listeners;
+  const registry$6 = store$b.state.registry;
+  const listeners$9 = store$b.state.listeners;
   function registerSettingsTab(tab) {
     if (!tab || typeof tab.id !== "string" || tab.id.trim() === "") {
       return;
@@ -9099,12 +9173,12 @@ var desktopMode = function(exports) {
       }
       return;
     }
-    registry$5.set(id, { ...tab, id });
-    notify$a();
+    registry$6.set(id, { ...tab, id });
+    notify$b();
   }
   function unregisterSettingsTab(id) {
-    if (registry$5.delete(id.toLowerCase())) {
-      notify$a();
+    if (registry$6.delete(id.toLowerCase())) {
+      notify$b();
     }
   }
   function unregisterSettingsTabsByOwner(owner) {
@@ -9112,24 +9186,24 @@ var desktopMode = function(exports) {
       return 0;
     }
     let removed = 0;
-    for (const [id, tab] of Array.from(registry$5.entries())) {
+    for (const [id, tab] of Array.from(registry$6.entries())) {
       if (tab.owner === owner) {
-        registry$5.delete(id);
+        registry$6.delete(id);
         removed++;
       }
     }
     if (removed > 0) {
-      notify$a();
+      notify$b();
     }
     return removed;
   }
   function listSettingsTabs() {
-    return Array.from(registry$5.values()).sort(
+    return Array.from(registry$6.values()).sort(
       (a, b) => (a.order ?? 100) - (b.order ?? 100)
     );
   }
-  function notify$a() {
-    const snapshot = Array.from(listeners$8);
+  function notify$b() {
+    const snapshot = Array.from(listeners$9);
     for (const cb of snapshot) {
       try {
         cb();
@@ -9226,12 +9300,12 @@ var desktopMode = function(exports) {
       prevIdsByHandle = idsByHandleFrom(tabs);
     };
   }
-  const store$9 = createSharedStore(
+  const store$a = createSharedStore(
     "desktop-mode/title-bar-buttons-registry",
     () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
   );
-  const registry$4 = store$9.state.registry;
-  const listeners$7 = store$9.state.listeners;
+  const registry$5 = store$a.state.registry;
+  const listeners$8 = store$a.state.listeners;
   const TITLE_BAR_BUTTON_ID = /^[a-z0-9_/-]+$/;
   function registerTitleBarButton(def) {
     const errors = [];
@@ -9260,12 +9334,12 @@ var desktopMode = function(exports) {
     }
     throwOnRegistrationErrors("TitleBarButton", errors, def);
     const id = def.id.trim().toLowerCase();
-    registry$4.set(id, { ...def, id });
-    notify$9();
+    registry$5.set(id, { ...def, id });
+    notify$a();
   }
   function unregisterTitleBarButton(id) {
-    if (registry$4.delete(id.toLowerCase())) {
-      notify$9();
+    if (registry$5.delete(id.toLowerCase())) {
+      notify$a();
     }
   }
   function unregisterTitleBarButtonsByOwner(owner) {
@@ -9273,24 +9347,24 @@ var desktopMode = function(exports) {
       return 0;
     }
     let removed = 0;
-    for (const [id, def] of Array.from(registry$4.entries())) {
+    for (const [id, def] of Array.from(registry$5.entries())) {
       if (def.owner === owner) {
-        registry$4.delete(id);
+        registry$5.delete(id);
         removed++;
       }
     }
     if (removed > 0) {
-      notify$9();
+      notify$a();
     }
     return removed;
   }
   function listTitleBarButtons() {
-    return Array.from(registry$4.values()).sort(
+    return Array.from(registry$5.values()).sort(
       (a, b) => (a.order ?? 100) - (b.order ?? 100)
     );
   }
-  function notify$9() {
-    const snapshot = Array.from(listeners$7);
+  function notify$a() {
+    const snapshot = Array.from(listeners$8);
     for (const cb of snapshot) {
       try {
         cb();
@@ -9352,6 +9426,245 @@ var desktopMode = function(exports) {
         await ensureScript(entry);
       }
     };
+  }
+  const UNFOCUS_EFFECT_NONE = "none";
+  const store$9 = createSharedStore(
+    "desktop-mode/unfocus-effect-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry$4 = store$9.state.registry;
+  const listeners$7 = store$9.state.listeners;
+  const UNFOCUS_EFFECT_ID = /^[a-z0-9_/-]+$/;
+  function registerUnfocusEffect(def) {
+    const errors = [];
+    if (!def || typeof def !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof def.id !== "string" || def.id.trim() === "") {
+        errors.push("id (missing)");
+      } else if (!UNFOCUS_EFFECT_ID.test(def.id.trim().toLowerCase())) {
+        errors.push(
+          `id (must match ${UNFOCUS_EFFECT_ID} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      } else if (def.id.trim().toLowerCase() === UNFOCUS_EFFECT_NONE) {
+        errors.push('id ("none" is reserved)');
+      }
+      if (typeof def.label !== "string" || def.label.trim() === "") {
+        errors.push("label (missing)");
+      }
+      if (typeof def.className !== "string" && typeof def.apply !== "function") {
+        errors.push(
+          "className|apply (at least one must be provided — a CSS class to toggle or an apply callback)"
+        );
+      }
+    }
+    throwOnRegistrationErrors("UnfocusEffect", errors, def);
+    const id = def.id.trim().toLowerCase();
+    registry$4.set(id, { ...def, id });
+    notify$9();
+  }
+  function unregisterUnfocusEffect(id) {
+    if (registry$4.delete(id.toLowerCase())) {
+      notify$9();
+    }
+  }
+  function unregisterUnfocusEffectsByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, def] of Array.from(registry$4.entries())) {
+      if (def.owner === owner) {
+        registry$4.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$9();
+    }
+    return removed;
+  }
+  function listUnfocusEffects() {
+    const copy = Array.from(registry$4.values());
+    const filtered = applyFilters(
+      HOOKS.UNFOCUS_EFFECTS,
+      copy
+    );
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.unfocus-effects` filter returned a non-array; falling back to registry list."
+        );
+      }
+      return copy;
+    }
+    return filtered;
+  }
+  function getUnfocusEffect(id) {
+    return listUnfocusEffects().find((e) => e.id === id);
+  }
+  function subscribeUnfocusEffects(cb) {
+    listeners$7.add(cb);
+    return () => {
+      listeners$7.delete(cb);
+    };
+  }
+  function notify$9() {
+    const snapshot = Array.from(listeners$7);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] unfocus-effect registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  registerUnfocusEffect({
+    id: "darken",
+    label: __("Darken"),
+    description: __("Dim unfocused windows so the focused one stands out."),
+    className: "desktop-mode-window--fx-darken"
+  });
+  registerUnfocusEffect({
+    id: "frost",
+    label: __("Frost"),
+    description: __(
+      "Throw unfocused windows out of focus — a soft, frosted-glass blur, as if you were looking at them through an iced-over pane."
+    ),
+    className: "desktop-mode-window--fx-frost"
+  });
+  registerUnfocusEffect({
+    id: "grayscale",
+    label: __("Grayscale"),
+    description: __(
+      "Drain the colour from unfocused windows so the focused one is the only thing still in colour — your eye snaps right to it."
+    ),
+    className: "desktop-mode-window--fx-grayscale"
+  });
+  function createUnfocusEffectRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "unfocus-effect-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    return async (scripts) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        unregisterUnfocusEffectsByOwner(handle);
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+    };
+  }
+  const EFFECT_ATTR = "data-desktop-unfocus-effect";
+  const EFFECT_CLASS_ATTR = "data-desktop-unfocus-effect-class";
+  let _started = false;
+  function hostsCanvas(el) {
+    return el.querySelector("canvas") !== null;
+  }
+  function startUnfocusEngine({ manager, osSettings }) {
+    if (_started) {
+      return;
+    }
+    _started = true;
+    let currentId = osSettings.getOsSettingsSnapshot().unfocusEffect;
+    const clear = (el, allEffects) => {
+      const storedClass = el.getAttribute(EFFECT_CLASS_ATTR);
+      if (storedClass) {
+        el.classList.remove(storedClass);
+        el.removeAttribute(EFFECT_CLASS_ATTR);
+      }
+      const priorId = el.getAttribute(EFFECT_ATTR);
+      if (priorId) {
+        getUnfocusEffect(priorId)?.clear?.(el);
+      }
+      for (const def of allEffects) {
+        if (def.className) {
+          el.classList.remove(def.className);
+        }
+      }
+      el.removeAttribute(EFFECT_ATTR);
+    };
+    const apply = (el, def) => {
+      if (def.className) {
+        el.classList.add(def.className);
+        el.setAttribute(EFFECT_CLASS_ATTR, def.className);
+      }
+      el.setAttribute(EFFECT_ATTR, def.id);
+      def.apply?.(el);
+    };
+    const recompute = () => {
+      const def = currentId === UNFOCUS_EFFECT_NONE ? void 0 : getUnfocusEffect(currentId);
+      const allEffects = listUnfocusEffects();
+      for (const win of manager.getAll()) {
+        const el = win.element;
+        if (!el) {
+          continue;
+        }
+        clear(el, allEffects);
+        if (!def || win.isFocused() || win.state === "minimized") {
+          continue;
+        }
+        if (hostsCanvas(el)) {
+          continue;
+        }
+        apply(el, def);
+      }
+    };
+    for (const name of [
+      "desktop-mode-window-opened",
+      "desktop-mode-window-reopened",
+      "desktop-mode-window-closed",
+      "desktop-mode-window-focused",
+      "desktop-mode-window-blurred"
+    ]) {
+      document.addEventListener(name, () => recompute());
+    }
+    osSettings.subscribeOsSettings((snapshot) => {
+      currentId = snapshot.unfocusEffect;
+      recompute();
+    });
+    subscribeUnfocusEffects(() => recompute());
+    recompute();
   }
   function createDockRailRendererSync() {
     const loadedHandles = /* @__PURE__ */ new Set();
@@ -13543,6 +13856,13 @@ var desktopMode = function(exports) {
       }
       const { core } = partition();
       const synthesized = core.map(coreItemToIconEntry);
+      const keptServerIcons = serverIcons.filter((icon) => {
+        const override = settings.itemVisibility[icon.id];
+        if (override) {
+          return override === "desktop" || override === "both";
+        }
+        return Boolean(icon.pinned);
+      });
       const explicitlyPromoted = [];
       let synthIndex = 0;
       for (const item of items) {
@@ -13558,7 +13878,11 @@ var desktopMode = function(exports) {
           });
         }
       }
-      deps2.renderIcons([...synthesized, ...explicitlyPromoted]);
+      deps2.renderIcons([
+        ...synthesized,
+        ...keptServerIcons,
+        ...explicitlyPromoted
+      ]);
     };
     const tearDownDocks = () => {
       if (primary) {
@@ -16896,6 +17220,7 @@ var desktopMode = function(exports) {
       syncServerCommands,
       syncServerSettingsTabs,
       syncServerTitleBarButtons,
+      syncServerUnfocusEffects,
       syncServerDockRailRenderers,
       renderIcons
     } = deps2;
@@ -16910,6 +17235,7 @@ var desktopMode = function(exports) {
       const serverSettingsTabs = payload.serverSettingsTabs;
       const serverDockRailRendererScripts = payload.serverDockRailRendererScripts;
       const serverTitleBarButtonScripts = payload.serverTitleBarButtonScripts;
+      const serverUnfocusEffectScripts = payload.serverUnfocusEffectScripts;
       const serverWindowNotices = payload.serverWindowNotices;
       const desktopIcons = payload.desktopIcons;
       if (!Array.isArray(dockItems) || dockItems.length === 0) {
@@ -16973,6 +17299,12 @@ var desktopMode = function(exports) {
         );
         config.serverTitleBarButtonScripts = serverTitleBarButtonScripts;
       }
+      if (Array.isArray(serverUnfocusEffectScripts)) {
+        void syncServerUnfocusEffects(
+          serverUnfocusEffectScripts
+        );
+        config.serverUnfocusEffectScripts = serverUnfocusEffectScripts;
+      }
       if (Array.isArray(serverDockRailRendererScripts)) {
         void syncServerDockRailRenderers(
           serverDockRailRendererScripts
@@ -17001,6 +17333,7 @@ var desktopMode = function(exports) {
   function bindMenuRefresh(deps2) {
     const {
       layoutDispatcher,
+      desktopArea,
       config,
       syncNativeWindows,
       syncServerWidgets,
@@ -17008,6 +17341,7 @@ var desktopMode = function(exports) {
       syncServerCommands,
       syncServerSettingsTabs,
       syncServerTitleBarButtons,
+      syncServerUnfocusEffects,
       syncServerDockRailRenderers,
       renderIcons
     } = deps2;
@@ -17020,6 +17354,7 @@ var desktopMode = function(exports) {
       syncServerCommands,
       syncServerSettingsTabs,
       syncServerTitleBarButtons,
+      syncServerUnfocusEffects,
       syncServerDockRailRenderers,
       renderIcons
     });
@@ -18317,6 +18652,9 @@ var desktopMode = function(exports) {
     "registerTitleBarButton",
     "unregisterTitleBarButton",
     "listTitleBarButtons",
+    "registerUnfocusEffect",
+    "unregisterUnfocusEffect",
+    "listUnfocusEffects",
     "registerWindowTheme",
     "unregisterWindowTheme",
     "listWindowThemes",
@@ -18555,6 +18893,9 @@ var desktopMode = function(exports) {
       registerTitleBarButton,
       unregisterTitleBarButton,
       listTitleBarButtons,
+      registerUnfocusEffect,
+      unregisterUnfocusEffect,
+      listUnfocusEffects,
       registerWindowTheme,
       unregisterWindowTheme,
       listWindowThemes,
@@ -24432,6 +24773,24 @@ var desktopMode = function(exports) {
   }
   let reentrant = false;
   const removedServerPlacementsByRef = /* @__PURE__ */ new Map();
+  function prunePromotedPositions(ids) {
+    const api = window.wp?.desktop;
+    if (!api?.getOsSettings || !api?.updateOsSettings) {
+      return;
+    }
+    const current = api.getOsSettings().dockPromotedPositions ?? {};
+    const next = { ...current };
+    let changed = false;
+    for (const id of ids) {
+      if (id in next) {
+        delete next[id];
+        changed = true;
+      }
+    }
+    if (changed) {
+      api.updateOsSettings({ dockPromotedPositions: next });
+    }
+  }
   function syncShortcutsWithVisibility(visibility, positions = {}) {
     if (reentrant) {
       return;
@@ -24471,10 +24830,17 @@ var desktopMode = function(exports) {
           }
         }
       }
+      const positionsToPrune = [];
       for (const [sourceId, p] of currentSynth) {
         if (!desiredSynth.has(sourceId)) {
           filesApi.store.removePlacement(p.id);
+          if (positions[sourceId]) {
+            positionsToPrune.push(sourceId);
+          }
         }
+      }
+      if (positionsToPrune.length > 0) {
+        prunePromotedPositions(positionsToPrune);
       }
       for (const icon of serverIcons) {
         const placement = visibility[icon.id];
@@ -25527,11 +25893,15 @@ ${content}`;
       this.zIndexCounter = 0;
       this.host = options.host;
       this.config = options.config;
+      this.available = options.available ?? true;
       this.openArtifact = options.openArtifact;
       this.getActiveDesktopId = options.getActiveDesktopId ?? (() => "desktop-1");
       this.onError = options.onError;
     }
     async boot() {
+      if (!this.available) {
+        return;
+      }
       try {
         this.terms = await resolveStickyTerms(this.config);
         if (!this.terms) {
@@ -27948,6 +28318,11 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     void syncServerTitleBarButtons(
       Array.isArray(config.serverTitleBarButtonScripts) ? config.serverTitleBarButtonScripts : []
     );
+    const syncServerUnfocusEffects = createUnfocusEffectRegistrySync();
+    void syncServerUnfocusEffects(
+      Array.isArray(config.serverUnfocusEffectScripts) ? config.serverUnfocusEffectScripts : []
+    );
+    startUnfocusEngine({ manager, osSettings });
     const syncServerDockRailRenderers = createDockRailRendererSync();
     void syncServerDockRailRenderers(
       Array.isArray(config.serverDockRailRendererScripts) ? config.serverDockRailRendererScripts : []
@@ -28028,6 +28403,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     };
     const refreshMenu = bindMenuRefresh({
       layoutDispatcher,
+      desktopArea,
       config,
       syncNativeWindows,
       syncServerWidgets,
@@ -28035,6 +28411,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       syncServerCommands,
       syncServerSettingsTabs,
       syncServerTitleBarButtons,
+      syncServerUnfocusEffects,
       syncServerDockRailRenderers,
       renderIcons
     });
@@ -28091,6 +28468,11 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     bootStickyNotes({
       host: desktopArea,
       config,
+      // Only boot when the Gutenberg Guidelines experiment is live
+      // server-side; otherwise the layer's REST probes would 404. The
+      // flag is `undefined` on shells older than the one that added it
+      // → the layer treats that as available (boot and swallow).
+      available: config.stickyNotes?.available,
       getActiveDesktopId: () => manager.getActiveDesktopId(),
       openArtifact: (url, title) => {
         const id = deriveWindowId(url, config.adminUrl);

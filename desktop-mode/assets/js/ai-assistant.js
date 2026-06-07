@@ -20,6 +20,8 @@
     INIT: "desktop-mode.init",
     /** Filter, receives the wallpaper registry array. */
     WALLPAPERS: "desktop-mode.wallpapers",
+    /** Filter, receives the unfocused-window effect registry array. */
+    UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects",
     /** Action before a canvas wallpaper mounts. */
     WALLPAPER_MOUNTING: "desktop-mode.wallpaper.mounting",
     /** Action after a canvas wallpaper mounts successfully. */

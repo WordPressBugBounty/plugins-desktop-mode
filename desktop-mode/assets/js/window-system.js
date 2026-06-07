@@ -31,6 +31,8 @@
     INIT: "desktop-mode.init",
     /** Filter, receives the wallpaper registry array. */
     WALLPAPERS: "desktop-mode.wallpapers",
+    /** Filter, receives the unfocused-window effect registry array. */
+    UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects",
     /** Action before a canvas wallpaper mounts. */
     WALLPAPER_MOUNTING: "desktop-mode.wallpaper.mounting",
     /** Action after a canvas wallpaper mounts successfully. */
@@ -2173,6 +2175,55 @@
     }
     return null;
   }
+  const WINDOW_ID = "desktop-mode-my-wordpress";
+  const _initial = Object.freeze({
+    userId: null,
+    userName: "",
+    requestedAt: 0
+  });
+  function getDesktop() {
+    return window.wp?.desktop;
+  }
+  let _store = null;
+  function getStore() {
+    if (_store) {
+      return _store;
+    }
+    const factory2 = getDesktop()?.createSharedStore;
+    if (typeof factory2 !== "function") {
+      return null;
+    }
+    _store = factory2(
+      "desktop-mode/my-wordpress/footprint-target",
+      () => ({ ..._initial })
+    );
+    return _store;
+  }
+  function setFootprintTarget(userId, userName = "") {
+    const store2 = getStore();
+    if (store2) {
+      store2.state.userId = userId;
+      store2.state.userName = userName;
+      store2.state.requestedAt = Date.now();
+      store2.notify();
+      return;
+    }
+    window._wpdFootprintTarget = {
+      userId,
+      userName,
+      requestedAt: Date.now()
+    };
+  }
+  function openUserFootprintWindow(args) {
+    const userId = Number(args.userId);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return;
+    }
+    setFootprintTarget(userId, args.userName ?? "");
+    getDesktop()?.openWindow?.(WINDOW_ID, {
+      source: "my-wordpress/open-user-footprint"
+    });
+  }
   const INITIAL_ORIGIN$1 = window.location.origin;
   const adminLinkDepsStore = createSharedStore(
     "desktop-mode/admin-link-deps",
@@ -2218,6 +2269,12 @@
         const linkLabel = typeof data.label === "string" ? data.label : "";
         handleCrossPageAdminLink(win, data.url, linkLabel, deps);
       }
+    }
+    if (data.type === "desktop-mode-open-user-footprint" && typeof data.userId === "number" && data.userId > 0) {
+      openUserFootprintWindow({
+        userId: data.userId,
+        userName: typeof data.userName === "string" ? data.userName : ""
+      });
     }
     if (data.type === "desktop-mode-notification" && typeof data.title === "string" && data.title !== "") {
       handleDesktopNotification(

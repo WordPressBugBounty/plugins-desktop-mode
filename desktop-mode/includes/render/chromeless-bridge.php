@@ -1056,6 +1056,41 @@ function desktop_mode_chromeless_bridge_script() {
 			return;
 		}
 		/*
+		 * Activity-footprint launcher. A "View activity footprint" row
+		 * action (added to the Users list table by
+		 * `desktop_mode_user_footprint_row_action`) carries the target
+		 * user id in `data-desktop-mode-footprint`. The iframe has no
+		 * shell API of its own, so we escalate the click to the parent
+		 * shell, which opens the My WordPress window on that user's
+		 * footprint. Checked BEFORE classifyLink so the link's real
+		 * href — a graceful profile-edit fallback for no-JS — is never
+		 * followed inside the shell. Modifier-key / middle clicks are
+		 * already filtered above, so cmd/ctrl-click still opens that
+		 * fallback in a new browser tab.
+		 */
+		var footprintAttr = link.getAttribute( 'data-desktop-mode-footprint' );
+		if ( footprintAttr ) {
+			var footprintUid = parseInt( footprintAttr, 10 );
+			if ( footprintUid > 0 ) {
+				e.preventDefault();
+				try {
+					window.parent.postMessage(
+						{
+							type: 'desktop-mode-open-user-footprint',
+							userId: footprintUid,
+							userName: link.getAttribute( 'data-desktop-mode-footprint-name' ) || ''
+						},
+						window.location.origin
+					);
+				} catch ( footprintErr ) {
+					/* Same-origin postMessage can only fail in a sandbox
+					 * we don't support — swallow rather than block the
+					 * click. */
+				}
+				return;
+			}
+		}
+		/*
 		 * WordPress core's wp-admin/js/updates.js owns the click on these
 		 * AJAX-driven plugin/theme management buttons — it binds in bubble
 		 * phase and calls preventDefault to take over with an in-place
@@ -1949,29 +1984,59 @@ function desktop_mode_chromeless_bridge_script() {
 	}
 	window.__desktopModeScreenMetaInstalled = true;
 
-	var links = document.getElementById( 'screen-meta-links' );
-	if ( ! links ) {
-		return;
+	// Real screen options render form controls (column toggles, a
+	// per-page input, custom settings). An empty wrap should not
+	// surface a dead gear button.
+	function hasScreenOptionsContent() {
+		var wrap = document.getElementById( 'screen-options-wrap' );
+		// WP always renders a nonce hidden input and an "Apply" submit
+		// inside the wrap, so match only interactive option controls
+		// (toggles, per-page, radios, selects) — never that always-
+		// present scaffolding — or an empty panel reads as non-empty.
+		return !! wrap && !! wrap.querySelector( 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea' );
 	}
-	var screenOptionsBtn = document.getElementById( 'show-settings-link' );
-	var helpBtn = document.getElementById( 'contextual-help-link' );
+	// A help tab registered with empty content + no callback still
+	// produces #contextual-help-link but an empty panel. Require some
+	// non-whitespace tab/sidebar text before announcing the button.
+	function hasHelpContent() {
+		var wrap = document.getElementById( 'contextual-help-wrap' );
+		if ( ! wrap ) {
+			return false;
+		}
+		var panelEls = wrap.querySelectorAll( '.help-tab-content, .contextual-help-sidebar' );
+		for ( var i = 0; i < panelEls.length; i++ ) {
+			if ( ( panelEls[ i ].textContent || '' ).trim() !== '' ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	var links = document.getElementById( 'screen-meta-links' );
+	var screenOptionsBtn = links ? document.getElementById( 'show-settings-link' ) : null;
+	var helpBtn = links ? document.getElementById( 'contextual-help-link' ) : null;
 	var panels = [];
-	if ( screenOptionsBtn ) {
+	if ( screenOptionsBtn && hasScreenOptionsContent() ) {
 		panels.push( 'screen-options' );
 	}
-	if ( helpBtn ) {
+	if ( helpBtn && hasHelpContent() ) {
 		panels.push( 'help' );
-	}
-	if ( panels.length === 0 ) {
-		return;
 	}
 
 	var origin = window.location.origin;
 
+	// ALWAYS announce — including an empty array — so the parent removes
+	// stale gear/Help buttons when this page (e.g. after an in-place
+	// same-slug navigation) has no screen meta. addScreenMetaButtons()
+	// clears then repopulates, so an empty array removes everything.
 	window.parent.postMessage( {
 		type: 'desktop-mode-screen-meta',
 		panels: panels
 	}, origin );
+
+	if ( panels.length === 0 ) {
+		return;
+	}
 
 	function getOpenPanel() {
 		if ( screenOptionsBtn && screenOptionsBtn.getAttribute( 'aria-expanded' ) === 'true' ) {

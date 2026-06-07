@@ -166,12 +166,6 @@
             "A moderation surface built around how you actually triage: bulk actions with undo, an inline reply editor, keyboard shortcuts, and a spam score that surfaces the obvious junk first.": [
                 ""
             ],
-            "A native Users list with bulk role change, last-login tracking, live online indicators, click-to-copy email, and one-click password resets. Capability-gated — readers see a read-only view, role assignment respects WordPress role permissions. On by default.": [
-                ""
-            ],
-            "A native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it. On by default.": [
-                ""
-            ],
             "A platform-wide AI key is configured. You can optionally set a personal key below to override it.": [
                 ""
             ],
@@ -182,9 +176,6 @@
                 ""
             ],
             "A real gallery on Browse — clean cards with rating, install count, last updated, and a click-anywhere detail flyout. Subtle hover lift, lazy-loaded icons, infinite scroll.": [
-                ""
-            ],
-            "A redesigned moderation queue with Pending / All / Spam / Trash / Mine tabs, bulk approve/spam/trash plus an 8-second undo, inline reply right in the row, an author insights drawer, a per-row spam confidence score (Akismet + heuristics), and full keyboard moderation (j/k navigate, a approve, s spam, d trash, r reply, e edit, u undo). On by default.": [
                 ""
             ],
             "A short summary": [
@@ -280,6 +271,9 @@
             "Appearance": [
                 ""
             ],
+            "Apply a visual treatment to every window except the one you are working in.": [
+                ""
+            ],
             "Approve": [
                 ""
             ],
@@ -344,6 +338,24 @@
                 ""
             ],
             "Beta": [
+                ""
+            ],
+            "Beta features": [
+                ""
+            ],
+            "Beta — off by default. Turn on for a native Users list with bulk role change, last-login tracking, live online indicators, click-to-copy email, and one-click password resets. Capability-gated — readers see a read-only view, role assignment respects WordPress role permissions.": [
+                ""
+            ],
+            "Beta — off by default. Turn on for a native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it.": [
+                ""
+            ],
+            "Beta — off by default. Turn on for a redesigned moderation queue with Pending / All / Spam / Trash / Mine tabs, bulk approve/spam/trash plus an 8-second undo, inline reply right in the row, an author insights drawer, a per-row spam confidence score (Akismet + heuristics), and full keyboard moderation (j/k navigate, a approve, s spam, d trash, r reply, e edit, u undo).": [
+                ""
+            ],
+            "Beta — off by default. Turn on for the same table-driven experience as the Posts window, tailored for Pages: a Parent column, hierarchical sort, and a lock indicator when another user is editing a page. Toggle off any time to return to the classic screen.": [
+                ""
+            ],
+            "Beta — off by default. Turn on to replace the classic Posts list iframe with a native, table-driven window: sticky header, server-paginated rows, multi-select bulk actions, and a sub-row preview. Toggle off any time to return to the classic screen.": [
                 ""
             ],
             "Bold": [
@@ -556,6 +568,9 @@
             "Custom image wallpaper": [
                 "Fondo de imagen personalizada"
             ],
+            "Darken": [
+                ""
+            ],
             "Deactivate": [
                 ""
             ],
@@ -625,6 +640,9 @@
             "Details": [
                 ""
             ],
+            "Dim unfocused windows so the focused one stands out.": [
+                ""
+            ],
             "Dimensions": [
                 ""
             ],
@@ -653,6 +671,9 @@
                 ""
             ],
             "Drag a .zip onto the window to install — or drag a Browse card straight to the dock to pin a shortcut. The framework drag bridge handles the rest.": [
+                ""
+            ],
+            "Drain the colour from unfocused windows so the focused one is the only thing still in colour — your eye snaps right to it.": [
                 ""
             ],
             "Drop a .zip plugin file here, or click to choose a file.": [
@@ -692,6 +713,9 @@
                 "Error al subir."
             ],
             "Edit user": [
+                ""
+            ],
+            "Effects": [
                 ""
             ],
             "Emerald": [
@@ -737,6 +761,9 @@
                 "Salir de pantalla completa"
             ],
             "Experimental": [
+                ""
+            ],
+            "Experimental redesigns of core admin screens. Off by default — opt in to try them. Each toggle affects only your account and takes effect immediately, no reload required.": [
                 ""
             ],
             "Explore details": [
@@ -817,10 +844,16 @@
             "From": [
                 "Desde"
             ],
+            "Frost": [
+                ""
+            ],
             "Global settings": [
                 ""
             ],
             "Got it": [
+                ""
+            ],
+            "Grayscale": [
                 ""
             ],
             "Group by": [
@@ -1201,6 +1234,9 @@
             "No widgets available. Activate a plugin that registers one, or see the docs for the registerWidget API.": [
                 "No hay widgets disponibles. Activa un plugin que registre alguno, o consulta la documentación de la API registerWidget."
             ],
+            "None": [
+                ""
+            ],
             "Not spam": [
                 ""
             ],
@@ -1468,9 +1504,6 @@
             "Replace existing plugin?": [
                 ""
             ],
-            "Replaces the classic Posts list iframe with a native, table-driven window: sticky header, server-paginated rows, multi-select bulk actions, and a sub-row preview. On by default. Toggle off to return to the classic experience.": [
-                ""
-            ],
             "Replacing existing plugin…": [
                 ""
             ],
@@ -1541,9 +1574,6 @@
                 "Rosa"
             ],
             "S": [
-                ""
-            ],
-            "Same table-driven experience as the Posts window, tailored for Pages: a Parent column, hierarchical sort, and the same lock indicator when another user is editing a page. On by default. Toggle off to return to the classic experience.": [
                 ""
             ],
             "Saturday": [
@@ -1819,6 +1849,9 @@
             "This revision has no rendered content.": [
                 ""
             ],
+            "Throw unfocused windows out of focus — a soft, frosted-glass blur, as if you were looking at them through an iced-over pane.": [
+                ""
+            ],
             "Thursday": [
                 ""
             ],
@@ -1899,6 +1932,12 @@
             ],
             "Undone.": [
                 ""
+            ],
+            "Unfocused window effect": [
+                ""
+            ],
+            "Unfocused windows": [
+                "Organizar ventanas"
             ],
             "Unified": [
                 ""

@@ -492,24 +492,37 @@
     } catch {
     }
     function installScreenMetaHoist(origin) {
+      const hasScreenOptionsContent = () => {
+        const wrap = document.getElementById("screen-options-wrap");
+        return !!wrap && !!wrap.querySelector(
+          'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea'
+        );
+      };
+      const hasHelpContent = () => {
+        const wrap = document.getElementById("contextual-help-wrap");
+        if (!wrap) {
+          return false;
+        }
+        const panelEls = wrap.querySelectorAll(
+          ".help-tab-content, .contextual-help-sidebar"
+        );
+        for (let i = 0; i < panelEls.length; i++) {
+          if ((panelEls[i].textContent || "").trim() !== "") {
+            return true;
+          }
+        }
+        return false;
+      };
       const start = () => {
         const links = document.getElementById("screen-meta-links");
-        if (!links) {
-          return;
-        }
-        const screenOptionsBtn = document.getElementById(
-          "show-settings-link"
-        );
-        const helpBtn = document.getElementById("contextual-help-link");
+        const screenOptionsBtn = links ? document.getElementById("show-settings-link") : null;
+        const helpBtn = links ? document.getElementById("contextual-help-link") : null;
         const panels = [];
-        if (screenOptionsBtn) {
+        if (screenOptionsBtn && hasScreenOptionsContent()) {
           panels.push("screen-options");
         }
-        if (helpBtn) {
+        if (helpBtn && hasHelpContent()) {
           panels.push("help");
-        }
-        if (panels.length === 0) {
-          return;
         }
         try {
           window.parent.postMessage(
@@ -517,6 +530,9 @@
             origin
           );
         } catch {
+        }
+        if (panels.length === 0) {
+          return;
         }
         const getOpenPanel = () => {
           if (screenOptionsBtn && screenOptionsBtn.getAttribute("aria-expanded") === "true") {

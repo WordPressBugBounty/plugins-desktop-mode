@@ -2360,6 +2360,7 @@
     dockSize: "default",
     desktopLayout: "classic",
     dockRailRenderer: "default",
+    unfocusEffect: "darken",
     customGradient: {
       from: "#2271b1",
       to: "#7c3aed",
@@ -2374,29 +2375,30 @@
       apiKeys: {},
       transport: "off"
     },
-    // Opt-out as of 0.8.0. Fresh installs land on the native Posts
-    // window — same screen the rest of desktop mode is built for. A
-    // user can still flip this off to fall back to the chromeless
-    // `edit.php` iframe, but the new default is "use the native UI."
+    // Opt-IN Beta as of 0.10.0. Fresh installs land on the classic
+    // chromeless `edit.php` iframe; a user opts in via OS Settings →
+    // Features → Beta features to get the native Posts window. The
+    // native windows used to default ON (opt-out, 0.8.0) but are now
+    // opt-in so the redesign is a deliberate choice, not imposed.
     heartbeatRate: 60,
-    nativePostsEnabled: true,
+    nativePostsEnabled: false,
     nativePostsHiddenColumns: [],
-    // Same opt-out posture as Posts — fresh installs land on the
-    // native Pages window, users can flip back to the iframe.
-    nativePagesEnabled: true,
-    // Native Users window — same opt-out posture. Capability-gated
+    // Same opt-in Beta posture as Posts — fresh installs keep the
+    // iframe; users opt in to the native Pages window.
+    nativePagesEnabled: false,
+    // Native Users window — same opt-in Beta posture. Capability-gated
     // server-side (the window is only registered for users with
-    // `list_users`), so flipping this off only affects the small set
-    // of users who can see the Users tile in the first place.
-    nativeUsersEnabled: true,
+    // `list_users`), so this toggle only affects the small set of
+    // users who can see the Users tile in the first place.
+    nativeUsersEnabled: false,
     // Native Plugins window — replaces `plugins.php` and
-    // `plugin-install.php`. Same opt-out posture; cap-gated on
-    // `activate_plugins` server-side, so flipping this off only
-    // affects users who could see the Plugins tile anyway.
-    nativePluginsEnabled: true,
+    // `plugin-install.php`. Same opt-in Beta posture; cap-gated on
+    // `activate_plugins` server-side, so this toggle only affects
+    // users who could see the Plugins tile anyway.
+    nativePluginsEnabled: false,
     // Native Comments window — replaces `edit-comments.php`. Same
-    // opt-out posture; cap-gated on `edit_posts` server-side.
-    nativeCommentsEnabled: true,
+    // opt-in Beta posture; cap-gated on `edit_posts` server-side.
+    nativeCommentsEnabled: false,
     showDesktopOnWallpaperClick: false,
     showPostStatusRibbons: true,
     foldersSharingEnabled: true,
@@ -2429,6 +2431,113 @@
       apiKeyLabel: p.api_key_label,
       apiKeyLink: p.api_key_link
     }));
+  }
+  function isPromise(value) {
+    return !!value && typeof value === "object" && typeof value.then === "function";
+  }
+  function sanitizeFilename(name) {
+    const cleaned = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    return cleaned || "wallpaper";
+  }
+  function isUsableImage(item) {
+    if (!item || typeof item.id !== "number" || !item.source_url) {
+      return false;
+    }
+    const d = item.media_details;
+    return !!d && typeof d.width === "number" && typeof d.height === "number" && d.width > 0 && d.height > 0;
+  }
+  function stripHtml(markup) {
+    if (!markup) {
+      return "";
+    }
+    const el = document.createElement("div");
+    el.innerHTML = markup;
+    return el.textContent?.trim() || "";
+  }
+  const NONCE_HEADER = "X-WP-Nonce";
+  function injectRestNonce(input, init) {
+    const nonce = readRestNonce();
+    if (!nonce) {
+      return init;
+    }
+    const url = resolveUrl(input);
+    if (!url || !isSameOriginRestUrl(url)) {
+      return init;
+    }
+    const baseHeaders = init?.headers ?? (typeof Request !== "undefined" && input instanceof Request ? input.headers : void 0);
+    const headers = new Headers(baseHeaders ?? {});
+    if (headers.has(NONCE_HEADER)) {
+      return init;
+    }
+    headers.set(NONCE_HEADER, nonce);
+    return { ...init ?? {}, headers };
+  }
+  function readRestNonce() {
+    if (typeof window === "undefined") {
+      return void 0;
+    }
+    const cfg = window.desktopModeConfig;
+    const value = cfg?.restNonce;
+    return typeof value === "string" && value.length > 0 ? value : void 0;
+  }
+  function resolveUrl(input) {
+    try {
+      const base = typeof window !== "undefined" && window.location ? window.location.href : void 0;
+      if (typeof input === "string") {
+        return new URL(input, base);
+      }
+      if (input instanceof URL) {
+        return input;
+      }
+      if (typeof Request !== "undefined" && input instanceof Request) {
+        return new URL(input.url, base);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  function isSameOriginRestUrl(url) {
+    if (typeof window === "undefined" || !window.location || url.origin !== window.location.origin) {
+      return false;
+    }
+    if (url.pathname.includes("/wp-json/")) {
+      return true;
+    }
+    if (url.searchParams.has("rest_route")) {
+      return true;
+    }
+    return false;
+  }
+  function trackedFetch(input, init, opts = {}) {
+    const fn = window.wp?.desktop?.fetch;
+    if (typeof fn === "function") {
+      return fn(input, init, opts);
+    }
+    const finalInit = injectRestNonce(input, init);
+    return fetch(input, finalInit);
+  }
+  function structuredDefaults() {
+    return {
+      ...DEFAULTS,
+      customGradient: { ...DEFAULTS.customGradient },
+      customImage: null,
+      ai: { ...DEFAULTS.ai },
+      // Clone the collection fields too. A shallow `...DEFAULTS`
+      // aliases these nested objects, so a later in-place mutation
+      // (e.g. dragging the gradient editor after a Reset, which spreads
+      // these defaults into live state) would corrupt the module-level
+      // DEFAULTS singleton for the rest of the session.
+      //
+      // These are one-level clones, which is sufficient *because* all
+      // three defaults are empty (`{}` / `[]`) — there are no inner
+      // objects to share. If `DEFAULTS.dockPromotedPositions` ever
+      // ships seeded entries, its `{ x, y }` values would need a
+      // deeper clone here.
+      itemVisibility: { ...DEFAULTS.itemVisibility },
+      dockOrder: [...DEFAULTS.dockOrder],
+      dockPromotedPositions: { ...DEFAULTS.dockPromotedPositions }
+    };
   }
   const SHARED_STORES_SLOT = "__desktopModeSharedStores";
   function resolveSlot() {
@@ -2510,24 +2619,24 @@
     };
     return handle;
   }
-  const store$2 = createSharedStore(
+  const store$3 = createSharedStore(
     "desktop-mode/settings-tab-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const registry$1 = store$2.state.registry;
-  const listeners$2 = store$2.state.listeners;
+  const registry$2 = store$3.state.registry;
+  const listeners$3 = store$3.state.listeners;
   function listSettingsTabs() {
-    return Array.from(registry$1.values()).sort(
+    return Array.from(registry$2.values()).sort(
       (a, b) => (a.order ?? 100) - (b.order ?? 100)
     );
   }
   function subscribeSettingsTabs(cb) {
-    listeners$2.add(cb);
+    listeners$3.add(cb);
     return () => {
-      listeners$2.delete(cb);
+      listeners$3.delete(cb);
     };
   }
   let loadPromise = null;
@@ -2782,69 +2891,6 @@
     );
     paint();
     return wrapper;
-  }
-  const NONCE_HEADER = "X-WP-Nonce";
-  function injectRestNonce(input, init) {
-    const nonce = readRestNonce();
-    if (!nonce) {
-      return init;
-    }
-    const url = resolveUrl(input);
-    if (!url || !isSameOriginRestUrl(url)) {
-      return init;
-    }
-    const baseHeaders = init?.headers ?? (typeof Request !== "undefined" && input instanceof Request ? input.headers : void 0);
-    const headers = new Headers(baseHeaders ?? {});
-    if (headers.has(NONCE_HEADER)) {
-      return init;
-    }
-    headers.set(NONCE_HEADER, nonce);
-    return { ...init ?? {}, headers };
-  }
-  function readRestNonce() {
-    if (typeof window === "undefined") {
-      return void 0;
-    }
-    const cfg = window.desktopModeConfig;
-    const value = cfg?.restNonce;
-    return typeof value === "string" && value.length > 0 ? value : void 0;
-  }
-  function resolveUrl(input) {
-    try {
-      const base = typeof window !== "undefined" && window.location ? window.location.href : void 0;
-      if (typeof input === "string") {
-        return new URL(input, base);
-      }
-      if (input instanceof URL) {
-        return input;
-      }
-      if (typeof Request !== "undefined" && input instanceof Request) {
-        return new URL(input.url, base);
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-  function isSameOriginRestUrl(url) {
-    if (typeof window === "undefined" || !window.location || url.origin !== window.location.origin) {
-      return false;
-    }
-    if (url.pathname.includes("/wp-json/")) {
-      return true;
-    }
-    if (url.searchParams.has("rest_route")) {
-      return true;
-    }
-    return false;
-  }
-  function trackedFetch(input, init, opts = {}) {
-    const fn = window.wp?.desktop?.fetch;
-    if (typeof fn === "function") {
-      return fn(input, init, opts);
-    }
-    const finalInit = injectRestNonce(input, init);
-    return fetch(input, finalInit);
   }
   function buildAiSection(ctx) {
     const wrapper = document.createElement("div");
@@ -3233,14 +3279,10 @@
         setPlacement(id, next);
       }
     };
-    const paint = () => {
+    const paint = (visibility = ctx.state.itemVisibility) => {
       const dockItems = readDockItems();
       const desktopIcons = readDesktopIcons();
-      const rows = listPlaceableItems(
-        dockItems,
-        desktopIcons,
-        ctx.state.itemVisibility
-      );
+      const rows = listPlaceableItems(dockItems, desktopIcons, visibility);
       render(
         html`
 				<wpd-section
@@ -3290,6 +3332,16 @@
       );
     };
     paint();
+    const wpDesktop = window.wp?.desktop;
+    if (wpDesktop?.subscribeOsSettings) {
+      const unsubscribe = wpDesktop.subscribeOsSettings((snapshot) => {
+        if (!wrapper.isConnected) {
+          unsubscribe();
+          return;
+        }
+        paint(snapshot.itemVisibility);
+      });
+    }
     return wrapper;
   }
   function buildDesktopLayoutSection(ctx) {
@@ -3369,7 +3421,7 @@
     paint();
     return wrapper;
   }
-  const store$1 = createSharedStore(
+  const store$2 = createSharedStore(
     "desktop-mode/dock-rail-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
@@ -3377,15 +3429,15 @@
       activeId: "default"
     })
   );
-  const registry = store$1.state.registry;
-  const listeners$1 = store$1.state.listeners;
+  const registry$1 = store$2.state.registry;
+  const listeners$2 = store$2.state.listeners;
   function list() {
-    return Array.from(registry.values());
+    return Array.from(registry$1.values());
   }
   function subscribe$1(cb) {
-    listeners$1.add(cb);
+    listeners$2.add(cb);
     return () => {
-      listeners$1.delete(cb);
+      listeners$2.delete(cb);
     };
   }
   function getWpHooks() {
@@ -3416,7 +3468,9 @@
   }
   const HOOKS = {
     /** Filter, receives the wallpaper registry array. */
-    WALLPAPERS: "desktop-mode.wallpapers"
+    WALLPAPERS: "desktop-mode.wallpapers",
+    /** Filter, receives the unfocused-window effect registry array. */
+    UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects"
   };
   const HOOK_PREFIX = "desktop-mode.activity.";
   function hookName(channel) {
@@ -3822,6 +3876,201 @@
     paint();
     return wrapper;
   }
+  function collectRegistrationErrors(def, checks) {
+    if (!def || typeof def !== "object") {
+      return ["def (not an object)"];
+    }
+    const d = def;
+    const errors = [];
+    for (const check of checks) {
+      if (!check.valid(d)) {
+        errors.push(`${check.field} (${check.message})`);
+      }
+    }
+    return errors;
+  }
+  class RegistrationError extends Error {
+    constructor(kind, errors, def) {
+      super(
+        `[desktop-mode] ${kind} registration rejected — fields: ` + errors.join(", ") + "."
+      );
+      this.name = "RegistrationError";
+      this.kind = kind;
+      this.errors = errors;
+      this.def = def;
+    }
+  }
+  function throwOnRegistrationErrors(kind, errors, def) {
+    if (errors.length === 0) {
+      return;
+    }
+    throw new RegistrationError(kind, errors, def);
+  }
+  const UNFOCUS_EFFECT_NONE = "none";
+  const store$1 = createSharedStore(
+    "desktop-mode/unfocus-effect-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry = store$1.state.registry;
+  const listeners$1 = store$1.state.listeners;
+  const UNFOCUS_EFFECT_ID = /^[a-z0-9_/-]+$/;
+  function registerUnfocusEffect(def) {
+    const errors = [];
+    if (!def || typeof def !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof def.id !== "string" || def.id.trim() === "") {
+        errors.push("id (missing)");
+      } else if (!UNFOCUS_EFFECT_ID.test(def.id.trim().toLowerCase())) {
+        errors.push(
+          `id (must match ${UNFOCUS_EFFECT_ID} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      } else if (def.id.trim().toLowerCase() === UNFOCUS_EFFECT_NONE) {
+        errors.push('id ("none" is reserved)');
+      }
+      if (typeof def.label !== "string" || def.label.trim() === "") {
+        errors.push("label (missing)");
+      }
+      if (typeof def.className !== "string" && typeof def.apply !== "function") {
+        errors.push(
+          "className|apply (at least one must be provided — a CSS class to toggle or an apply callback)"
+        );
+      }
+    }
+    throwOnRegistrationErrors("UnfocusEffect", errors, def);
+    const id = def.id.trim().toLowerCase();
+    registry.set(id, { ...def, id });
+    notify$1();
+  }
+  function listUnfocusEffects() {
+    const copy = Array.from(registry.values());
+    const filtered = applyFilters(
+      HOOKS.UNFOCUS_EFFECTS,
+      copy
+    );
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.unfocus-effects` filter returned a non-array; falling back to registry list."
+        );
+      }
+      return copy;
+    }
+    return filtered;
+  }
+  function subscribeUnfocusEffects(cb) {
+    listeners$1.add(cb);
+    return () => {
+      listeners$1.delete(cb);
+    };
+  }
+  function notify$1() {
+    const snapshot = Array.from(listeners$1);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] unfocus-effect registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  registerUnfocusEffect({
+    id: "darken",
+    label: __("Darken"),
+    description: __("Dim unfocused windows so the focused one stands out."),
+    className: "desktop-mode-window--fx-darken"
+  });
+  registerUnfocusEffect({
+    id: "frost",
+    label: __("Frost"),
+    description: __(
+      "Throw unfocused windows out of focus — a soft, frosted-glass blur, as if you were looking at them through an iced-over pane."
+    ),
+    className: "desktop-mode-window--fx-frost"
+  });
+  registerUnfocusEffect({
+    id: "grayscale",
+    label: __("Grayscale"),
+    description: __(
+      "Drain the colour from unfocused windows so the focused one is the only thing still in colour — your eye snaps right to it."
+    ),
+    className: "desktop-mode-window--fx-grayscale"
+  });
+  function buildEffectsSection(ctx) {
+    const wrapper = document.createElement("div");
+    const onPick = (e) => {
+      const id = e.detail?.value ?? "";
+      if (id === "") {
+        return;
+      }
+      if (id !== UNFOCUS_EFFECT_NONE && !effects.some((fx) => fx.id === id)) {
+        return;
+      }
+      ctx.state.unfocusEffect = id;
+      ctx.save();
+      ctx.apply();
+      paint();
+    };
+    let effects = listUnfocusEffects();
+    const paint = () => {
+      const active = effects.find(
+        (fx) => fx.id === ctx.state.unfocusEffect
+      );
+      const fallbackDescription = __(
+        "Apply a visual treatment to every window except the one you are working in."
+      );
+      const description = ctx.state.unfocusEffect !== UNFOCUS_EFFECT_NONE && active?.description ? active.description : fallbackDescription;
+      render(
+        html`
+				<wpd-section
+					heading=${__("Unfocused windows")}
+					description=${description}
+				>
+					<wpd-select
+						value=${ctx.state.unfocusEffect}
+						label=${__("Unfocused window effect")}
+						@wpd-pick=${onPick}
+					>
+						<wpd-option value=${UNFOCUS_EFFECT_NONE}>
+							${__("None")}
+						</wpd-option>
+						${effects.map(
+          (fx) => html`<wpd-option value=${fx.id}
+									>${fx.label}</wpd-option
+								>`
+        )}
+					</wpd-select>
+				</wpd-section>
+			`,
+        wrapper
+      );
+    };
+    const unsubscribe = subscribeUnfocusEffects(() => {
+      effects = listUnfocusEffects();
+      paint();
+    });
+    const observer = new MutationObserver(() => {
+      if (!wrapper.isConnected) {
+        unsubscribe();
+        observer.disconnect();
+      }
+    });
+    queueMicrotask(() => {
+      if (wrapper.parentNode) {
+        observer.observe(wrapper.parentNode, {
+          childList: true,
+          subtree: false
+        });
+      }
+    });
+    paint();
+    return wrapper;
+  }
   function buildExtendedSection(ctx) {
     const { extendedOptions, extendedOptionsUrl, restNonce } = ctx.config;
     const state = {
@@ -4108,9 +4357,9 @@
     const paint = () => render(
       html`
 				<wpd-section
-					heading=${__("Features")}
+					heading=${__("Beta features")}
 					description=${__(
-        "Tune individual Desktop Mode behaviors. Each toggle affects only your account and takes effect immediately — no reload required. Watch the dot in the OS Settings title bar to see when a change has been saved."
+        "Experimental redesigns of core admin screens. Off by default — opt in to try them. Each toggle affects only your account and takes effect immediately, no reload required."
       )}
 				>
 					<div class="desktop-mode-features__item">
@@ -4121,7 +4370,7 @@
 						></wpd-checkbox-label>
 						<p class="desktop-mode-features__hint">
 							${__(
-        "Replaces the classic Posts list iframe with a native, table-driven window: sticky header, server-paginated rows, multi-select bulk actions, and a sub-row preview. On by default. Toggle off to return to the classic experience."
+        "Beta — off by default. Turn on to replace the classic Posts list iframe with a native, table-driven window: sticky header, server-paginated rows, multi-select bulk actions, and a sub-row preview. Toggle off any time to return to the classic screen."
       )}
 						</p>
 					</div>
@@ -4133,7 +4382,7 @@
 						></wpd-checkbox-label>
 						<p class="desktop-mode-features__hint">
 							${__(
-        "Same table-driven experience as the Posts window, tailored for Pages: a Parent column, hierarchical sort, and the same lock indicator when another user is editing a page. On by default. Toggle off to return to the classic experience."
+        "Beta — off by default. Turn on for the same table-driven experience as the Posts window, tailored for Pages: a Parent column, hierarchical sort, and a lock indicator when another user is editing a page. Toggle off any time to return to the classic screen."
       )}
 						</p>
 					</div>
@@ -4145,7 +4394,7 @@
 						></wpd-checkbox-label>
 						<p class="desktop-mode-features__hint">
 							${__(
-        "A native Users list with bulk role change, last-login tracking, live online indicators, click-to-copy email, and one-click password resets. Capability-gated — readers see a read-only view, role assignment respects WordPress role permissions. On by default."
+        "Beta — off by default. Turn on for a native Users list with bulk role change, last-login tracking, live online indicators, click-to-copy email, and one-click password resets. Capability-gated — readers see a read-only view, role assignment respects WordPress role permissions."
       )}
 						</p>
 					</div>
@@ -4157,7 +4406,7 @@
 						></wpd-checkbox-label>
 						<p class="desktop-mode-features__hint">
 							${__(
-        "A native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it. On by default."
+        "Beta — off by default. Turn on for a native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it."
       )}
 						</p>
 					</div>
@@ -4169,10 +4418,17 @@
 						></wpd-checkbox-label>
 						<p class="desktop-mode-features__hint">
 							${__(
-        "A redesigned moderation queue with Pending / All / Spam / Trash / Mine tabs, bulk approve/spam/trash plus an 8-second undo, inline reply right in the row, an author insights drawer, a per-row spam confidence score (Akismet + heuristics), and full keyboard moderation (j/k navigate, a approve, s spam, d trash, r reply, e edit, u undo). On by default."
+        "Beta — off by default. Turn on for a redesigned moderation queue with Pending / All / Spam / Trash / Mine tabs, bulk approve/spam/trash plus an 8-second undo, inline reply right in the row, an author insights drawer, a per-row spam confidence score (Akismet + heuristics), and full keyboard moderation (j/k navigate, a approve, s spam, d trash, r reply, e edit, u undo)."
       )}
 						</p>
 					</div>
+				</wpd-section>
+				<wpd-section
+					heading=${__("Features")}
+					description=${__(
+        "Tune individual Desktop Mode behaviors. Each toggle affects only your account and takes effect immediately — no reload required. Watch the dot in the OS Settings title bar to see when a change has been saved."
+      )}
+				>
 					${shellCfg?.commentsAi ? html`
 							<div class="desktop-mode-features__item">
 								<wpd-checkbox-label
@@ -4681,36 +4937,6 @@
   function classNames(...parts) {
     return parts.filter(Boolean).join(" ");
   }
-  function collectRegistrationErrors(def, checks) {
-    if (!def || typeof def !== "object") {
-      return ["def (not an object)"];
-    }
-    const d = def;
-    const errors = [];
-    for (const check of checks) {
-      if (!check.valid(d)) {
-        errors.push(`${check.field} (${check.message})`);
-      }
-    }
-    return errors;
-  }
-  class RegistrationError extends Error {
-    constructor(kind, errors, def) {
-      super(
-        `[desktop-mode] ${kind} registration rejected — fields: ` + errors.join(", ") + "."
-      );
-      this.name = "RegistrationError";
-      this.kind = kind;
-      this.errors = errors;
-      this.def = def;
-    }
-  }
-  function throwOnRegistrationErrors(kind, errors, def) {
-    if (errors.length === 0) {
-      return;
-    }
-    throw new RegistrationError(kind, errors, def);
-  }
   const store = createSharedStore(
     "desktop-mode/wallpaper-registry",
     () => ({
@@ -4815,28 +5041,6 @@
   ];
   function isValidDef(def) {
     return collectRegistrationErrors(def, WALLPAPER_CHECKS).length === 0;
-  }
-  function isPromise(value) {
-    return !!value && typeof value === "object" && typeof value.then === "function";
-  }
-  function sanitizeFilename(name) {
-    const cleaned = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-    return cleaned || "wallpaper";
-  }
-  function isUsableImage(item) {
-    if (!item || typeof item.id !== "number" || !item.source_url) {
-      return false;
-    }
-    const d = item.media_details;
-    return !!d && typeof d.width === "number" && typeof d.height === "number" && d.width > 0 && d.height > 0;
-  }
-  function stripHtml(markup) {
-    if (!markup) {
-      return "";
-    }
-    const el = document.createElement("div");
-    el.innerHTML = markup;
-    return el.textContent?.trim() || "";
   }
   async function fetchMediaPage(config, page, search, hdOnly) {
     const url = new URL(config.mediaUrl);
@@ -5554,7 +5758,7 @@
     body.classList.add("desktop-mode-os-settings");
     const onReset = () => {
       const preservedImage = ctx.state.customImage;
-      ctx.state = { ...DEFAULTS, customImage: preservedImage };
+      ctx.state = { ...structuredDefaults(), customImage: preservedImage };
       ctx.save();
       ctx.apply();
       ctx.renderPanel(body);
@@ -5611,6 +5815,16 @@
 			>`,
         panel: html`<wpd-tabpanel for="apps-icons">
 				<wpd-panel>${buildAppsIconsSection(ctx)}</wpd-panel>
+			</wpd-tabpanel>`
+      },
+      {
+        id: "effects",
+        order: 27,
+        tab: html`<wpd-tab value="effects"
+				>${__("Effects")}</wpd-tab
+			>`,
+        panel: html`<wpd-tabpanel for="effects">
+				<wpd-panel>${buildEffectsSection(ctx)}</wpd-panel>
 			</wpd-tabpanel>`
       }
     ];

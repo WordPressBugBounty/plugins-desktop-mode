@@ -2037,10 +2037,10 @@
     const finalInit = injectRestNonce(input, init);
     return fetch(input, finalInit);
   }
-  const WINDOW_ID$2 = "desktop-mode-my-wordpress";
+  const WINDOW_ID$3 = "desktop-mode-my-wordpress";
   function getConfig() {
     const store = window.desktopModeWindowConfig;
-    const cfg = store ? store[WINDOW_ID$2] : void 0;
+    const cfg = store ? store[WINDOW_ID$3] : void 0;
     if (!cfg) {
       throw new Error(
         "[desktop-mode-my-wordpress] config blob missing — was the window opened without registration?"
@@ -2056,7 +2056,7 @@
   }
   async function shellFetch$1(input, init) {
     return trackedFetch(input, init, {
-      windowId: WINDOW_ID$2,
+      windowId: WINDOW_ID$3,
       source: "desktop-mode/my-wordpress"
     });
   }
@@ -2329,10 +2329,10 @@
       )
     );
   }
-  const WINDOW_ID$1 = "desktop-mode-my-wordpress";
+  const WINDOW_ID$2 = "desktop-mode-my-wordpress";
   function shellFetch(input, init) {
     return trackedFetch(input, init, {
-      windowId: WINDOW_ID$1,
+      windowId: WINDOW_ID$2,
       source: "desktop-mode/my-wordpress"
     });
   }
@@ -3570,6 +3570,83 @@
     left.appendChild(grid);
     host.addTeardown(closeContextMenu);
     paintStatus$1(statusBar, usage.usedIn.length, entityId);
+  }
+  const WINDOW_ID$1 = "desktop-mode-my-wordpress";
+  const _initial = Object.freeze({
+    userId: null,
+    userName: "",
+    requestedAt: 0
+  });
+  function getDesktop() {
+    return window.wp?.desktop;
+  }
+  let _store = null;
+  function getStore() {
+    if (_store) {
+      return _store;
+    }
+    const factory = getDesktop()?.createSharedStore;
+    if (typeof factory !== "function") {
+      return null;
+    }
+    _store = factory(
+      "desktop-mode/my-wordpress/footprint-target",
+      () => ({ ..._initial })
+    );
+    return _store;
+  }
+  function setFootprintTarget(userId, userName = "") {
+    const store = getStore();
+    if (store) {
+      store.state.userId = userId;
+      store.state.userName = userName;
+      store.state.requestedAt = Date.now();
+      store.notify();
+      return;
+    }
+    window._wpdFootprintTarget = {
+      userId,
+      userName,
+      requestedAt: Date.now()
+    };
+  }
+  function readFootprintTarget() {
+    const store = getStore();
+    if (store) {
+      return { ...store.state };
+    }
+    return window._wpdFootprintTarget ?? { ..._initial };
+  }
+  function clearFootprintTarget() {
+    const store = getStore();
+    if (store) {
+      store.state.userId = null;
+      store.state.userName = "";
+      store.state.requestedAt = 0;
+      store.notify();
+    }
+    const w = window;
+    if (w._wpdFootprintTarget) {
+      w._wpdFootprintTarget = { ..._initial };
+    }
+  }
+  function subscribeFootprintTarget(cb) {
+    const store = getStore();
+    if (!store) {
+      return () => {
+      };
+    }
+    return store.subscribe((state) => cb({ ...state }));
+  }
+  function openUserFootprintWindow(args) {
+    const userId = Number(args.userId);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return;
+    }
+    setFootprintTarget(userId, args.userName ?? "");
+    getDesktop()?.openWindow?.(WINDOW_ID$1, {
+      source: "my-wordpress/open-user-footprint"
+    });
   }
   const ROOT_CLASS = "desktop-mode-breadcrumbs";
   function renderBreadcrumbs(host, segments, opts = {}) {
@@ -7388,7 +7465,7 @@
           sort: 10
         }
       ],
-      { view: "detail", entityId: entity.id, postId: userId }
+      { view: "user-footprint", entityId: entity.id, userId }
     );
     void (async () => {
       let payload;
@@ -7406,7 +7483,7 @@
               sort: 10
             }
           ],
-          { view: "detail", entityId: entity.id, postId: userId }
+          { view: "user-footprint", entityId: entity.id, userId }
         );
         return;
       }
@@ -7458,7 +7535,7 @@
             sort: 10
           }
         ],
-        { view: "detail", entityId: entity.id, postId: userId }
+        { view: "user-footprint", entityId: entity.id, userId }
       );
     })();
   }
@@ -8343,7 +8420,17 @@
       windowTeardowns.push(deregister);
     }
     windowTeardowns.push(() => closeAnyTileMenu());
-    const initialRoute = pendingRoute ?? { kind: "root" };
+    const footprint = readFootprintTarget();
+    let initialRoute;
+    if (footprint.userId && footprint.userId > 0) {
+      initialRoute = footprintRouteFor(
+        footprint.userId,
+        footprint.userName
+      );
+      clearFootprintTarget();
+    } else {
+      initialRoute = pendingRoute ?? { kind: "root" };
+    }
     pendingRoute = null;
     navigate(state, initialRoute);
     return () => {
@@ -8391,6 +8478,14 @@
       "[my-wordpress] asRenderState: host body does not match any live render state."
     );
   }
+  function footprintRouteFor(userId, userName) {
+    return {
+      kind: "user-footprint",
+      entityId: "users",
+      userId,
+      userName
+    };
+  }
   function openDetail(args) {
     const route = {
       kind: "detail",
@@ -8421,6 +8516,9 @@
     const desktop = window.wp?.desktop;
     desktop?.openWindow?.(WINDOW_ID, { source: "my-wordpress/open-media" });
   }
+  function openUserFootprint(args) {
+    openUserFootprintWindow(args);
+  }
   const desktopGlobal = window.wp?.desktop;
   if (desktopGlobal) {
     const pending = desktopGlobal.myWordpress?.__pendingKinds;
@@ -8443,9 +8541,20 @@
     desktopGlobal.myWordpress = {
       openDetail,
       openMedia,
+      openUserFootprint,
       registerEntityKind,
       trashEntity: trashEntityById
     };
+    subscribeFootprintTarget((next) => {
+      if (!next.userId || next.userId <= 0 || !activeState) {
+        return;
+      }
+      navigate(
+        activeState,
+        footprintRouteFor(next.userId, next.userName)
+      );
+      clearFootprintTarget();
+    });
     document.addEventListener(
       "desktop-mode-my-wordpress-entity-trashed",
       (e) => {

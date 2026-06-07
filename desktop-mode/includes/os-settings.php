@@ -65,6 +65,7 @@ function desktop_mode_default_os_settings() {
 		'dockSize'                    => 'default',
 		'desktopLayout'               => 'classic',
 		'dockRailRenderer'            => 'default',
+		'unfocusEffect'               => 'darken',
 		'customGradient'              => array(
 			'from'  => '#2271b1',
 			'to'    => '#7c3aed',
@@ -79,42 +80,42 @@ function desktop_mode_default_os_settings() {
 			'apiKeys'   => array(), // Per-provider keys: { [provider_id]: string }.
 			'transport' => 'off',   // Live-progress transport: 'sse' | 'off'. Default off — see DESKTOP_MODE_OS_SETTINGS_AI_TRANSPORTS.
 		),
-		// Per-user opt-OUT for the native Posts window. When true,
+		// Per-user opt-IN for the native Posts window. When true,
 		// clicking the Posts dock tile opens the `<wpd-table>`-driven
 		// native window instead of the chromeless `edit.php` iframe.
-		// Default ON as of 0.8.0 — the native UI is the canonical
-		// Desktop Mode Posts experience; users can flip it off to fall
-		// back to the classic iframe.
+		// Default OFF as of 0.10.0 — the native windows are now opt-in
+		// Beta. Fresh installs land on the classic iframe; users turn
+		// this on in OS Settings → Features → Beta features to try it.
 		// Per-user override of the WordPress Heartbeat interval, in
 		// seconds. 60s matches Core's "idle" default; values below
 		// 15 force a lower `minimalInterval` too. See
 		// `desktop_mode_apply_heartbeat_rate_setting` for the
 		// `heartbeat_settings` filter that applies this.
 		'heartbeatRate'               => 60,
-		'nativePostsEnabled'          => true,
+		'nativePostsEnabled'          => false,
 		// Per-user list of column keys hidden in the native Posts
 		// window (e.g. array( 'author', 'tags' )). Empty array means
 		// every column is visible. The sticky 'title' column is always
 		// shown — the UI prevents toggling it.
 		'nativePostsHiddenColumns'    => array(),
-		// Per-user opt-OUT for the native Pages window. Same posture as
-		// nativePostsEnabled — defaults ON, users can flip off to keep
-		// the classic `edit.php?post_type=page` iframe.
-		'nativePagesEnabled'          => true,
-		// Per-user opt-OUT for the native Users window. Defaults ON;
-		// the server-side cap gate (`list_users`) means the toggle
-		// only matters for users who could see the Users tile anyway.
-		'nativeUsersEnabled'          => true,
-		// Per-user opt-OUT for the native Plugins window. Defaults ON;
-		// the server-side cap gate (`activate_plugins`) means the
-		// toggle only matters for users who could see the Plugins
-		// tile anyway. When `false`, the dock click falls back to the
-		// classic `plugins.php` chromeless iframe path.
-		'nativePluginsEnabled'        => true,
-		// Per-user opt-OUT for the native Comments window. Defaults ON;
-		// the server-side cap gate (`edit_posts`) means the toggle only
-		// matters for users who could see the Comments tile anyway.
-		'nativeCommentsEnabled'       => true,
+		// Per-user opt-IN for the native Pages window. Same posture as
+		// nativePostsEnabled — defaults OFF (Beta), users opt in to swap
+		// the classic `edit.php?post_type=page` iframe for the native UI.
+		'nativePagesEnabled'          => false,
+		// Per-user opt-IN for the native Users window. Defaults OFF
+		// (Beta); the server-side cap gate (`list_users`) means the
+		// toggle only matters for users who could see the Users tile.
+		'nativeUsersEnabled'          => false,
+		// Per-user opt-IN for the native Plugins window. Defaults OFF
+		// (Beta); the server-side cap gate (`activate_plugins`) means
+		// the toggle only matters for users who could see the Plugins
+		// tile anyway. When `false`, the dock click uses the classic
+		// `plugins.php` chromeless iframe path.
+		'nativePluginsEnabled'        => false,
+		// Per-user opt-IN for the native Comments window. Defaults OFF
+		// (Beta); the server-side cap gate (`edit_posts`) means the
+		// toggle only matters for users who could see the Comments tile.
+		'nativeCommentsEnabled'       => false,
 		// When true, left-clicking the empty wallpaper triggers the
 		// "Show desktop" toggle (macOS-style) and the matching entry is
 		// hidden from the wallpaper context menu. When false (default),
@@ -263,6 +264,21 @@ function desktop_mode_sanitize_os_settings( $raw ) {
 		$slug = sanitize_key( $raw['dockRailRenderer'] );
 		if ( '' !== $slug ) {
 			$dock_rail_renderer = $slug;
+		}
+	}
+
+	// Unfocus effect id — accept the `none` sentinel or any registry id.
+	// Effect ids mirror the JS registry pattern `^[a-z0-9_/-]+$` (slashes
+	// allowed for `vendor/sub-id` namespacing), so we lower-case and strip
+	// to that charset rather than using sanitize_key() (which would drop
+	// the slash and break a namespaced id on round-trip). No allow-list:
+	// the JS engine resolves at use time and treats an unknown id as "no
+	// effect".
+	$unfocus_effect = $defaults['unfocusEffect'];
+	if ( isset( $raw['unfocusEffect'] ) && is_string( $raw['unfocusEffect'] ) ) {
+		$slug = preg_replace( '/[^a-z0-9_\/-]/', '', strtolower( $raw['unfocusEffect'] ) );
+		if ( '' !== $slug ) {
+			$unfocus_effect = $slug;
 		}
 	}
 
@@ -448,7 +464,13 @@ function desktop_mode_sanitize_os_settings( $raw ) {
 		}
 	}
 
-	// dockOrder — ordered list of sanitize_key()-clean ids.
+	// dockOrder — ordered list of item ids. Most are sanitize_key()-
+	// clean dock slugs, but cross-rail tiles the user promoted carry a
+	// rail-synthesis prefix (`desktop:<id>` / `dock:<id>`, built by
+	// src/settings/item-placement.ts). sanitize_key() strips the colon,
+	// which silently breaks the JS order match on reload and can collide
+	// with an unrelated id — so allow the colon (and hyphen/underscore)
+	// while still rejecting anything outside the JS id charset.
 	$dock_order = array();
 	if ( isset( $raw['dockOrder'] ) && is_array( $raw['dockOrder'] ) ) {
 		$seen = array();
@@ -456,7 +478,7 @@ function desktop_mode_sanitize_os_settings( $raw ) {
 			if ( ! is_string( $id ) || '' === $id ) {
 				continue;
 			}
-			$slug = sanitize_key( $id );
+			$slug = (string) preg_replace( '/[^a-z0-9_:-]+/', '', strtolower( $id ) );
 			if ( '' === $slug || isset( $seen[ $slug ] ) ) {
 				continue;
 			}
@@ -515,6 +537,7 @@ function desktop_mode_sanitize_os_settings( $raw ) {
 		'dockSize'                    => $dock_size,
 		'desktopLayout'               => $desktop_layout,
 		'dockRailRenderer'            => $dock_rail_renderer,
+		'unfocusEffect'               => $unfocus_effect,
 		'customGradient'              => $custom_gradient,
 		'customImage'                 => $custom_image,
 		'libraryHdOnly'               => $library_hd_only,
