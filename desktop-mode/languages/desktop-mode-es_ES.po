@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Desktop Mode 0.4.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/alcazaba-plugin\n"
-"POT-Creation-Date: 2026-06-07T20:47:04+00:00\n"
+"POT-Creation-Date: 2026-06-18T07:46:04+00:00\n"
 "PO-Revision-Date: 2026-04-19 20:42+0200\n"
 "Last-Translator: Desktop Mode team\n"
 "Language-Team: Español\n"
@@ -5741,7 +5741,7 @@ msgid ""
 "Dock rail renderer script registration requires a non-empty script handle."
 msgstr ""
 
-#: includes/helpers.php:90
+#: includes/helpers.php:90 includes/seen-intros.php:226
 msgid "Authentication required."
 msgstr ""
 
@@ -5903,7 +5903,7 @@ msgstr ""
 msgid "Security check failed. Refresh the window and try again."
 msgstr ""
 
-#: includes/plugins-window/ajax.php:59
+#: includes/plugins-window/ajax.php:59 includes/seen-intros.php:233
 #, fuzzy
 msgid "You are not allowed to do that."
 msgstr ""
@@ -6268,7 +6268,7 @@ msgstr "Navegación del administrador"
 msgid "Widgets"
 msgstr "Widgets"
 
-#: includes/seen-intros.php:221
+#: includes/seen-intros.php:257
 #, fuzzy
 msgid "The `slug` parameter must be a non-empty string."
 msgstr "El parámetro «url» debe ser una cadena o null."
