@@ -448,7 +448,7 @@
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -986,7 +986,7 @@
     title: "Icon",
     summary: 'Dashicon wrapper that inherits theme colour + sizing from its context. Accepts either the dashicon suffix ("calculator") or the full class ("dashicons-calculator"). Marked aria-hidden; wrap in a button/link with its own label for accessible use.',
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "name",
@@ -1040,7 +1040,7 @@
     title: "Empty state",
     summary: 'Centered placeholder for "nothing here yet" UI: icon + heading + description + optional CTA. A canonical shape so empty states look consistent across the shell.',
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "icon",
@@ -1100,7 +1100,7 @@
     title: "Panel",
     summary: "Padded, flex-column container matching the default inset and rhythm of a native-window body. Opt-in for the OS-Settings-style padded layout.",
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "gap",
@@ -1358,7 +1358,7 @@
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list2) {
       const existing = this.querySelectorAll(":scope > wpd-segment");
@@ -1456,7 +1456,7 @@
     title: "Option",
     summary: "Opaque data carrier for <wpd-select>. Carries its identifier in `value` and its visible label in textContent. Not rendered directly — the parent reads these and builds a native <select>.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "value",
@@ -1496,7 +1496,7 @@
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list2) {
       const existing = this.querySelectorAll(":scope > wpd-option");
@@ -1638,7 +1638,7 @@
     title: "Select",
     summary: "Dropdown picker that wraps a native <select>. Mirrors the <wpd-segmented> contract (set value, listen for wpd-pick) so callers can swap tag names when a list outgrows a pill bar.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "value",
@@ -1901,7 +1901,7 @@
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list2) {
       replaceChildren(this, "wpd-tab", list2);
@@ -1989,7 +1989,7 @@
     // move them), so `panel.querySelector(...)` from plugin render
     // callbacks keeps working.
     //
-    // Earlier 0.11.0 builds of this component used light DOM with
+    // Earlier 0.5.0 builds of this component used light DOM with
     // a `<slot>` render, which wiped the panel's server-rendered
     // template content on first mount — every `render()` writes
     // into `_renderRoot`, and with light DOM that's the panel
@@ -2015,7 +2015,7 @@
     title: "Tab panel",
     summary: 'Auto-managed panel paired with a sibling <wpd-tabs>. Declares which tab it belongs to via `for="<tab-value>"`; the parent strip toggles `hidden` whenever the active tab changes. role="tabpanel" and tabindex="0" are set automatically.',
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "for",
@@ -2209,7 +2209,7 @@
     title: "Text field",
     summary: "Labelled text input primitive. Two-way reflects `value`, emits wpd-input-change per keystroke, wpd-input-commit on blur/change, and wpd-submit on Enter. Optional password reveal toggle.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       { name: "label", type: "string", description: "Visible label above the input." },
       { name: "value", type: "string", description: "Current input value; reflected two-way." },
@@ -2375,7 +2375,7 @@
       apiKeys: {},
       transport: "off"
     },
-    // Opt-IN Beta as of 0.10.0. Fresh installs land on the classic
+    // Opt-IN Beta as of 0.9.1. Fresh installs land on the classic
     // chromeless `edit.php` iframe; a user opts in via OS Settings →
     // Features → Beta features to get the native Posts window. The
     // native windows used to default ON (opt-out, 0.8.0) but are now
@@ -4588,6 +4588,8 @@
     "wpd-key",
     "wpd-code",
     "wpd-badge",
+    "wpd-ribbon",
+    "wpd-tile",
     "wpd-log",
     "wpd-steps",
     "wpd-step",
@@ -4603,7 +4605,9 @@
     "wpd-category-picker",
     "wpd-crumb-chain",
     "wpd-card",
-    "wpd-notice"
+    "wpd-rating-summary",
+    "wpd-notice",
+    "wpd-progress-bar"
   ];
   let demoBannerLogged = false;
   function logDemoBanner() {

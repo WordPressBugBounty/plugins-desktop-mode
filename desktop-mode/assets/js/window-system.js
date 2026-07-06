@@ -51,14 +51,6 @@
     // shell's own console-error surface.
     // ------------------------------------------------------------------
     /**
-     * Action, fires when a chromeless iframe's `error` or
-     * `unhandledrejection` handler catches an exception. Payload: `{
-     * windowId: string, kind: 'error' | 'unhandledrejection', message:
-     * string, filename: string | null, lineno: number | null, colno:
-     * number | null, stack: string | null }`. Origin-filtered at the
-     * parent shell; cross-origin iframe errors never reach here.
-     */
-    /**
      * Action, fires once per iframe when the chromeless bridge
      * script has finished wiring its message listeners. Payload:
      * `{ windowId: string }`. Subscribers get a reliable "safe to
@@ -67,9 +59,17 @@
      * `load` can be dropped on the floor. Use this instead when
      * timing matters (first-focus dispatch, auto-fill handshakes).
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     IFRAME_READY: "desktop-mode.iframe.ready",
+    /**
+     * Action, fires when a chromeless iframe's `error` or
+     * `unhandledrejection` handler catches an exception. Payload: `{
+     * windowId: string, kind: 'error' | 'unhandledrejection', message:
+     * string, filename: string | null, lineno: number | null, colno:
+     * number | null, stack: string | null }`. Origin-filtered at the
+     * parent shell; cross-origin iframe errors never reach here.
+     */
     IFRAME_ERROR: "desktop-mode.iframe.error",
     /**
      * Action, fires when a `fetch` or `XMLHttpRequest` inside a
@@ -173,7 +173,7 @@
      * defaults — runs every time a window opens, not just at
      * registration.
      *
-     * @since 0.25.0
+     * @since 0.8.6
      */
     WINDOW_GEOMETRY: "desktop-mode.window.geometry",
     /** Action, fires when a window is added to the stack. */
@@ -405,7 +405,7 @@
      * windows as the focus of a multi-step interaction without
      * having to observe DOM mutations.
      *
-     * @since 0.24.0
+     * @since 0.6.0
      */
     WINDOW_HIGHLIGHT_CHANGED: "desktop-mode.window.highlight-changed",
     /**
@@ -504,9 +504,11 @@
      */
     WINDOW_CHROME_RENDER: "desktop-mode.window.chrome.render",
     /**
-     * Action, fires after a window's chrome has been mounted /
-     * remounted. Payload: `{ windowId, chromeId }`. Subscribers can
-     * post-decorate the chrome (attach observers, anchor pickers).
+     * Action, fires after a window chrome layer has been mounted /
+     * remounted. Payload: `{ windowId, layer: 'chrome' | 'controls'
+     * | 'slots', chromeId? }` — `chromeId` is present only when
+     * `layer` is `'chrome'`. Subscribers can post-decorate the
+     * chrome (attach observers, anchor pickers).
      *
      * @since 0.6.0
      */
@@ -528,7 +530,7 @@
      * can use it to track click-throughs or augment behaviour (e.g.
      * play a sound, surface a confirmation toast).
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     DESKTOP_ICON_CLICKED: "desktop-mode.desktop-icon.clicked",
     /**
@@ -549,7 +551,7 @@
      * `tileElements` contract — reach into them directly instead of
      * re-`querySelector`ing the rendered DOM.
      *
-     * Notification badges have a first-class API since 0.24.0 —
+     * Notification badges have a first-class API since 0.6.0 —
      * use `wp.desktop.icons.setBadge( id, count )` (and subscribe
      * to {@link ICON_BADGE_CHANGED}) instead of decorating from
      * here. The framework persists badge state across rebuilds, so
@@ -562,8 +564,8 @@
      * is empty the hook does not fire at all — the previous
      * container is removed and no new one is appended.
      *
-     * @since 0.21.0
-     * @since 0.25.0 — `container` + `tiles` added to the payload
+     * @since 0.6.0
+     * @since 0.8.6 — `container` + `tiles` added to the payload
      *                  (`ids` retained for back-compat).
      */
     DESKTOP_ICONS_RENDERED: "desktop-mode.desktop-icons.rendered",
@@ -580,7 +582,7 @@
      * this hook fires only for icon-rail badges with the previous
      * count carried alongside for delta-aware consumers.
      *
-     * @since 0.24.0
+     * @since 0.6.0
      */
     ICON_BADGE_CHANGED: "desktop-mode.icon.badge-changed",
     // ------------------------------------------------------------------
@@ -610,7 +612,7 @@
      * to {@link DOCK_ITEM_APPENDED}; lets analytics / decorators /
      * cleanup hooks see the full lifecycle without polling the DOM.
      *
-     * @since 0.24.0
+     * @since 0.6.0
      */
     DOCK_ITEM_REMOVED: "desktop-mode.dock.item-removed",
     // ------------------------------------------------------------------
@@ -636,7 +638,7 @@
      * to invalidate cached per-render decoration state before the
      * tiles repopulate.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_BEFORE_RENDER: "desktop-mode.dock.before-render",
     /**
@@ -646,7 +648,7 @@
      * plugin can decorate every tile in one sweep. Symmetric to
      * {@link DOCK_BEFORE_RENDER}.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_AFTER_RENDER: "desktop-mode.dock.after-render",
     /**
@@ -655,7 +657,7 @@
      * Signature: `( classes: string[], detail: DockTileContext ) =>
      * string[]`. Order is preserved.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_TILE_CLASS: "desktop-mode.dock.tile-class",
     /**
@@ -670,7 +672,7 @@
      * descendant for active-state / badge updates to find the tile;
      * wrap, don't replace.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_TILE_ELEMENT: "desktop-mode.dock.tile-element",
     /**
@@ -679,7 +681,7 @@
      * for post-insertion decoration where computed layout matters
      * (measurements, IntersectionObserver bindings, etc.).
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_TILE_RENDERED: "desktop-mode.dock.tile-rendered",
     /**
@@ -688,7 +690,7 @@
      * Signature: `( label: string, detail: DockTileContext ) =>
      * string`. Return an empty string to suppress the tooltip.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_TILE_TOOLTIP: "desktop-mode.dock.tile-tooltip",
     /**
@@ -878,7 +880,7 @@
      * Filter. Returns the id of the "primary" desktop — the one the
      * shell treats as canonical for batch operations. Receives the
      * default (first desktop's id) and the full `Desktop[]` list.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     PRIMARY_DESKTOP_ID: "desktop-mode.primary-desktop-id",
     // ------------------------------------------------------------------
@@ -888,7 +890,7 @@
      * Action, fires before {@link WindowManager.closeAll} starts
      * iterating. Payload `{ candidates: Window[] }` — every window the
      * shell is about to close (after `exceptIds` was applied).
-     * @since 0.14.0
+     * @since 0.5.0
      */
     WINDOWS_BEFORE_CLOSE_ALL: "desktop-mode.windows.before-close-all",
     /**
@@ -897,13 +899,13 @@
      * that will actually be closed. Plugins use this to PROTECT specific
      * windows from a bulk close — e.g. keep the active draft open.
      * Returning an empty array cancels the close entirely.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     WINDOWS_CLOSE_ALL: "desktop-mode.windows.close-all",
     /**
      * Action, fires after {@link WindowManager.closeAll} has finished.
      * Payload `{ closed: number, skipped: Window[] }`.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     WINDOWS_AFTER_CLOSE_ALL: "desktop-mode.windows.after-close-all",
     // ------------------------------------------------------------------
@@ -913,19 +915,19 @@
      * Filter. Runs immediately before a command's `run()` is invoked.
      * Receives `{ proceed: true, slug, args, command }` and may return
      * the same shape with `proceed: false` to cancel the run.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     COMMAND_BEFORE_RUN: "desktop-mode.command.before-run",
     /**
      * Action, fires after a command's `run()` resolves successfully.
      * Payload `{ slug, args, command, result }`.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     COMMAND_AFTER_RUN: "desktop-mode.command.after-run",
     /**
      * Action, fires when a command's `run()` throws. Payload
      * `{ slug, args, command, error }`.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     COMMAND_ERROR: "desktop-mode.command.error",
     // ------------------------------------------------------------------
@@ -950,14 +952,14 @@
      * completes its iframe handshake. Payload:
      * `{ connectionId, targetWindowId, topics }`.
      *
-     * @since 0.17.0
+     * @since 0.5.2
      */
     CONNECTION_OPENED: "desktop-mode.connection.opened",
     /**
      * Action — fires when a connection tears down. Payload:
      * `{ connectionId, reason: 'disconnect' | 'window-closed' | 'navigated' }`.
      *
-     * @since 0.17.0
+     * @since 0.5.2
      */
     CONNECTION_CLOSED: "desktop-mode.connection.closed",
     /**
@@ -967,7 +969,7 @@
      * fire this many times per second, so subscribers should be
      * cheap.
      *
-     * @since 0.17.0
+     * @since 0.5.2
      */
     CONNECTION_MESSAGE: "desktop-mode.connection.message",
     /**
@@ -977,7 +979,7 @@
      * `{ topics: string[] }` to accept while narrowing the topic
      * list. `$context` carries `{ windowId, requestId, topics }`.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     IFRAME_CONNECTION_REQUEST: "desktop-mode.iframe.connection-request",
     // ------------------------------------------------------------------
@@ -3753,14 +3755,14 @@
      *
      * No-op for iframe windows.
      *
-     * Per-event contract preserved from 0.10.x:
+     * Per-event contract preserved from 0.5.0:
      *   - `NATIVE_WINDOW_BEFORE_RENDER` filter fires, same args.
      *   - `NATIVE_WINDOW_AFTER_RENDER` action fires, same args.
      *   - `config.autofocus` is honoured with a `requestAnimationFrame`
      *     defer so layout side-effects of `render()` settle before
      *     `.focus()` resolves.
      *
-     * @since 0.12.0
+     * @since 0.5.0
      * @internal
      */
     hydrateNative() {
@@ -4321,16 +4323,16 @@
      * 'snapped-left' | 'snapped-right'`.
      *
      * @public
-     * @since 0.18.0
+     * @since 0.5.2
      */
     isMinimized() {
       return this.state === "minimized";
     }
-    /** Predicate: is this window currently maximized? @since 0.18.0 */
+    /** Predicate: is this window currently maximized? @since 0.5.2 */
     isMaximized() {
       return this.state === "maximized";
     }
-    /** Predicate: is this window in fullscreen mode? @since 0.18.0 */
+    /** Predicate: is this window in fullscreen mode? @since 0.5.2 */
     isFullscreen() {
       return this.state === "fullscreen";
     }
@@ -4339,7 +4341,7 @@
      * Returns `true` for both half-screen positions; pass an explicit
      * side string if you need to distinguish.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     isSnapped(side) {
       if (side === "left") {
@@ -4355,7 +4357,7 @@
      * window? Reads the `desktop-mode-window--focused` class the manager
      * toggles in `focus()` so the result matches what's visible.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     isFocused() {
       return this.element.classList.contains("desktop-mode-window--focused");
@@ -4658,9 +4660,10 @@
      * external tabs fall back to re-assigning `iframe.src`.
      *
      * No-op for native windows — they own their DOM directly and the
-     * `core/reload` built-in's `match` predicate already filters them
-     * out, but this guard keeps the contract honest if the method is
-     * called by other code paths in the future.
+     * title-bar menu's Reload item is only built for iframe windows
+     * (`dom.ts` skips it when `config.native`), but this guard keeps
+     * the contract honest if the method is called by other code paths
+     * in the future.
      */
     reload() {
       if (this.config.native) {
@@ -4960,7 +4963,7 @@
      * end up calling {@link markWindowContentReady}.
      *
      * @public
-     * @since 0.22.0
+     * @since 0.6.0
      */
     whenContentReady() {
       if (isWindowContentReady(this.id)) {
@@ -5148,24 +5151,6 @@
       }
     }
     /**
-     * Toggle a visual highlight on the window. Used by plugins that
-     * need to point at a window from outside it — e.g. a "connect to"
-     * dropdown that highlights candidate windows on hover.
-     *
-     *   - `'preview'`     — temporary ring; caller is expected to
-     *                       clear on `mouseleave`. Multiple plugins
-     *                       can hover-preview without stomping each
-     *                       other (last write wins).
-     *   - `'persistent'`  — sticky ring; caller is responsible for
-     *                       clearing it.
-     *   - `null` / unset  — clear all highlight state.
-     *
-     * Override the colour per-call via `opts.color`, or globally
-     * via the `--wp-window-highlight-color` custom property.
-     *
-     * @since 0.17.0
-     */
-    /**
      * Request a visual "attention" signal on this window's tile in
      * the dock or taskbar — pulse, shake, or bounce. Used by plugins
      * that need to grab the user's eye when the window is closed or
@@ -5188,7 +5173,7 @@
      * users see a static accent ring for the same duration so the
      * affordance still works.
      *
-     * @since 0.22.0
+     * @since 0.6.0
      */
     requestAttention(mode, opts = {}) {
       const intent = activity.filter(
@@ -5255,7 +5240,7 @@
      * duration. Authors who want a different visual can listen on
      * the JS filter `desktop-mode.window.shake` and return falsy to mute.
      *
-     * @since 0.22.11
+     * @since 0.6.0
      */
     shake() {
       const filtered = applyFilters(
@@ -5276,6 +5261,24 @@
       };
       el.addEventListener("animationend", onEnd);
     }
+    /**
+     * Toggle a visual highlight on the window. Used by plugins that
+     * need to point at a window from outside it — e.g. a "connect to"
+     * dropdown that highlights candidate windows on hover.
+     *
+     *   - `'preview'`     — temporary ring; caller is expected to
+     *                       clear on `mouseleave`. Multiple plugins
+     *                       can hover-preview without stomping each
+     *                       other (last write wins).
+     *   - `'persistent'`  — sticky ring; caller is responsible for
+     *                       clearing it.
+     *   - `null` / unset  — clear all highlight state.
+     *
+     * Override the colour per-call via `opts.color`, or globally
+     * via the `--wp-window-highlight-color` custom property.
+     *
+     * @since 0.5.2
+     */
     setHighlight(mode, opts) {
       const el = this.element;
       if (!el) {
@@ -6016,7 +6019,7 @@
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -6508,7 +6511,7 @@
   _WpdSaveStatus.styles = [styles$2];
   _WpdSaveStatus.help = {
     title: "Save status",
-    summary: 'Tiny status indicator for "is this change saved yet?" affordances. Three layouts (dot / icon / pill), four phases, optional auto-listen to a save-lifecycle CustomEvent so every input in the panel inherits feedback for free.',
+    summary: 'Tiny status indicator for "is this change saved yet?" affordances. Three layouts (dot / icon / pill), five phases, optional auto-listen to a save-lifecycle CustomEvent so every input in the panel inherits feedback for free.',
     status: "experimental",
     since: "0.8.0",
     props: [
@@ -6874,7 +6877,7 @@
     title: "Spinner",
     summary: "Animated WordPress-mark loading indicator with four curated presets and full per-attribute overrides. CSS variables drive disc + accent colors and size; reduced-motion preferences are respected.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.6.0",
     props: [
       {
         name: "preset",

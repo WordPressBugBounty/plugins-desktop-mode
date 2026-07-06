@@ -867,7 +867,7 @@
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -1157,7 +1157,7 @@
     title: "Ribbon",
     summary: "45° corner ribbon. Wraps the top-end (default), top-start, bottom-end, or bottom-start corner of its positioned parent. The host owns clipping + rotation; consumers only set position-relative on the parent and drop a label inside.",
     status: "experimental",
-    since: "0.20.0",
+    since: "0.8.6",
     props: [
       {
         name: "placement",
@@ -1446,7 +1446,7 @@
     title: "Tile",
     summary: "Canonical file/entity tile. Used across the wallpaper, folder windows, every My WordPress section, and plugin surfaces. Renders the standard `.desktop-mode-file-tile` chrome + optional status ribbon and wires the shared drag-out helper.",
     status: "experimental",
-    since: "0.21.0",
+    since: "0.8.6",
     props: [
       { name: "type", type: "string" },
       { name: "ref", type: "string" },
@@ -3919,7 +3919,7 @@
       }
     ],
     slots: [
-      { name: "(default)", description: "Visible label + optional nested <wpd-context-menu>." }
+      { name: "(default)", description: "Visible label." }
     ],
     events: [
       {
@@ -4155,7 +4155,7 @@
     title: "Spinner",
     summary: "Animated WordPress-mark loading indicator with four curated presets and full per-attribute overrides. CSS variables drive disc + accent colors and size; reduced-motion preferences are respected.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.6.0",
     props: [
       {
         name: "preset",

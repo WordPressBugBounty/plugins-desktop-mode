@@ -1581,7 +1581,7 @@ var desktopModePostsWindow = function(exports) {
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -3110,7 +3110,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Table",
     summary: "Data-driven table. Assign `columns` + `data` and you get a styled table with optional per-column filters, click-to-sort, multi-row selection, sticky columns/header, sub-tables, custom cell renderers, loading skeleton, and a slottable empty state.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.6.0",
     props: [
       {
         name: "sticky-columns",
@@ -3273,7 +3273,7 @@ var desktopModePostsWindow = function(exports) {
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list) {
       replaceChildren(this, "wpd-tab", list);
@@ -3361,7 +3361,7 @@ var desktopModePostsWindow = function(exports) {
     // move them), so `panel.querySelector(...)` from plugin render
     // callbacks keeps working.
     //
-    // Earlier 0.11.0 builds of this component used light DOM with
+    // Earlier 0.5.0 builds of this component used light DOM with
     // a `<slot>` render, which wiped the panel's server-rendered
     // template content on first mount — every `render()` writes
     // into `_renderRoot`, and with light DOM that's the panel
@@ -3387,7 +3387,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Tab panel",
     summary: 'Auto-managed panel paired with a sibling <wpd-tabs>. Declares which tab it belongs to via `for="<tab-value>"`; the parent strip toggles `hidden` whenever the active tab changes. role="tabpanel" and tabindex="0" are set automatically.',
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "for",
@@ -4622,10 +4622,6 @@ var desktopModePostsWindow = function(exports) {
      * mental model ("filed under Tech/Web Dev/Frontend AND
      * Tech/Web Dev/Backend") without the ambiguity of merged-tree
      * visualizations.
-     *
-     * Each chain's hue is hashed from the root name; segments
-     * inside the chain step their lightness from root (~38%) to
-     * leaf (~58%) so the eye reads the gradient direction.
      */
     _buildChains(selectedItems) {
       const byId = /* @__PURE__ */ new Map();
@@ -5224,7 +5220,7 @@ var desktopModePostsWindow = function(exports) {
         name: "add-label",
         type: "string",
         default: "Categorize",
-        description: "Trigger button label."
+        description: "Currently inert — labeled the dedicated trigger button, which was replaced by the click-to-open cell. Parsed but unused."
       },
       {
         name: "disabled",
@@ -5234,7 +5230,7 @@ var desktopModePostsWindow = function(exports) {
       {
         name: "readonly",
         type: "boolean attribute",
-        description: "Hides the trigger and the dismiss buttons on chips. Same as setting both `disabled` and bypassing the popover."
+        description: "Prevents opening the picker and hides the per-segment remove buttons on the crumb chains."
       },
       {
         name: "open",
@@ -5250,7 +5246,7 @@ var desktopModePostsWindow = function(exports) {
         name: "max-visible",
         type: "integer (string)",
         default: "2",
-        description: 'Number of selected chips to render before collapsing the rest into a "+N" overflow chip. The overflow chip doubles as the picker trigger.'
+        description: 'Currently inert — configured the "+N" overflow chip, which was replaced by the crumb-chain rendering. Parsed but unused.'
       }
     ],
     events: [
@@ -5271,7 +5267,7 @@ var desktopModePostsWindow = function(exports) {
       },
       {
         name: "wpd-categories-create",
-        description: "Fires when the user submits the inline create-child input. Consumer is expected to POST to the taxonomy REST endpoint, append the new term to `items`, and (optionally) auto-select it by adding the new id to `value`. Picker shows a per-row spinner while `creating-pending` is set.",
+        description: "Fires when the user submits the inline create-child input. Consumer is expected to POST to the taxonomy REST endpoint, append the new term to `items`, and (optionally) auto-select it by adding the new id to `value`. Picker shows a per-row spinner while the create is in flight; the consumer clears it by calling `picker.endCreating( parent )` on success or `picker.failCreating( parent )` on error.",
         detail: "{ name: string; parent: number }"
       },
       {
@@ -5616,7 +5612,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Avatar",
     summary: "Image-or-initials user tile with an optional presence dot. Falls back to a deterministic-hue letter tile when src is empty. Set user-id to auto-subscribe the dot to desktop-mode-presence-changed.",
     status: "stable",
-    since: "0.22.0",
+    since: "0.6.0",
     props: [
       { name: "src", type: "string", description: "Image URL. Falls back to initials when empty or load fails." },
       { name: "alt", type: "string", description: "Alt text for the image. Defaults to `name` when omitted." },
@@ -5635,12 +5631,17 @@ var desktopModePostsWindow = function(exports) {
         name: "user-id",
         type: "number",
         description: "When set AND presence is unset, auto-subscribes to desktop-mode-presence-changed and updates the dot."
+      },
+      {
+        name: "clickable",
+        type: "boolean attribute",
+        description: "Renders the tile as a focusable button that emits wpd-avatar-click. Omit for a decorative tile that lets clicks pass through to the surrounding row."
       }
     ],
     events: [
       {
         name: "wpd-avatar-click",
-        description: "Fires on click of the tile. Detail carries userId when set.",
+        description: "Fires on click when the `clickable` attribute is set. Detail carries userId when set.",
         detail: "{ userId: number | null }"
       }
     ],
@@ -5667,7 +5668,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Option",
     summary: "Opaque data carrier for <wpd-select>. Carries its identifier in `value` and its visible label in textContent. Not rendered directly — the parent reads these and builds a native <select>.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "value",
@@ -5707,7 +5708,7 @@ var desktopModePostsWindow = function(exports) {
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list) {
       const existing = this.querySelectorAll(":scope > wpd-option");
@@ -5849,7 +5850,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Select",
     summary: "Dropdown picker that wraps a native <select>. Mirrors the <wpd-segmented> contract (set value, listen for wpd-pick) so callers can swap tag names when a list outgrows a pill bar.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "value",
@@ -6560,12 +6561,12 @@ var desktopModePostsWindow = function(exports) {
       {
         name: "name",
         type: "string",
-        description: "Forwarded to the hidden form-field for HTML form submission."
+        description: "Reserved for HTML form submission; not yet wired to a form field."
       },
       {
         name: "open",
         type: "boolean attribute",
-        description: "Reflects the open state of the popover. Toggle programmatically to open/close, or read from a CSS selector."
+        description: "Read-only reflection of the popover state, set by the component when it opens/closes. Useful from a CSS selector; toggling it programmatically does not open/close the popover — click the trigger instead."
       }
     ],
     slots: [
@@ -6708,7 +6709,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Relative time",
     summary: 'Auto-ticking relative timestamp. Renders "5 minutes ago" / "yesterday" / "in 3 hours" via Intl.RelativeTimeFormat and updates itself every 30s while connected. Useful for any list cell that should age live (recycle bin, notifications, activity log) without forcing the surrounding view to repaint.',
     status: "experimental",
-    since: "0.21.0",
+    since: "0.6.0",
     props: [
       {
         name: "datetime",
@@ -7054,7 +7055,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Form",
     summary: "Container-query-driven responsive form. Auto-collects named fields, validates required, exposes setError / setFieldInvalid / setBusy / reset, fires wpd-form-submit with the collected values map.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.8.1",
     props: [
       {
         name: "submit-label",
@@ -7088,7 +7089,7 @@ var desktopModePostsWindow = function(exports) {
         name: "show-reset",
         type: "boolean attribute",
         default: "true",
-        description: 'Whether the reset button is rendered. Set to "false" / omit the attribute to hide it.'
+        description: 'Whether the reset button is rendered. Rendered by default; pass the literal `show-reset="false"` to hide it — omitting the attribute keeps it visible.'
       },
       {
         name: "align",
@@ -7269,7 +7270,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Textarea",
     summary: "Multi-line text input. Same event shape as wpd-text-field. Optional auto-grow up to max-rows; optional submit-on-enter (Enter sends, Shift+Enter newlines).",
     status: "stable",
-    since: "0.22.0",
+    since: "0.6.0",
     props: [
       { name: "label", type: "string", description: "Visible label above the textarea." },
       { name: "value", type: "string", description: "Current value; reflected two-way." },
@@ -8204,7 +8205,7 @@ var desktopModePostsWindow = function(exports) {
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list) {
       const existing = this.querySelectorAll(":scope > wpd-segment");
@@ -10640,7 +10641,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Icon",
     summary: 'Dashicon wrapper that inherits theme colour + sizing from its context. Accepts either the dashicon suffix ("calculator") or the full class ("dashicons-calculator"). Marked aria-hidden; wrap in a button/link with its own label for accessible use.',
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "name",
@@ -10798,7 +10799,7 @@ var desktopModePostsWindow = function(exports) {
     title: "Text field",
     summary: "Labelled text input primitive. Two-way reflects `value`, emits wpd-input-change per keystroke, wpd-input-commit on blur/change, and wpd-submit on Enter. Optional password reveal toggle.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       { name: "label", type: "string", description: "Visible label above the input." },
       { name: "value", type: "string", description: "Current input value; reflected two-way." },

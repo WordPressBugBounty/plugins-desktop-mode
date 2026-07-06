@@ -448,7 +448,7 @@ var desktopModeRecycleBin = function(exports) {
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -1929,7 +1929,7 @@ var desktopModeRecycleBin = function(exports) {
     title: "Table",
     summary: "Data-driven table. Assign `columns` + `data` and you get a styled table with optional per-column filters, click-to-sort, multi-row selection, sticky columns/header, sub-tables, custom cell renderers, loading skeleton, and a slottable empty state.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.6.0",
     props: [
       {
         name: "sticky-columns",
@@ -2121,7 +2121,7 @@ var desktopModeRecycleBin = function(exports) {
     title: "Relative time",
     summary: 'Auto-ticking relative timestamp. Renders "5 minutes ago" / "yesterday" / "in 3 hours" via Intl.RelativeTimeFormat and updates itself every 30s while connected. Useful for any list cell that should age live (recycle bin, notifications, activity log) without forcing the surrounding view to repaint.',
     status: "experimental",
-    since: "0.21.0",
+    since: "0.6.0",
     props: [
       {
         name: "datetime",
@@ -2210,7 +2210,7 @@ var desktopModeRecycleBin = function(exports) {
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list) {
       const existing = this.querySelectorAll(":scope > wpd-segment");

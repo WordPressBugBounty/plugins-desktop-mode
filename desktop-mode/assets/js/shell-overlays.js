@@ -433,7 +433,7 @@
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -1018,7 +1018,7 @@
       }
     ],
     slots: [
-      { name: "(default)", description: "Visible label + optional nested <wpd-context-menu>." }
+      { name: "(default)", description: "Visible label." }
     ],
     events: [
       {
@@ -1516,7 +1516,7 @@
   _WpdSaveStatus.styles = [styles$2];
   _WpdSaveStatus.help = {
     title: "Save status",
-    summary: 'Tiny status indicator for "is this change saved yet?" affordances. Three layouts (dot / icon / pill), four phases, optional auto-listen to a save-lifecycle CustomEvent so every input in the panel inherits feedback for free.',
+    summary: 'Tiny status indicator for "is this change saved yet?" affordances. Three layouts (dot / icon / pill), five phases, optional auto-listen to a save-lifecycle CustomEvent so every input in the panel inherits feedback for free.',
     status: "experimental",
     since: "0.8.0",
     props: [
@@ -1882,7 +1882,7 @@
     title: "Spinner",
     summary: "Animated WordPress-mark loading indicator with four curated presets and full per-attribute overrides. CSS variables drive disc + accent colors and size; reduced-motion preferences are respected.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.6.0",
     props: [
       {
         name: "preset",
@@ -2166,7 +2166,7 @@
     title: "Text field",
     summary: "Labelled text input primitive. Two-way reflects `value`, emits wpd-input-change per keystroke, wpd-input-commit on blur/change, and wpd-submit on Enter. Optional password reveal toggle.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       { name: "label", type: "string", description: "Visible label above the input." },
       { name: "value", type: "string", description: "Current input value; reflected two-way." },
@@ -2285,7 +2285,7 @@
     title: "Option",
     summary: "Opaque data carrier for <wpd-select>. Carries its identifier in `value` and its visible label in textContent. Not rendered directly — the parent reads these and builds a native <select>.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "value",
@@ -2325,7 +2325,7 @@
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list) {
       const existing = this.querySelectorAll(":scope > wpd-option");
@@ -2467,7 +2467,7 @@
     title: "Select",
     summary: "Dropdown picker that wraps a native <select>. Mirrors the <wpd-segmented> contract (set value, listen for wpd-pick) so callers can swap tag names when a list outgrows a pill bar.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "value",

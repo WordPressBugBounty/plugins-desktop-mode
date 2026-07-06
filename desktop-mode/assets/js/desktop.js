@@ -100,14 +100,6 @@ var desktopMode = function(exports) {
     // shell's own console-error surface.
     // ------------------------------------------------------------------
     /**
-     * Action, fires when a chromeless iframe's `error` or
-     * `unhandledrejection` handler catches an exception. Payload: `{
-     * windowId: string, kind: 'error' | 'unhandledrejection', message:
-     * string, filename: string | null, lineno: number | null, colno:
-     * number | null, stack: string | null }`. Origin-filtered at the
-     * parent shell; cross-origin iframe errors never reach here.
-     */
-    /**
      * Action, fires once per iframe when the chromeless bridge
      * script has finished wiring its message listeners. Payload:
      * `{ windowId: string }`. Subscribers get a reliable "safe to
@@ -116,9 +108,17 @@ var desktopMode = function(exports) {
      * `load` can be dropped on the floor. Use this instead when
      * timing matters (first-focus dispatch, auto-fill handshakes).
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     IFRAME_READY: "desktop-mode.iframe.ready",
+    /**
+     * Action, fires when a chromeless iframe's `error` or
+     * `unhandledrejection` handler catches an exception. Payload: `{
+     * windowId: string, kind: 'error' | 'unhandledrejection', message:
+     * string, filename: string | null, lineno: number | null, colno:
+     * number | null, stack: string | null }`. Origin-filtered at the
+     * parent shell; cross-origin iframe errors never reach here.
+     */
     IFRAME_ERROR: "desktop-mode.iframe.error",
     /**
      * Action, fires when a `fetch` or `XMLHttpRequest` inside a
@@ -222,7 +222,7 @@ var desktopMode = function(exports) {
      * defaults — runs every time a window opens, not just at
      * registration.
      *
-     * @since 0.25.0
+     * @since 0.8.6
      */
     WINDOW_GEOMETRY: "desktop-mode.window.geometry",
     /** Action, fires when a window is added to the stack. */
@@ -454,7 +454,7 @@ var desktopMode = function(exports) {
      * windows as the focus of a multi-step interaction without
      * having to observe DOM mutations.
      *
-     * @since 0.24.0
+     * @since 0.6.0
      */
     WINDOW_HIGHLIGHT_CHANGED: "desktop-mode.window.highlight-changed",
     /**
@@ -553,9 +553,11 @@ var desktopMode = function(exports) {
      */
     WINDOW_CHROME_RENDER: "desktop-mode.window.chrome.render",
     /**
-     * Action, fires after a window's chrome has been mounted /
-     * remounted. Payload: `{ windowId, chromeId }`. Subscribers can
-     * post-decorate the chrome (attach observers, anchor pickers).
+     * Action, fires after a window chrome layer has been mounted /
+     * remounted. Payload: `{ windowId, layer: 'chrome' | 'controls'
+     * | 'slots', chromeId? }` — `chromeId` is present only when
+     * `layer` is `'chrome'`. Subscribers can post-decorate the
+     * chrome (attach observers, anchor pickers).
      *
      * @since 0.6.0
      */
@@ -577,7 +579,7 @@ var desktopMode = function(exports) {
      * can use it to track click-throughs or augment behaviour (e.g.
      * play a sound, surface a confirmation toast).
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     DESKTOP_ICON_CLICKED: "desktop-mode.desktop-icon.clicked",
     /**
@@ -598,7 +600,7 @@ var desktopMode = function(exports) {
      * `tileElements` contract — reach into them directly instead of
      * re-`querySelector`ing the rendered DOM.
      *
-     * Notification badges have a first-class API since 0.24.0 —
+     * Notification badges have a first-class API since 0.6.0 —
      * use `wp.desktop.icons.setBadge( id, count )` (and subscribe
      * to {@link ICON_BADGE_CHANGED}) instead of decorating from
      * here. The framework persists badge state across rebuilds, so
@@ -611,8 +613,8 @@ var desktopMode = function(exports) {
      * is empty the hook does not fire at all — the previous
      * container is removed and no new one is appended.
      *
-     * @since 0.21.0
-     * @since 0.25.0 — `container` + `tiles` added to the payload
+     * @since 0.6.0
+     * @since 0.8.6 — `container` + `tiles` added to the payload
      *                  (`ids` retained for back-compat).
      */
     DESKTOP_ICONS_RENDERED: "desktop-mode.desktop-icons.rendered",
@@ -629,7 +631,7 @@ var desktopMode = function(exports) {
      * this hook fires only for icon-rail badges with the previous
      * count carried alongside for delta-aware consumers.
      *
-     * @since 0.24.0
+     * @since 0.6.0
      */
     ICON_BADGE_CHANGED: "desktop-mode.icon.badge-changed",
     // ------------------------------------------------------------------
@@ -659,7 +661,7 @@ var desktopMode = function(exports) {
      * to {@link DOCK_ITEM_APPENDED}; lets analytics / decorators /
      * cleanup hooks see the full lifecycle without polling the DOM.
      *
-     * @since 0.24.0
+     * @since 0.6.0
      */
     DOCK_ITEM_REMOVED: "desktop-mode.dock.item-removed",
     // ------------------------------------------------------------------
@@ -685,7 +687,7 @@ var desktopMode = function(exports) {
      * to invalidate cached per-render decoration state before the
      * tiles repopulate.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_BEFORE_RENDER: "desktop-mode.dock.before-render",
     /**
@@ -695,7 +697,7 @@ var desktopMode = function(exports) {
      * plugin can decorate every tile in one sweep. Symmetric to
      * {@link DOCK_BEFORE_RENDER}.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_AFTER_RENDER: "desktop-mode.dock.after-render",
     /**
@@ -704,7 +706,7 @@ var desktopMode = function(exports) {
      * Signature: `( classes: string[], detail: DockTileContext ) =>
      * string[]`. Order is preserved.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_TILE_CLASS: "desktop-mode.dock.tile-class",
     /**
@@ -719,7 +721,7 @@ var desktopMode = function(exports) {
      * descendant for active-state / badge updates to find the tile;
      * wrap, don't replace.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_TILE_ELEMENT: "desktop-mode.dock.tile-element",
     /**
@@ -728,7 +730,7 @@ var desktopMode = function(exports) {
      * for post-insertion decoration where computed layout matters
      * (measurements, IntersectionObserver bindings, etc.).
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_TILE_RENDERED: "desktop-mode.dock.tile-rendered",
     /**
@@ -737,7 +739,7 @@ var desktopMode = function(exports) {
      * Signature: `( label: string, detail: DockTileContext ) =>
      * string`. Return an empty string to suppress the tooltip.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     DOCK_TILE_TOOLTIP: "desktop-mode.dock.tile-tooltip",
     /**
@@ -927,7 +929,7 @@ var desktopMode = function(exports) {
      * Filter. Returns the id of the "primary" desktop — the one the
      * shell treats as canonical for batch operations. Receives the
      * default (first desktop's id) and the full `Desktop[]` list.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     PRIMARY_DESKTOP_ID: "desktop-mode.primary-desktop-id",
     // ------------------------------------------------------------------
@@ -937,7 +939,7 @@ var desktopMode = function(exports) {
      * Action, fires before {@link WindowManager.closeAll} starts
      * iterating. Payload `{ candidates: Window[] }` — every window the
      * shell is about to close (after `exceptIds` was applied).
-     * @since 0.14.0
+     * @since 0.5.0
      */
     WINDOWS_BEFORE_CLOSE_ALL: "desktop-mode.windows.before-close-all",
     /**
@@ -946,13 +948,13 @@ var desktopMode = function(exports) {
      * that will actually be closed. Plugins use this to PROTECT specific
      * windows from a bulk close — e.g. keep the active draft open.
      * Returning an empty array cancels the close entirely.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     WINDOWS_CLOSE_ALL: "desktop-mode.windows.close-all",
     /**
      * Action, fires after {@link WindowManager.closeAll} has finished.
      * Payload `{ closed: number, skipped: Window[] }`.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     WINDOWS_AFTER_CLOSE_ALL: "desktop-mode.windows.after-close-all",
     // ------------------------------------------------------------------
@@ -962,19 +964,19 @@ var desktopMode = function(exports) {
      * Filter. Runs immediately before a command's `run()` is invoked.
      * Receives `{ proceed: true, slug, args, command }` and may return
      * the same shape with `proceed: false` to cancel the run.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     COMMAND_BEFORE_RUN: "desktop-mode.command.before-run",
     /**
      * Action, fires after a command's `run()` resolves successfully.
      * Payload `{ slug, args, command, result }`.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     COMMAND_AFTER_RUN: "desktop-mode.command.after-run",
     /**
      * Action, fires when a command's `run()` throws. Payload
      * `{ slug, args, command, error }`.
-     * @since 0.14.0
+     * @since 0.5.0
      */
     COMMAND_ERROR: "desktop-mode.command.error",
     // ------------------------------------------------------------------
@@ -999,14 +1001,14 @@ var desktopMode = function(exports) {
      * completes its iframe handshake. Payload:
      * `{ connectionId, targetWindowId, topics }`.
      *
-     * @since 0.17.0
+     * @since 0.5.2
      */
     CONNECTION_OPENED: "desktop-mode.connection.opened",
     /**
      * Action — fires when a connection tears down. Payload:
      * `{ connectionId, reason: 'disconnect' | 'window-closed' | 'navigated' }`.
      *
-     * @since 0.17.0
+     * @since 0.5.2
      */
     CONNECTION_CLOSED: "desktop-mode.connection.closed",
     /**
@@ -1016,7 +1018,7 @@ var desktopMode = function(exports) {
      * fire this many times per second, so subscribers should be
      * cheap.
      *
-     * @since 0.17.0
+     * @since 0.5.2
      */
     CONNECTION_MESSAGE: "desktop-mode.connection.message",
     /**
@@ -1026,7 +1028,7 @@ var desktopMode = function(exports) {
      * `{ topics: string[] }` to accept while narrowing the topic
      * list. `$context` carries `{ windowId, requestId, topics }`.
      *
-     * @since 0.18.0
+     * @since 0.5.2
      */
     IFRAME_CONNECTION_REQUEST: "desktop-mode.iframe.connection-request",
     // ------------------------------------------------------------------
@@ -3216,7 +3218,7 @@ var desktopMode = function(exports) {
      * different convention (e.g. a pinned "Inbox" desktop) can override
      * without having to fork the manager.
      *
-     * @since 0.14.0
+     * @since 0.5.0
      */
     getPrimaryDesktopId() {
       const all2 = this.getDesktops();
@@ -3253,7 +3255,7 @@ var desktopMode = function(exports) {
      *   4. `desktop-mode.windows.after-close-all` — action. Detail:
      *      `{ closed: number, skipped: Window[] }`.
      *
-     * @since 0.14.0
+     * @since 0.5.0
      *
      * @param options           Close options.
      * @param options.exceptIds Window ids to skip even before the filter runs.
@@ -3303,7 +3305,7 @@ var desktopMode = function(exports) {
      * rolling the loop themselves.
      *
      * @public
-     * @since 0.18.0
+     * @since 0.6.0
      */
     minimizeAll() {
       const minimized = [];
@@ -3337,7 +3339,7 @@ var desktopMode = function(exports) {
      * selectively.
      *
      * @public
-     * @since 0.18.0
+     * @since 0.6.0
      */
     restoreFrom(windows) {
       if (!Array.isArray(windows)) {
@@ -3374,7 +3376,7 @@ var desktopMode = function(exports) {
      * Mirrors the wallpaper-click gesture exactly, in one call.
      *
      * @public
-     * @since 0.18.0
+     * @since 0.6.0
      */
     toggleShowDesktop() {
       const all2 = this._stack.slice();
@@ -4618,7 +4620,7 @@ var desktopMode = function(exports) {
       apiKeys: {},
       transport: "off"
     },
-    // Opt-IN Beta as of 0.10.0. Fresh installs land on the classic
+    // Opt-IN Beta as of 0.9.1. Fresh installs land on the classic
     // chromeless `edit.php` iframe; a user opts in via OS Settings →
     // Features → Beta features to get the native Posts window. The
     // native windows used to default ON (opt-out, 0.8.0) but are now
@@ -6045,7 +6047,7 @@ var desktopMode = function(exports) {
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -7013,7 +7015,7 @@ var desktopMode = function(exports) {
      *
      * Idempotent: applying the same count is a no-op (no DOM mutation).
      *
-     * @since 0.22.0
+     * @since 0.6.0
      *
      * @param itemId Tile id (menu slug for admin pages, system id
      *               for `appendSystemItem` / `registerSystemTile`).
@@ -7043,7 +7045,7 @@ var desktopMode = function(exports) {
     /**
      * Clear the badge on a tile. Equivalent to `setBadge( id, 0 )`.
      *
-     * @since 0.22.0
+     * @since 0.6.0
      */
     clearBadge(itemId) {
       this.setBadge(itemId, 0);
@@ -7061,7 +7063,7 @@ var desktopMode = function(exports) {
      * same duration so the affordance still works. `durationMs` of
      * `0` keeps the attention until the next call clears it.
      *
-     * @since 0.22.0
+     * @since 0.6.0
      *
      * @param itemId Tile id.
      * @param mode   Animation mode or `null` to clear.
@@ -7391,7 +7393,7 @@ var desktopMode = function(exports) {
      *    and the layout-dispatcher subscriber re-applies. Cancellation
      *    (Escape, pointercancel) reverts to the original order.
      *
-     * @since 0.25.0
+     * @since 0.8.2
      */
     attachDragReorder(tile2, itemId) {
       const THRESHOLD = 5;
@@ -8890,6 +8892,7 @@ var desktopMode = function(exports) {
           id: entry.id,
           error: err
         });
+        return;
       }
       loadedScripts.add(entry.scriptUrl);
     };
@@ -10456,7 +10459,7 @@ var desktopMode = function(exports) {
     title: "Notice",
     summary: "Full-width banner placed inside a window (typically the after-titlebar slot). Tone-coded background + accent stripe, optional close button, optional dashicons leading glyph. Slotted content is HTML — links and basic formatting are supported.",
     status: "experimental",
-    since: "0.22.0",
+    since: "0.8.6",
     props: [
       {
         name: "tone",
@@ -12930,7 +12933,7 @@ var desktopMode = function(exports) {
      * back in one paint.
      *
      * @since 0.7.0 (private)
-     * @since 0.25.0 (public)
+     * @since 0.8.6 (public)
      */
     redock(id) {
       const record = this.mounted.get(id);
@@ -13170,6 +13173,13 @@ var desktopMode = function(exports) {
     }
     return unsubscribe;
   }
+  function readGlobalRegistry() {
+    const g = window;
+    return {
+      ...g.wpDesktopNativeWindows || {},
+      ...g.desktopModeNativeWindows || {}
+    };
+  }
   function createNativeWindowSync(deps2) {
     const { manager, appendSystemTile, removeSystemTile } = deps2;
     const registered = /* @__PURE__ */ new Set();
@@ -13258,8 +13268,7 @@ var desktopMode = function(exports) {
       loadedScripts.add(entry.scriptUrl);
     };
     const openFromEntry = (entry) => {
-      const globalRegistry = window.desktopModeNativeWindows || {};
-      const render2 = globalRegistry[entry.id];
+      const render2 = readGlobalRegistry()[entry.id];
       const finalRender = (body, ctx) => {
         body.appendChild(cloneTemplate(entry.templateId));
         return render2?.(body, ctx);
@@ -13282,8 +13291,7 @@ var desktopMode = function(exports) {
       });
     };
     const openNewFromEntry = (entry) => {
-      const globalRegistry = window.desktopModeNativeWindows || {};
-      const render2 = globalRegistry[entry.id];
+      const render2 = readGlobalRegistry()[entry.id];
       const finalRender = (body, ctx) => {
         body.appendChild(cloneTemplate(entry.templateId));
         return render2?.(body, ctx);
@@ -13958,11 +13966,11 @@ var desktopMode = function(exports) {
       orientation,
       windowManager: deps2.windowManager,
       adminUrl: deps2.adminUrl,
-      // `openItem` / `openSubmenuPick` / `openSystemItem` /
-      // `requestSubmenu` are routing callbacks for custom
-      // renderers. They mirror exactly what the default renderer
-      // (`Dock.openPage` / `Dock.openSubmenuPick`) does internally
-      // — same `deriveWindowId(url, adminUrl)` call, same window-
+      // `openItem` / `openSubmenuPick` / `openSystemItem` are
+      // routing callbacks for custom renderers. They mirror
+      // exactly what the default renderer (`Dock.openPage` /
+      // `Dock.openSubmenuPick`) does internally — same
+      // `deriveWindowId(url, adminUrl)` call, same window-
       // config shape — so a custom renderer addresses the same
       // window with the same id at runtime. Switching renderer
       // mid-session doesn't lose the user's open windows.
@@ -15444,6 +15452,9 @@ var desktopMode = function(exports) {
     const perm = Notification.permission;
     if (perm === "granted") {
       dismissNative = renderNative(intent);
+      if (!dismissNative) {
+        fallback();
+      }
       return dismiss;
     }
     if (perm === "denied") {
@@ -15457,6 +15468,9 @@ var desktopMode = function(exports) {
       if (result === "granted") {
         updatePwaState({ notificationsEnabled: true });
         dismissNative = renderNative(intent);
+        if (!dismissNative) {
+          fallback();
+        }
         return;
       }
       fallback();
@@ -15476,7 +15490,7 @@ var desktopMode = function(exports) {
       if (typeof console !== "undefined") {
         console.warn("[desktop-mode] Notification ctor threw:", err);
       }
-      return () => void 0;
+      return null;
     }
     if (intent.onClick) {
       const handler = intent.onClick;
@@ -16005,7 +16019,7 @@ var desktopMode = function(exports) {
      * `requestAnimationFrame` and call back into a click-driven API.
      *
      * @public
-     * @since 0.18.x
+     * @since 0.8.5
      */
     recentlyEndedDrag(withinMs = 500) {
       if (this._lastLiftedEndAt === 0) {
@@ -18594,8 +18608,12 @@ var desktopMode = function(exports) {
   const RESERVED_NAMESPACE_KEYS = /* @__PURE__ */ new Set([
     "windowManager",
     "dock",
+    "sideDock",
     "taskbar",
+    "desktopLayout",
     "icons",
+    "files",
+    "confirm",
     "saveSession",
     "hooks",
     "HOOKS",
@@ -18607,8 +18625,12 @@ var desktopMode = function(exports) {
     "registerSystemTile",
     "registerWindow",
     "openWindow",
+    "openNewWindow",
     "cloneTemplate",
     "onWindow",
+    "createInfiniteList",
+    "startOAuth",
+    "repaintLoadingOverlays",
     "loadVendorScript",
     "getWallpaperSurfaces",
     "registerModule",
@@ -18677,6 +18699,7 @@ var desktopMode = function(exports) {
     "listWindowChromes",
     "applyWindowChrome",
     "connect",
+    "getConnection",
     "broadcast",
     "subscribe",
     "registerPalette",
@@ -19686,7 +19709,7 @@ var desktopMode = function(exports) {
     title: "Ribbon",
     summary: "45° corner ribbon. Wraps the top-end (default), top-start, bottom-end, or bottom-start corner of its positioned parent. The host owns clipping + rotation; consumers only set position-relative on the parent and drop a label inside.",
     status: "experimental",
-    since: "0.20.0",
+    since: "0.8.6",
     props: [
       {
         name: "placement",
@@ -19975,7 +19998,7 @@ var desktopMode = function(exports) {
     title: "Tile",
     summary: "Canonical file/entity tile. Used across the wallpaper, folder windows, every My WordPress section, and plugin surfaces. Renders the standard `.desktop-mode-file-tile` chrome + optional status ribbon and wires the shared drag-out helper.",
     status: "experimental",
-    since: "0.21.0",
+    since: "0.8.6",
     props: [
       { name: "type", type: "string" },
       { name: "ref", type: "string" },
@@ -22794,6 +22817,21 @@ var desktopMode = function(exports) {
     const url = cfg?.adminUrl ?? "/wp-admin/";
     return url.endsWith("/") ? url : `${url}/`;
   }
+  function sanitizedWebUrl(file) {
+    const url = typeof file.shape.url === "string" ? file.shape.url : "";
+    if (!url) {
+      return "";
+    }
+    try {
+      const parsed = new URL(url, window.location.href);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return "";
+      }
+    } catch {
+      return "";
+    }
+    return url;
+  }
   function registerBuiltInFileOpeners() {
     registerOpener({
       id: "wp-post-editor",
@@ -23109,7 +23147,7 @@ var desktopMode = function(exports) {
       handler: {
         kind: "js",
         open: (file) => {
-          const url = file.ref();
+          const url = sanitizedWebUrl(file);
           if (!url) {
             return;
           }
@@ -23126,7 +23164,7 @@ var desktopMode = function(exports) {
       handler: {
         kind: "js",
         open: (file) => {
-          const url = file.ref();
+          const url = sanitizedWebUrl(file);
           if (!url) {
             return;
           }
@@ -23440,7 +23478,7 @@ var desktopMode = function(exports) {
     title: "Modal overlay",
     summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.8.5",
     props: [
       { name: "open", type: "boolean attribute", description: "Mounts the dialog visible." },
       { name: "title", type: "string", description: "Heading shown at the top of the dialog." },
@@ -23682,7 +23720,7 @@ var desktopMode = function(exports) {
     title: "User autocomplete",
     summary: "Debounced autocomplete over /desktop-mode/v1/files/users/search. Emits wpd-user-pick { user } when a row is chosen. Dropdown anchors as position: fixed so it escapes overflow:auto ancestors.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.8.5",
     props: [
       { name: "placeholder", type: "string", description: "Input placeholder text." },
       {
@@ -23757,7 +23795,7 @@ var desktopMode = function(exports) {
     title: "Role picker",
     summary: "Chip multi-select for WordPress roles. Reads eligible roles from desktopModeConfig.shareEligibleRoles; emits wpd-role-toggle { slug, selected } on every change.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.8.5",
     props: [
       {
         name: "selected",
@@ -23852,7 +23890,7 @@ var desktopMode = function(exports) {
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list2) {
       const existing = this.querySelectorAll(":scope > wpd-segment");
@@ -25027,7 +25065,7 @@ var desktopMode = function(exports) {
   _WpdSaveStatus.styles = [styles$2];
   _WpdSaveStatus.help = {
     title: "Save status",
-    summary: 'Tiny status indicator for "is this change saved yet?" affordances. Three layouts (dot / icon / pill), four phases, optional auto-listen to a save-lifecycle CustomEvent so every input in the panel inherits feedback for free.',
+    summary: 'Tiny status indicator for "is this change saved yet?" affordances. Three layouts (dot / icon / pill), five phases, optional auto-listen to a save-lifecycle CustomEvent so every input in the panel inherits feedback for free.',
     status: "experimental",
     since: "0.8.0",
     props: [
@@ -25306,7 +25344,7 @@ var desktopMode = function(exports) {
     title: "Textarea",
     summary: "Multi-line text input. Same event shape as wpd-text-field. Optional auto-grow up to max-rows; optional submit-on-enter (Enter sends, Shift+Enter newlines).",
     status: "stable",
-    since: "0.22.0",
+    since: "0.6.0",
     props: [
       { name: "label", type: "string", description: "Visible label above the textarea." },
       { name: "value", type: "string", description: "Current value; reflected two-way." },
@@ -26709,6 +26747,7 @@ ${content}`;
           id: entry.id,
           error: err
         });
+        return;
       }
       loadedScripts.add(entry.scriptUrl);
     };
@@ -26836,6 +26875,8 @@ ${content}`;
     "wpd-key",
     "wpd-code",
     "wpd-badge",
+    "wpd-ribbon",
+    "wpd-tile",
     "wpd-log",
     "wpd-steps",
     "wpd-step",
@@ -26851,7 +26892,9 @@ ${content}`;
     "wpd-category-picker",
     "wpd-crumb-chain",
     "wpd-card",
-    "wpd-notice"
+    "wpd-rating-summary",
+    "wpd-notice",
+    "wpd-progress-bar"
   ];
   const KNOWN = new Set(WPD_COMPONENT_TAGS);
   const WARN_GRACE_MS = 2e3;
@@ -27164,7 +27207,11 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     };
     reprobeTile();
     document.addEventListener("desktop-mode-files-changed", reprobeTile);
-    document.addEventListener("desktop-mode-desktop-icons-rendered", reprobeTile);
+    addAction(
+      HOOKS.DESKTOP_ICONS_RENDERED,
+      "desktop-mode/files/recycle-bin-icons-target",
+      reprobeTile
+    );
     addAction(
       HOOKS.DOCK_AFTER_RENDER,
       "desktop-mode/files/recycle-bin-dock-target",
@@ -30032,7 +30079,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     title: "Text field",
     summary: "Labelled text input primitive. Two-way reflects `value`, emits wpd-input-change per keystroke, wpd-input-commit on blur/change, and wpd-submit on Enter. Optional password reveal toggle.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       { name: "label", type: "string", description: "Visible label above the input." },
       { name: "value", type: "string", description: "Current input value; reflected two-way." },

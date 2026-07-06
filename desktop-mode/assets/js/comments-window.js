@@ -578,7 +578,7 @@
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -2059,7 +2059,7 @@
     title: "Table",
     summary: "Data-driven table. Assign `columns` + `data` and you get a styled table with optional per-column filters, click-to-sort, multi-row selection, sticky columns/header, sub-tables, custom cell renderers, loading skeleton, and a slottable empty state.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.6.0",
     props: [
       {
         name: "sticky-columns",
@@ -2414,7 +2414,7 @@
     title: "Avatar",
     summary: "Image-or-initials user tile with an optional presence dot. Falls back to a deterministic-hue letter tile when src is empty. Set user-id to auto-subscribe the dot to desktop-mode-presence-changed.",
     status: "stable",
-    since: "0.22.0",
+    since: "0.6.0",
     props: [
       { name: "src", type: "string", description: "Image URL. Falls back to initials when empty or load fails." },
       { name: "alt", type: "string", description: "Alt text for the image. Defaults to `name` when omitted." },
@@ -2433,12 +2433,17 @@
         name: "user-id",
         type: "number",
         description: "When set AND presence is unset, auto-subscribes to desktop-mode-presence-changed and updates the dot."
+      },
+      {
+        name: "clickable",
+        type: "boolean attribute",
+        description: "Renders the tile as a focusable button that emits wpd-avatar-click. Omit for a decorative tile that lets clicks pass through to the surrounding row."
       }
     ],
     events: [
       {
         name: "wpd-avatar-click",
-        description: "Fires on click of the tile. Detail carries userId when set.",
+        description: "Fires on click when the `clickable` attribute is set. Detail carries userId when set.",
         detail: "{ userId: number | null }"
       }
     ],
@@ -2707,7 +2712,7 @@
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list) {
       replaceChildren(this, "wpd-tab", list);
@@ -2795,7 +2800,7 @@
     // move them), so `panel.querySelector(...)` from plugin render
     // callbacks keeps working.
     //
-    // Earlier 0.11.0 builds of this component used light DOM with
+    // Earlier 0.5.0 builds of this component used light DOM with
     // a `<slot>` render, which wiped the panel's server-rendered
     // template content on first mount — every `render()` writes
     // into `_renderRoot`, and with light DOM that's the panel
@@ -2821,7 +2826,7 @@
     title: "Tab panel",
     summary: 'Auto-managed panel paired with a sibling <wpd-tabs>. Declares which tab it belongs to via `for="<tab-value>"`; the parent strip toggles `hidden` whenever the active tab changes. role="tabpanel" and tabindex="0" are set automatically.',
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "for",
@@ -3284,10 +3289,10 @@
   function getApi() {
     return window.wp?.desktop;
   }
-  function showToast(message, duration = 4e3, actions) {
+  function showToast(message, duration = 4e3, action) {
     const api = getApi();
     if (api?.showToast) {
-      api.showToast({ message, duration, actions });
+      api.showToast({ message, duration, action });
       return;
     }
     console.info("[comments-window]", message);
@@ -4400,14 +4405,12 @@
         showToast(
           actionPastTense(action, result.processed.length),
           8e3,
-          [
-            {
-              label: __("Undo"),
-              onClick: () => {
-                void undoLast(cfg, refresh, state.tab);
-              }
+          {
+            label: __("Undo"),
+            onClick: () => {
+              void undoLast(cfg, refresh, state.tab);
             }
-          ]
+          }
         );
       } else {
         showToast(actionPastTense(action, result.processed.length));

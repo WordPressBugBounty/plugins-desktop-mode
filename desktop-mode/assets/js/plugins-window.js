@@ -511,7 +511,7 @@
      * Getter returns the current `classList` as a plain array for
      * symmetric read/write.
      *
-     * @since 0.13.0
+     * @since 0.5.0
      */
     get classNames() {
       return Array.from(this.classList);
@@ -2040,7 +2040,7 @@
     title: "Table",
     summary: "Data-driven table. Assign `columns` + `data` and you get a styled table with optional per-column filters, click-to-sort, multi-row selection, sticky columns/header, sub-tables, custom cell renderers, loading skeleton, and a slottable empty state.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.6.0",
     props: [
       {
         name: "sticky-columns",
@@ -2523,7 +2523,7 @@
   _WpdFlyout.styles = [flyoutStyles];
   _WpdFlyout.help = {
     title: "Flyout",
-    summary: "Window-scoped sliding card. Lives `position: absolute` inside a window body, slides in from the configured edge with margins on every side, captures the click target as the trigger for restore-on-close, traps focus while open, and dismisses on Escape / pointerdown-outside / `[data-flyout-close]` click / imperative `open`-removal — all firing one `wpd-flyout-dismiss` event with a `reason` discriminator.",
+    summary: "Window-scoped sliding card. Lives `position: absolute` inside a window body, slides in from the configured edge with margins on every side, captures the previously-focused element as the trigger for restore-on-close, traps focus while open, and dismisses on Escape / pointerdown-outside / `[data-flyout-close]` click / imperative `open`-removal — all firing one `wpd-flyout-dismiss` event with a `reason` discriminator.",
     status: "experimental",
     since: "0.8.2",
     props: [
@@ -3553,7 +3553,7 @@
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list) {
       replaceChildren(this, "wpd-tab", list);
@@ -3641,7 +3641,7 @@
     // move them), so `panel.querySelector(...)` from plugin render
     // callbacks keeps working.
     //
-    // Earlier 0.11.0 builds of this component used light DOM with
+    // Earlier 0.5.0 builds of this component used light DOM with
     // a `<slot>` render, which wiped the panel's server-rendered
     // template content on first mount — every `render()` writes
     // into `_renderRoot`, and with light DOM that's the panel
@@ -3667,7 +3667,7 @@
     title: "Tab panel",
     summary: 'Auto-managed panel paired with a sibling <wpd-tabs>. Declares which tab it belongs to via `for="<tab-value>"`; the parent strip toggles `hidden` whenever the active tab changes. role="tabpanel" and tabindex="0" are set automatically.',
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       {
         name: "for",
@@ -4037,6 +4037,10 @@
       if (shot.caption) {
         const cap = document.createElement("figcaption");
         cap.innerHTML = sanitizeHtml$1(shot.caption);
+        cap.querySelectorAll("a").forEach((a) => {
+          a.setAttribute("target", "_blank");
+          a.setAttribute("rel", "noopener nofollow");
+        });
         fig.appendChild(cap);
       }
       wrap.appendChild(fig);
@@ -4329,6 +4333,14 @@
     b.textContent = label;
     return b;
   }
+  function isSafeUrl(raw) {
+    const cleaned = Array.from(raw).filter((ch) => ch.charCodeAt(0) > 32).join("").toLowerCase();
+    const scheme = cleaned.match(/^([a-z][a-z0-9+.-]*):/);
+    if (!scheme) {
+      return true;
+    }
+    return ["http", "https", "mailto", "tel"].includes(scheme[1]);
+  }
   function sanitizeHtml$1(html2) {
     const allowed = /* @__PURE__ */ new Set([
       "A",
@@ -4408,13 +4420,13 @@
         }
         if (current.tagName === "A") {
           const href = current.getAttribute("href") ?? "";
-          if (href.startsWith("javascript:")) {
+          if (href && !isSafeUrl(href)) {
             current.removeAttribute("href");
           }
         }
         if (current.tagName === "IMG") {
           const src = current.getAttribute("src") ?? "";
-          if (src.startsWith("javascript:")) {
+          if (src && !isSafeUrl(src)) {
             current.removeAttribute("src");
           }
         }
@@ -5067,7 +5079,7 @@
      * ];
      * ```
      *
-     * @since 0.11.0
+     * @since 0.5.0
      */
     set items(list) {
       const existing = this.querySelectorAll(":scope > wpd-segment");
@@ -5283,7 +5295,7 @@
     title: "Text field",
     summary: "Labelled text input primitive. Two-way reflects `value`, emits wpd-input-change per keystroke, wpd-input-commit on blur/change, and wpd-submit on Enter. Optional password reveal toggle.",
     status: "stable",
-    since: "0.11.0",
+    since: "0.5.0",
     props: [
       { name: "label", type: "string", description: "Visible label above the input." },
       { name: "value", type: "string", description: "Current input value; reflected two-way." },
@@ -5886,7 +5898,7 @@
     title: "Ribbon",
     summary: "45° corner ribbon. Wraps the top-end (default), top-start, bottom-end, or bottom-start corner of its positioned parent. The host owns clipping + rotation; consumers only set position-relative on the parent and drop a label inside.",
     status: "experimental",
-    since: "0.20.0",
+    since: "0.8.6",
     props: [
       {
         name: "placement",
@@ -6491,7 +6503,7 @@
     title: "Cluster",
     summary: "Horizontal flex layout with a gap + wrap. The sibling of <wpd-stack> — use it for rows of controls (button groups, toolbars). Children wrap gracefully when the container narrows.",
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "gap",
@@ -6554,7 +6566,7 @@
     title: "Stack",
     summary: 'Vertical flex layout with a gap — the "stack" primitive every design system eventually invents. Use it instead of hand-rolling display:flex; flex-direction:column.',
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "gap",
@@ -6630,7 +6642,7 @@
     title: "Grid",
     summary: 'Neutral CSS grid container. The 2-D twin of <wpd-stack>/<wpd-cluster>. No role is emitted — callers wrap in role="grid"/"radiogroup" if warranted.',
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "columns",
@@ -6897,7 +6909,7 @@
     title: "Spinner",
     summary: "Animated WordPress-mark loading indicator with four curated presets and full per-attribute overrides. CSS variables drive disc + accent colors and size; reduced-motion preferences are respected.",
     status: "experimental",
-    since: "0.18.0",
+    since: "0.6.0",
     props: [
       {
         name: "preset",
@@ -7084,7 +7096,7 @@
     title: "Icon",
     summary: 'Dashicon wrapper that inherits theme colour + sizing from its context. Accepts either the dashicon suffix ("calculator") or the full class ("dashicons-calculator"). Marked aria-hidden; wrap in a button/link with its own label for accessible use.',
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "name",
@@ -7138,7 +7150,7 @@
     title: "Empty state",
     summary: 'Centered placeholder for "nothing here yet" UI: icon + heading + description + optional CTA. A canonical shape so empty states look consistent across the shell.',
     status: "stable",
-    since: "0.10.0",
+    since: "0.5.0",
     props: [
       {
         name: "icon",
@@ -7247,7 +7259,7 @@
     title: "Rating summary",
     summary: "Two-pane rating distribution: big average + 5-star cluster + total count on the left, one animated bar per star bucket on the right. Mirrors the WordPress.org plugin reviews summary.",
     status: "experimental",
-    since: "0.21.0",
+    since: "0.8.5",
     props: [
       {
         name: "rating",
