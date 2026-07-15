@@ -16,7 +16,10 @@
       return impl(format, ...args);
     }
     let i = 0;
-    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+    return format.replace(/%(?:(\d+)\$)?[sd]/g, (_match, pos) => {
+      const idx = pos ? Number.parseInt(pos, 10) - 1 : i++;
+      return String(args[idx] ?? "");
+    });
   }
   function getWpHooks() {
     const hooks = window.wp?.hooks;
@@ -1912,6 +1915,13 @@
         dismiss();
       });
     }
+    if (intent.dismissible) {
+      toast.setAttribute("dismissible", "");
+      toast.addEventListener("wpd-toast-dismiss", () => {
+        intent.onDismiss?.();
+        dismiss();
+      });
+    }
     container.appendChild(toast);
     let dismissed = false;
     let dismissTimer = null;
@@ -1932,10 +1942,12 @@
     requestAnimationFrame(() => {
       toast.setAttribute("state", "in");
     });
-    dismissTimer = window.setTimeout(
-      dismiss,
-      intent.duration ?? DEFAULT_DURATION_MS
-    );
+    if (!intent.persistent) {
+      dismissTimer = window.setTimeout(
+        dismiss,
+        intent.duration ?? DEFAULT_DURATION_MS
+      );
+    }
     activity.publish("desktop-mode/toast-shown", { ...intent });
     return dismiss;
   }
@@ -3705,7 +3717,7 @@
     });
     host.appendChild(nav);
   }
-  const styles$1 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles$1 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
@@ -3757,6 +3769,10 @@
     parts: [{ name: "button", description: "Underlying <button> element." }],
     cssProps: [
       { name: "--wpd-button-bg", description: "Background color." },
+      {
+        name: "--wpd-button-bg-hover",
+        description: "Hover wash (ghost + secondary variants)."
+      },
       { name: "--wpd-button-fg", description: "Text color." },
       { name: "--wpd-button-border", description: "Border shorthand." },
       { name: "--wpd-button-border-radius", default: "6px" },

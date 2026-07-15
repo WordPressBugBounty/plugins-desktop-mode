@@ -92,6 +92,22 @@ var desktopMode = function(exports) {
     WALLPAPER_MOUNT_FAILED: "desktop-mode.wallpaper.mount-failed",
     /** Action mirroring document.visibilitychange for active canvas wallpapers. */
     WALLPAPER_VISIBILITY: "desktop-mode.wallpaper.visibility",
+    /**
+     * Filter, receives a wallpaper's preview params (seeded from the
+     * def's `previewParams`) before its `renderPreview` runs in the OS
+     * Settings picker. Args: `( params, wallpaperId )`.
+     */
+    WALLPAPER_PREVIEW_PARAMS: "desktop-mode.wallpaper.preview-params",
+    /**
+     * Action, fires after a wallpaper's persisted settings change (the
+     * user edited them through the wallpaper's config dialog in OS
+     * Settings). Payload: `{ id, settings }` — the wallpaper id and the
+     * full post-merge settings object. A mounted wallpaper subscribes to
+     * live-apply changes without a remount.
+     *
+     * @since 0.9.5
+     */
+    WALLPAPER_SETTINGS_CHANGED: "desktop-mode.wallpaper.settings-changed",
     // ------------------------------------------------------------------
     // Observability — iframe errors, iframe network, shell-side errors,
     // monitor entry aggregation. Designed for dashboard / debug widget
@@ -400,6 +416,32 @@ var desktopMode = function(exports) {
      * @since 0.8.6
      */
     WINDOW_AUTO_EXIT_FULLSCREEN: "desktop-mode.window.auto-exit-fullscreen",
+    /**
+     * Filter, decides whether the window under the cursor is raised
+     * (focused) after a short hover dwell during a drag — any drag,
+     * whatever its source: a shell DragManager session, a
+     * cross-iframe bridge drag, an OS file, or an arbitrary native
+     * HTML5 drag.
+     *
+     * Default is `true`: dragging a payload over a background window
+     * and resting there for ~250 ms brings it forward, so the user
+     * can see the drop target they're aiming at (macOS spring-loading
+     * style). Plugins whose windows must never steal z-order during a
+     * drag — pinned reference panels, HUD/palette windows — can
+     * return `false` for their window id.
+     *
+     * Signature:
+     *
+     *     ( shouldFocus: boolean, ctx: {
+     *         windowId: string,     // the hovered window
+     *         payloadType: string,  // DragManager payload `type`,
+     *                               // bridge payload `kind`,
+     *                               // 'os-file', or 'external'
+     *     } ) => boolean
+     *
+     * @since 0.9.4
+     */
+    WINDOW_FOCUS_ON_DRAG_HOVER: "desktop-mode.window.focus-on-drag-hover",
     /**
      * Action, fires at most once per animation frame during an
      * active drag or resize with the live geometry. Payload: `{
@@ -1032,6 +1074,87 @@ var desktopMode = function(exports) {
      */
     IFRAME_CONNECTION_REQUEST: "desktop-mode.iframe.connection-request",
     // ------------------------------------------------------------------
+    // Window content relations & link renderers (since 0.9.4). A window
+    // may carry a content identity ("I am comment 45 of post 123");
+    // windows resolving to the same root form a relation group, and a
+    // pluggable renderer draws the ties on the desktop. Engine:
+    // `src/window-links/engine.ts`; registry:
+    // `src/window-links/renderer-registry.ts`. See
+    // `docs/examples/window-links.md`.
+    // ------------------------------------------------------------------
+    /**
+     * Action — fires when a window's content identity is set, replaced,
+     * or cleared. Payload: `{ windowId: string, content:
+     * WindowContentRef | null, previous: WindowContentRef | null,
+     * source: 'config' | 'bridge' | 'api' }`. The matching
+     * `desktop-mode-window-content-changed` CustomEvent dispatches on
+     * `document` with the same payload.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_CONTENT_CHANGED: "desktop-mode.window-links.content-changed",
+    /**
+     * Action — fires when relation-group MEMBERSHIP changes (a window
+     * gained/lost an identity, or a member window opened/closed).
+     * Payload: `{ groups: WindowLinkGroup[] }`. Deliberately NOT fired
+     * on move/resize (renderers get live geometry through their frame
+     * subscription) nor on focus-recency reordering. The matching
+     * `desktop-mode-window-link-groups-changed` CustomEvent dispatches
+     * on `document` with the same payload.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_GROUPS_CHANGED: "desktop-mode.window-links.groups-changed",
+    /**
+     * Filter — applied to every content identity as it is set, before
+     * storage. Signature: `( ref: WindowContentRef | null, ctx: {
+     * windowId: string, source: 'config' | 'bridge' | 'api' } ) =>
+     * WindowContentRef | null`. Return `null` to suppress the identity,
+     * or a rewritten ref to remap it (e.g. point a custom object type
+     * at your own root scheme).
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINKS_CONTENT: "desktop-mode.window-links.content",
+    /**
+     * Filter — applied to the computed relation-group list on every
+     * read (`wp.desktop.relations.groups()`). Signature:
+     * `( groups: WindowLinkGroup[] ) => WindowLinkGroup[]`. Merge,
+     * split, or inject groups here.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_GROUPS: "desktop-mode.window-links.groups",
+    /**
+     * Filter — applied to the derived directed-edge list on every read
+     * (`wp.desktop.relations.edges()`). Signature: `( edges:
+     * WindowLinkEdge[] ) => WindowLinkEdge[]` where each edge is
+     * `{ fromWindowId, toWindowId, kind: 'child-root' | 'reference',
+     * bidirectional }`. Add, drop, or redirect ties here — this is
+     * what the render host feeds to the active renderer.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_EDGES: "desktop-mode.window-links.edges",
+    /**
+     * Filter — applied to the registered window-link renderer list on
+     * every read (`wp.desktop.listWindowLinkRenderers()`). Signature:
+     * `( defs: WindowLinkRendererDef[] ) => WindowLinkRendererDef[]`.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_RENDERERS: "desktop-mode.window-links.renderers",
+    /**
+     * Filter — applied to the resolved ACTIVE renderer id after the OS
+     * Settings selection is read, before the registry lookup.
+     * Signature: `( id: string ) => string`. Return a different
+     * registered id (or `'none'`) to force-swap the renderer without
+     * touching the user's setting.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_RENDERER: "desktop-mode.window-links.renderer",
+    // ------------------------------------------------------------------
     // OS-file drop manager (since 0.30.0). Catches files dragged from
     // the user's host OS (Finder / Explorer / Nautilus) onto any
     // desktop-mode surface and routes them through a confirmation
@@ -1068,6 +1191,156 @@ var desktopMode = function(exports) {
   }
   function isReady() {
     return didAction(HOOKS.INIT) > 0;
+  }
+  const IDENTITY_PARAMS = [
+    "post_type",
+    "page",
+    "taxonomy",
+    // WooCommerce (and other React-app-style plugins) register
+    // SEPARATE top-level admin menus that all share `?page=wc-admin`
+    // and only differ by `path` (e.g. `path=/analytics/overview`,
+    // `path=/marketing`). Without `path` in the identity set, every
+    // such menu collapses to the same window id — opening any one of
+    // them lights up the dock indicator for ALL of them. WC's
+    // /admin/path query is the most prominent example today; future
+    // plugins that route inside `admin.php?page=` via a custom param
+    // can either piggyback on `path` or grow this list.
+    "path",
+    // The post ID on `post.php?post=X&action=edit`. Without this, every
+    // individual post edit URL collapses to `post-php`, so clicking a
+    // second row in the Posts window just refocuses the first post's
+    // window instead of opening the new one.
+    "post",
+    // The comment ID on `comment.php?action=editcomment&c=X` — the exact
+    // analogue of `post` above. Without it every comment-edit URL
+    // collapses to `comment-php`, so opening a second comment replaces
+    // the first comment's window instead of opening its own (and the
+    // window-links ties can only ever point at one comment at a time).
+    "c",
+    // Site-editor entity path: `site-editor.php?p=/wp_template_part/
+    // twentytwentyfive//footer-columns`. Each template / template
+    // part / pattern / navigation entity is a distinct "page" from
+    // the user's perspective — picking "Header" after "Footer column"
+    // should open a new window, not refocus the existing footer one.
+    // Without `p` in identity, every site-editor URL collapses to
+    // `site-editor-php` and the second pick is a no-op.
+    "p"
+  ];
+  function slugify$1(path) {
+    return path.replace(/\.php/g, "-php").replace(/[?&=]/g, "-").replace(/[^a-zA-Z0-9_-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "index";
+  }
+  function deriveWindowId(url, adminUrl) {
+    let parsed = null;
+    try {
+      parsed = new URL(url, adminUrl);
+    } catch (err) {
+      parsed = null;
+    }
+    if (parsed) {
+      const basePath = new URL(adminUrl).pathname;
+      const filename = parsed.pathname.replace(basePath, "").replace(/^\/+/, "");
+      const significant = new URLSearchParams();
+      for (const key of IDENTITY_PARAMS) {
+        const value = parsed.searchParams.get(key);
+        if (value) {
+          significant.set(key, value);
+        }
+      }
+      const query = significant.toString();
+      return slugify$1(query ? `${filename}?${query}` : filename);
+    }
+    let path = url.replace(adminUrl, "");
+    if (path.startsWith("/")) {
+      path = path.substring(1);
+    }
+    return slugify$1(path);
+  }
+  function sanitizeClassName(value) {
+    return value.replace(/[^a-zA-Z0-9_-]/g, "");
+  }
+  function applyTileEntryStagger(tile2) {
+    tile2.style.setProperty(
+      "--desktop-mode-file-tile-enter-delay",
+      `${(Math.random() * 0.25).toFixed(3)}s`
+    );
+    tile2.style.setProperty(
+      "--desktop-mode-file-tile-enter-duration",
+      `${(0.3 + Math.random() * 0.25).toFixed(3)}s`
+    );
+  }
+  function urlMatchKey(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      parsed.searchParams.delete("desktop_mode_chromeless");
+      parsed.searchParams.delete("desktop_mode_portal");
+      return parsed.pathname.replace(/\/+$/, "") + "?" + parsed.searchParams.toString();
+    } catch {
+      return url;
+    }
+  }
+  function urlReuseKey(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      parsed.searchParams.delete("desktop_mode_chromeless");
+      parsed.searchParams.delete("desktop_mode_portal");
+      parsed.searchParams.delete("_wp_http_referer");
+      parsed.searchParams.sort();
+      return parsed.pathname.replace(/\/+$/, "") + "?" + parsed.searchParams.toString();
+    } catch {
+      return url;
+    }
+  }
+  function sanitizeIconSvg(svg) {
+    if (typeof svg !== "string" || svg === "") {
+      return "";
+    }
+    if (typeof DOMParser === "undefined") {
+      return "";
+    }
+    let doc;
+    try {
+      doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+    } catch {
+      return "";
+    }
+    const root = doc.documentElement;
+    if (!root || root.nodeName.toLowerCase() !== "svg") {
+      return "";
+    }
+    if (doc.getElementsByTagName("parsererror").length > 0) {
+      return "";
+    }
+    const BANNED_TAGS = /* @__PURE__ */ new Set(["script", "style", "foreignobject", "iframe", "object", "embed"]);
+    const walk2 = (el) => {
+      const children = Array.from(el.children);
+      for (const child of children) {
+        if (BANNED_TAGS.has(child.nodeName.toLowerCase())) {
+          child.remove();
+          continue;
+        }
+        for (const attr of Array.from(child.attributes)) {
+          const name = attr.name.toLowerCase();
+          const value = attr.value.trim().toLowerCase();
+          if (name.startsWith("on")) {
+            child.removeAttribute(attr.name);
+            continue;
+          }
+          if (value.startsWith("javascript:")) {
+            child.removeAttribute(attr.name);
+          }
+        }
+        walk2(child);
+      }
+    };
+    walk2(root);
+    for (const attr of Array.from(root.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+      if (name.startsWith("on") || value.startsWith("javascript:")) {
+        root.removeAttribute(attr.name);
+      }
+    }
+    return root.outerHTML;
   }
   let inflight$1 = null;
   function isLoaded$1() {
@@ -1261,7 +1534,10 @@ var desktopMode = function(exports) {
       return impl(format, ...args);
     }
     let i = 0;
-    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+    return format.replace(/%(?:(\d+)\$)?[sd]/g, (_match, pos) => {
+      const idx = pos ? Number.parseInt(pos, 10) - 1 : i++;
+      return String(args[idx] ?? "");
+    });
   }
   function isValidGrid(candidate, windowCount) {
     if (!candidate || typeof candidate !== "object") {
@@ -1351,6 +1627,22 @@ var desktopMode = function(exports) {
     });
   }
   const OVERVIEW_TOP_BAR_RESERVE = 120;
+  const OVERVIEW_INERT_ELEMENTS = [
+    "adminmenumain",
+    "adminmenuback",
+    "desktop-mode-dock",
+    "desktop-mode-side-dock",
+    "desktop-mode-widgets"
+  ];
+  function inertWpBodyContentChildren(inactive) {
+    const content = document.getElementById("wpbody-content");
+    if (!content) {
+      return;
+    }
+    for (const child of Array.from(content.children)) {
+      child.inert = inactive;
+    }
+  }
   function enterOverview(mgr) {
     if (mgr._overviewActive) {
       return;
@@ -1378,6 +1670,16 @@ var desktopMode = function(exports) {
     );
     mgr._overviewActive = true;
     doAction(HOOKS.OVERVIEW_ENTERING, {});
+    for (const id of OVERVIEW_INERT_ELEMENTS) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.inert = true;
+      }
+    }
+    inertWpBodyContentChildren(true);
+    for (const w of mgr._stack) {
+      w.element.inert = true;
+    }
     mgr._overviewSnapshot.clear();
     for (const w of eligible) {
       mgr._overviewSnapshot.set(w.id, {
@@ -1487,6 +1789,11 @@ var desktopMode = function(exports) {
         return;
       }
       if (e.key === "Enter") {
+        const target2 = e.target;
+        const doc = target2?.ownerDocument || document;
+        if (doc.activeElement && doc.activeElement.tagName === "BUTTON") {
+          return;
+        }
         e.preventDefault();
         if (mgr._overviewAddTileFocused) {
           commitAddTile(mgr);
@@ -1540,11 +1847,22 @@ var desktopMode = function(exports) {
       mgr._lastOverviewHoverId = newId;
     };
     mgr._desktop.addEventListener("mouseover", mgr._overviewMouseHandler);
-    window.setTimeout(() => {
+    mgr._overviewEnterTimeoutId = window.setTimeout(() => {
+      mgr._overviewEnterTimeoutId = null;
       if (mgr._overviewActive) {
         doAction(HOOKS.OVERVIEW_ENTERED, {});
       }
     }, 300);
+  }
+  function cancelOverviewTimers(mgr) {
+    if (mgr._overviewEnterTimeoutId !== null) {
+      window.clearTimeout(mgr._overviewEnterTimeoutId);
+      mgr._overviewEnterTimeoutId = null;
+    }
+    if (mgr._overviewExitTimeoutId !== null) {
+      window.clearTimeout(mgr._overviewExitTimeoutId);
+      mgr._overviewExitTimeoutId = null;
+    }
   }
   function buildOverviewTopBar(mgr) {
     const bar = document.createElement("div");
@@ -1579,6 +1897,8 @@ var desktopMode = function(exports) {
     exitOverviewToDesktop(mgr, created.id);
   }
   function buildDesktopTile(mgr, d) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "desktop-mode-overview-top-bar__tile-wrapper";
     const tile2 = document.createElement("button");
     tile2.type = "button";
     tile2.className = "desktop-mode-overview-top-bar__tile";
@@ -1603,10 +1923,14 @@ var desktopMode = function(exports) {
     label.className = "desktop-mode-overview-top-bar__tile-label";
     label.textContent = d.label;
     tile2.appendChild(label);
-    const closeBtn = document.createElement("span");
+    tile2.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      exitOverviewToDesktop(mgr, d.id);
+    });
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
     closeBtn.className = "desktop-mode-overview-top-bar__tile-close";
-    closeBtn.setAttribute("role", "button");
-    closeBtn.setAttribute("tabindex", "0");
     closeBtn.setAttribute("aria-label", sprintf(__("Close %s"), d.label));
     closeBtn.innerHTML = '<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
     closeBtn.addEventListener("click", (e) => {
@@ -1615,13 +1939,9 @@ var desktopMode = function(exports) {
       closeDesktop(mgr, d.id);
       refreshOverviewTopBar(mgr);
     });
-    tile2.appendChild(closeBtn);
-    tile2.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      exitOverviewToDesktop(mgr, d.id);
-    });
-    return tile2;
+    wrapper.appendChild(tile2);
+    wrapper.appendChild(closeBtn);
+    return wrapper;
   }
   function refreshOverviewTopBar(mgr) {
     if (!mgr._overviewTopBar) {
@@ -1678,6 +1998,16 @@ var desktopMode = function(exports) {
     mgr._desktop.classList.remove("desktop-mode-area--overview");
     const shell = document.getElementById("desktop-mode-shell");
     shell?.classList.remove("desktop-mode-shell--overview");
+    for (const id of OVERVIEW_INERT_ELEMENTS) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.inert = false;
+      }
+    }
+    inertWpBodyContentChildren(false);
+    for (const w of mgr._stack) {
+      w.element.inert = false;
+    }
     for (const [id, snap] of mgr._overviewSnapshot) {
       const w = mgr.getById(id);
       if (!w) {
@@ -1698,7 +2028,8 @@ var desktopMode = function(exports) {
       );
     }
     const ANIMATION_MS = 280;
-    window.setTimeout(() => {
+    mgr._overviewExitTimeoutId = window.setTimeout(() => {
+      mgr._overviewExitTimeoutId = null;
       for (const w of mgr._stack) {
         w.element.classList.remove("desktop-mode-window--overview");
       }
@@ -2589,6 +2920,8 @@ var desktopMode = function(exports) {
       this._overviewMouseHandler = null;
       this._lastOverviewHoverId = null;
       this._overviewAddTileFocused = false;
+      this._overviewEnterTimeoutId = null;
+      this._overviewExitTimeoutId = null;
       this._snapPendingZone = null;
       this._snapPreviewEl = null;
       this._splitOverviewActive = false;
@@ -2719,6 +3052,15 @@ var desktopMode = function(exports) {
      * dock icon while a window is already open focuses the
      * most-recent instance rather than creating a twin.
      *
+     * URL-aware reuse: when the matched window is NOT already showing
+     * the requested URL (and the request isn't for the window's home
+     * / dock landing URL), the existing iframe navigates to it in
+     * place — an action URL like
+     * `plugins.php?action=activate&…&_wpnonce=…` actually runs
+     * instead of being dropped by a bare focus. The
+     * `desktop-mode-window-reopened` event reports which path was
+     * taken via its `navigated` flag.
+     *
      * To force a brand-new instance alongside an existing one, use
      * {@link openNew}.
      */
@@ -2751,10 +3093,21 @@ var desktopMode = function(exports) {
         if (wasMinimized) {
           existing.restore();
         }
+        let navigated = false;
+        if (!existing.config.native) {
+          const requestedKey = urlReuseKey(config.url);
+          const alreadyThere = requestedKey === urlReuseKey(existing.getCurrentUrl()) || requestedKey === urlReuseKey(existing.config.url || "") || requestedKey === urlReuseKey(
+            existing.config.parentUrl ?? existing.config.url ?? ""
+          );
+          if (!alreadyThere) {
+            navigated = existing.navigateTo(config.url);
+          }
+        }
         const reopenedDetail = {
           windowId: existing.id,
           baseId,
-          wasMinimized
+          wasMinimized,
+          navigated
         };
         document.dispatchEvent(
           new CustomEvent("desktop-mode-window-reopened", { detail: reopenedDetail })
@@ -3043,6 +3396,37 @@ var desktopMode = function(exports) {
       );
       doAction(HOOKS.WINDOW_FOCUSED, focusedDetail);
     }
+    /**
+     * Raise a window to just below the top of the stack WITHOUT
+     * changing focus — the focused window stays on top and keeps
+     * keyboard/visual focus; the raised window surfaces above
+     * everything else. No focus/blur events fire (this is a silent
+     * restack, not a focus change).
+     *
+     * Used by the window-links feature to bring a relation group
+     * forward when one of its members is focused; available to
+     * plugins for any "surface my companion window" affordance.
+     *
+     * @since 0.9.4
+     *
+     * @param windowId Window to raise. Unknown ids and the focused
+     *                 window itself are no-ops.
+     */
+    raise(windowId) {
+      const win = this.getById(windowId);
+      if (!win || this._stack.length < 2) {
+        return;
+      }
+      const idx = this._stack.indexOf(win);
+      if (idx === -1 || idx === this._stack.length - 1) {
+        return;
+      }
+      this._stack.splice(idx, 1);
+      this._stack.splice(this._stack.length - 1, 0, win);
+      this._stack.forEach((w, i) => {
+        w.setZIndex(BASE_Z_INDEX + i);
+      });
+    }
     /** Remove a window from the stack and DOM. */
     remove(win) {
       const idx = this._stack.indexOf(win);
@@ -3135,6 +3519,15 @@ var desktopMode = function(exports) {
       };
       return this._stack.filter((w) => (w.config.baseId || w.id) === baseId).sort((a, b) => instanceSlot(a.id) - instanceSlot(b.id));
     }
+    /**
+     * Get every open window sharing the given baseId on the active desktop,
+     * ordered by instance slot.
+     */
+    getAllByBaseIdOnActiveDesktop(baseId) {
+      return this.getAllByBaseId(baseId).filter(
+        (w) => (w.config.desktopId || this._activeDesktopId) === this._activeDesktopId
+      );
+    }
     /** Get all open windows. */
     getAll() {
       return [...this._stack];
@@ -3186,8 +3579,30 @@ var desktopMode = function(exports) {
       if (win.state === "minimized") {
         return false;
       }
+      const winDesktop = win.config.desktopId || this._activeDesktopId;
+      if (winDesktop !== this._activeDesktopId) {
+        return false;
+      }
       const focused = this.getFocused();
       return !!focused && focused.id === id;
+    }
+    /**
+     * Like {@link isActive}, but returns true if *any* window with the
+     * given baseId is currently active.
+     */
+    isActiveByBaseId(baseId) {
+      const focused = this.getFocused();
+      if (!focused) {
+        return false;
+      }
+      if (focused.state === "minimized") {
+        return false;
+      }
+      const winDesktop = focused.config.desktopId || this._activeDesktopId;
+      if (winDesktop !== this._activeDesktopId) {
+        return false;
+      }
+      return (focused.config.baseId || focused.id) === baseId;
     }
     // ---- Virtual desktop delegations ----
     getDesktops() {
@@ -3310,6 +3725,10 @@ var desktopMode = function(exports) {
     minimizeAll() {
       const minimized = [];
       for (const win of this._stack.slice()) {
+        const winDesktop = win.config.desktopId || this._activeDesktopId;
+        if (winDesktop !== this._activeDesktopId) {
+          continue;
+        }
         if (win.state === "minimized") {
           continue;
         }
@@ -3350,6 +3769,10 @@ var desktopMode = function(exports) {
         if (!live.has(win)) {
           continue;
         }
+        const winDesktop = win.config.desktopId || this._activeDesktopId;
+        if (winDesktop !== this._activeDesktopId) {
+          continue;
+        }
         if (win.state !== "minimized") {
           continue;
         }
@@ -3379,7 +3802,9 @@ var desktopMode = function(exports) {
      * @since 0.6.0
      */
     toggleShowDesktop() {
-      const all2 = this._stack.slice();
+      const all2 = this._stack.filter(
+        (w) => (w.config.desktopId || this._activeDesktopId) === this._activeDesktopId
+      );
       if (all2.length === 0) {
         return false;
       }
@@ -3418,6 +3843,26 @@ var desktopMode = function(exports) {
     }
     exitOverview(selected, maximize = false) {
       exitOverview(this, selected, maximize);
+    }
+    /**
+     * Release resources this instance owns outside its own DOM
+     * subtree: the document-level overview key handler and any
+     * pending overview transition timers. Removing `desktop` from the
+     * DOM does not reach either of those — a caller discarding a
+     * manager instance (tests; a future SPA-style unmount) that skips
+     * this leaves a real `setTimeout` to fire later and reach for
+     * globals that may already be gone, plus a `keydown` listener on
+     * `document` that keeps responding on behalf of a manager nothing
+     * else references.
+     *
+     * Safe to call unconditionally — a no-op when overview was never
+     * entered or was already cleanly exited.
+     */
+    destroy() {
+      if (this._overviewActive) {
+        exitOverview(this);
+      }
+      cancelOverviewTimers(this);
     }
     /**
      * Snapshot every open window's current geometry + state.
@@ -3726,138 +4171,6 @@ var desktopMode = function(exports) {
       true
     );
   }
-  const IDENTITY_PARAMS = [
-    "post_type",
-    "page",
-    "taxonomy",
-    // WooCommerce (and other React-app-style plugins) register
-    // SEPARATE top-level admin menus that all share `?page=wc-admin`
-    // and only differ by `path` (e.g. `path=/analytics/overview`,
-    // `path=/marketing`). Without `path` in the identity set, every
-    // such menu collapses to the same window id — opening any one of
-    // them lights up the dock indicator for ALL of them. WC's
-    // /admin/path query is the most prominent example today; future
-    // plugins that route inside `admin.php?page=` via a custom param
-    // can either piggyback on `path` or grow this list.
-    "path",
-    // The post ID on `post.php?post=X&action=edit`. Without this, every
-    // individual post edit URL collapses to `post-php`, so clicking a
-    // second row in the Posts window just refocuses the first post's
-    // window instead of opening the new one.
-    "post",
-    // Site-editor entity path: `site-editor.php?p=/wp_template_part/
-    // twentytwentyfive//footer-columns`. Each template / template
-    // part / pattern / navigation entity is a distinct "page" from
-    // the user's perspective — picking "Header" after "Footer column"
-    // should open a new window, not refocus the existing footer one.
-    // Without `p` in identity, every site-editor URL collapses to
-    // `site-editor-php` and the second pick is a no-op.
-    "p"
-  ];
-  function slugify$1(path) {
-    return path.replace(/\.php/g, "-php").replace(/[?&=]/g, "-").replace(/[^a-zA-Z0-9_-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "index";
-  }
-  function deriveWindowId(url, adminUrl) {
-    let parsed = null;
-    try {
-      parsed = new URL(url, adminUrl);
-    } catch (err) {
-      parsed = null;
-    }
-    if (parsed) {
-      const basePath = new URL(adminUrl).pathname;
-      const filename = parsed.pathname.replace(basePath, "").replace(/^\/+/, "");
-      const significant = new URLSearchParams();
-      for (const key of IDENTITY_PARAMS) {
-        const value = parsed.searchParams.get(key);
-        if (value) {
-          significant.set(key, value);
-        }
-      }
-      const query = significant.toString();
-      return slugify$1(query ? `${filename}?${query}` : filename);
-    }
-    let path = url.replace(adminUrl, "");
-    if (path.startsWith("/")) {
-      path = path.substring(1);
-    }
-    return slugify$1(path);
-  }
-  function sanitizeClassName(value) {
-    return value.replace(/[^a-zA-Z0-9_-]/g, "");
-  }
-  function applyTileEntryStagger(tile2) {
-    tile2.style.setProperty(
-      "--desktop-mode-file-tile-enter-delay",
-      `${(Math.random() * 0.25).toFixed(3)}s`
-    );
-    tile2.style.setProperty(
-      "--desktop-mode-file-tile-enter-duration",
-      `${(0.3 + Math.random() * 0.25).toFixed(3)}s`
-    );
-  }
-  function urlMatchKey(url) {
-    try {
-      const parsed = new URL(url, window.location.origin);
-      parsed.searchParams.delete("desktop_mode_chromeless");
-      parsed.searchParams.delete("desktop_mode_portal");
-      return parsed.pathname.replace(/\/+$/, "") + "?" + parsed.searchParams.toString();
-    } catch {
-      return url;
-    }
-  }
-  function sanitizeIconSvg(svg) {
-    if (typeof svg !== "string" || svg === "") {
-      return "";
-    }
-    if (typeof DOMParser === "undefined") {
-      return "";
-    }
-    let doc;
-    try {
-      doc = new DOMParser().parseFromString(svg, "image/svg+xml");
-    } catch {
-      return "";
-    }
-    const root = doc.documentElement;
-    if (!root || root.nodeName.toLowerCase() !== "svg") {
-      return "";
-    }
-    if (doc.getElementsByTagName("parsererror").length > 0) {
-      return "";
-    }
-    const BANNED_TAGS = /* @__PURE__ */ new Set(["script", "style", "foreignobject", "iframe", "object", "embed"]);
-    const walk2 = (el) => {
-      const children = Array.from(el.children);
-      for (const child of children) {
-        if (BANNED_TAGS.has(child.nodeName.toLowerCase())) {
-          child.remove();
-          continue;
-        }
-        for (const attr of Array.from(child.attributes)) {
-          const name = attr.name.toLowerCase();
-          const value = attr.value.trim().toLowerCase();
-          if (name.startsWith("on")) {
-            child.removeAttribute(attr.name);
-            continue;
-          }
-          if (value.startsWith("javascript:")) {
-            child.removeAttribute(attr.name);
-          }
-        }
-        walk2(child);
-      }
-    };
-    walk2(root);
-    for (const attr of Array.from(root.attributes)) {
-      const name = attr.name.toLowerCase();
-      const value = attr.value.trim().toLowerCase();
-      if (name.startsWith("on") || value.startsWith("javascript:")) {
-        root.removeAttribute(attr.name);
-      }
-    }
-    return root.outerHTML;
-  }
   const _parentSubs = /* @__PURE__ */ new Map();
   const _nativeSubs = /* @__PURE__ */ new Map();
   function bucket(root, windowId, channel, create) {
@@ -4035,7 +4348,7 @@ var desktopMode = function(exports) {
     body.appendChild(config ? createLoadingOverlay(config) : buildDefaultLoadingOverlay());
   }
   const FADE_OUT_MS$1 = 250;
-  let _installed$3 = false;
+  let _installed$4 = false;
   function findWindowElement(windowId) {
     if (!windowId) {
       return null;
@@ -4043,10 +4356,10 @@ var desktopMode = function(exports) {
     return document.getElementById(`wp-window-${windowId}`);
   }
   function installWindowLoadingTransitions() {
-    if (_installed$3) {
+    if (_installed$4) {
       return;
     }
-    _installed$3 = true;
+    _installed$4 = true;
     _installSubscriptions();
   }
   function _installSubscriptions() {
@@ -4350,6 +4663,13 @@ var desktopMode = function(exports) {
         dismiss();
       });
     }
+    if (intent.dismissible) {
+      toast.setAttribute("dismissible", "");
+      toast.addEventListener("wpd-toast-dismiss", () => {
+        intent.onDismiss?.();
+        dismiss();
+      });
+    }
     container.appendChild(toast);
     let dismissed = false;
     let dismissTimer = null;
@@ -4370,10 +4690,12 @@ var desktopMode = function(exports) {
     requestAnimationFrame(() => {
       toast.setAttribute("state", "in");
     });
-    dismissTimer = window.setTimeout(
-      dismiss,
-      intent.duration ?? DEFAULT_DURATION_MS
-    );
+    if (!intent.persistent) {
+      dismissTimer = window.setTimeout(
+        dismiss,
+        intent.duration ?? DEFAULT_DURATION_MS
+      );
+    }
     activity.publish("desktop-mode/toast-shown", { ...intent });
     return dismiss;
   }
@@ -4388,7 +4710,7 @@ var desktopMode = function(exports) {
     document.body.appendChild(el);
     return el;
   }
-  const store$e = createSharedStore(
+  const store$h = createSharedStore(
     "desktop-mode/destructive-admin-actions",
     () => ({ entries: [] })
   );
@@ -4401,7 +4723,7 @@ var desktopMode = function(exports) {
       return () => {
       };
     }
-    const entries = store$e.state.entries;
+    const entries = store$h.state.entries;
     const idx = entries.findIndex((e) => e.id === entry.id);
     if (idx >= 0) {
       entries.splice(idx, 1);
@@ -4410,21 +4732,14 @@ var desktopMode = function(exports) {
     return () => unregisterDestructiveAdminAction(entry.id);
   }
   function unregisterDestructiveAdminAction(id) {
-    const entries = store$e.state.entries;
+    const entries = store$h.state.entries;
     const idx = entries.findIndex((e) => e.id === id);
     if (idx >= 0) {
       entries.splice(idx, 1);
     }
   }
   function listDestructiveAdminActions() {
-    return store$e.state.entries.slice();
-  }
-  const adminLinkDepsStore = createSharedStore(
-    "desktop-mode/admin-link-deps",
-    () => ({ deps: null })
-  );
-  function bindAdminLinkDispatch(deps2) {
-    adminLinkDepsStore.state.deps = deps2;
+    return store$h.state.entries.slice();
   }
   function collectRegistrationErrors(def, checks) {
     if (!def || typeof def !== "object") {
@@ -4456,15 +4771,454 @@ var desktopMode = function(exports) {
     }
     throw new RegistrationError(kind, errors, def);
   }
-  const store$d = createSharedStore(
+  function logRegistrationErrors(kind, errors, def) {
+    if (typeof console === "undefined") {
+      return;
+    }
+    console.warn(
+      `[desktop-mode] ${kind} registration rejected — fields: ` + errors.join(", ") + ".",
+      def
+    );
+  }
+  const MAX_LINKS = 32;
+  const CONTENT_TYPE_ID = /^[a-z0-9_/-]+$/;
+  const store$g = createSharedStore(
+    "desktop-mode/window-links",
+    () => ({
+      contentByWindow: /* @__PURE__ */ new Map(),
+      focusSeq: /* @__PURE__ */ new Map(),
+      seq: 0,
+      listeners: /* @__PURE__ */ new Set(),
+      lastGroupsSignature: "",
+      manager: null,
+      started: false
+    })
+  );
+  function keyOf(ref) {
+    return `${ref.type}:${ref.id}`;
+  }
+  function rootKeyOf(ref) {
+    return ref.root ? keyOf(ref.root) : keyOf(ref);
+  }
+  function validateRef(ref) {
+    const isValidId = (v) => typeof v === "number" && Number.isFinite(v) || typeof v === "string" && v.trim() !== "";
+    const isValidType = (v) => typeof v === "string" && CONTENT_TYPE_ID.test(v.trim().toLowerCase());
+    return collectRegistrationErrors(ref, [
+      {
+        field: "type",
+        valid: (r) => isValidType(r.type),
+        message: "must match /^[a-z0-9_/-]+$/ — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-type"
+      },
+      {
+        field: "id",
+        valid: (r) => isValidId(r.id),
+        message: "must be a finite number or non-empty string"
+      },
+      {
+        field: "root",
+        valid: (r) => r.root === void 0 || !!r.root && typeof r.root === "object" && isValidType(r.root.type) && isValidId(r.root.id),
+        message: "when present, must be { type, id } with the same shapes as the ref itself"
+      },
+      {
+        field: "links",
+        valid: (r) => r.links === void 0 || Array.isArray(r.links) && r.links.every(
+          (l) => !!l && typeof l === "object" && isValidType(l.type) && isValidId(l.id) && (l.rel === void 0 || l.rel === "references" || l.rel === "child")
+        ),
+        message: "when present, must be an array of { type, id, rel?: 'references'|'child' } entries"
+      }
+    ]);
+  }
+  function normalizeRef(ref, source) {
+    const next = {
+      type: ref.type.trim().toLowerCase(),
+      id: ref.id,
+      source
+    };
+    if (ref.root) {
+      next.root = {
+        type: ref.root.type.trim().toLowerCase(),
+        id: ref.root.id
+      };
+    }
+    if (Array.isArray(ref.links) && ref.links.length > 0) {
+      next.links = ref.links.slice(0, MAX_LINKS).map((l) => {
+        const entry = {
+          type: l.type.trim().toLowerCase(),
+          id: l.id
+        };
+        if (l.rel === "child") {
+          entry.rel = "child";
+        }
+        return entry;
+      });
+    }
+    if (typeof ref.label === "string" && ref.label !== "") {
+      next.label = ref.label;
+    }
+    return next;
+  }
+  function refSignature(ref) {
+    if (!ref) {
+      return "";
+    }
+    return [
+      keyOf(ref),
+      rootKeyOf(ref),
+      ...(ref.links ?? []).map(
+        (l) => keyOf(l) + (l.rel === "child" ? "!child" : "")
+      )
+    ].join("|");
+  }
+  function setWindowContent(windowId, ref, opts = {}) {
+    const source = opts.source ?? "api";
+    if (typeof windowId !== "string" || windowId === "") {
+      throwOnRegistrationErrors(
+        "WindowContentRef",
+        ["windowId (must be a non-empty string)"],
+        ref
+      );
+      return;
+    }
+    let next = null;
+    if (ref !== null && ref !== void 0) {
+      const errors = validateRef(ref);
+      if (errors.length > 0) {
+        if (source === "api") {
+          throwOnRegistrationErrors("WindowContentRef", errors, ref);
+        }
+        logRegistrationErrors("WindowContentRef", errors, ref);
+        return;
+      }
+      next = normalizeRef(ref, source);
+    }
+    next = applyFilters(
+      HOOKS.WINDOW_LINKS_CONTENT,
+      next,
+      { windowId, source }
+    );
+    if (next !== null && (!next || validateRef(next).length > 0)) {
+      logRegistrationErrors(
+        "WindowContentRef",
+        ["filter (desktop-mode.window-links.content returned an invalid ref)"],
+        next
+      );
+      return;
+    }
+    const previous = store$g.state.contentByWindow.get(windowId) ?? null;
+    if (next === null && previous === null) {
+      return;
+    }
+    if (next !== null && previous !== null && refSignature(next) === refSignature(previous) && next.label === previous.label) {
+      return;
+    }
+    if (next === null) {
+      store$g.state.contentByWindow.delete(windowId);
+    } else {
+      store$g.state.contentByWindow.set(windowId, next);
+    }
+    const changedDetail = { windowId, content: next, previous, source };
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-window-content-changed", {
+        detail: changedDetail
+      })
+    );
+    doAction(HOOKS.WINDOW_CONTENT_CHANGED, changedDetail);
+    broadcastGroupsIfChanged();
+    notify$g();
+  }
+  function getWindowContent(windowId) {
+    return store$g.state.contentByWindow.get(windowId);
+  }
+  function listWindowLinkGroups() {
+    const byKey = /* @__PURE__ */ new Map();
+    for (const [windowId, ref] of store$g.state.contentByWindow) {
+      const groupKey = rootKeyOf(ref);
+      let group = byKey.get(groupKey);
+      if (!group) {
+        group = {
+          key: groupKey,
+          root: ref.root ? { ...ref.root } : { type: ref.type, id: ref.id },
+          rootWindowIds: [],
+          children: []
+        };
+        byKey.set(groupKey, group);
+      }
+      if (ref.root) {
+        group.children.push({ windowId, content: ref });
+      } else {
+        group.rootWindowIds.push(windowId);
+      }
+    }
+    const seq = store$g.state.focusSeq;
+    for (const group of byKey.values()) {
+      group.rootWindowIds.sort(
+        (a, b) => (seq.get(b) ?? 0) - (seq.get(a) ?? 0)
+      );
+    }
+    const copy = Array.from(byKey.values());
+    const filtered = applyFilters(
+      HOOKS.WINDOW_LINK_GROUPS,
+      copy
+    );
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.window-links.groups` filter returned a non-array; falling back to computed groups."
+        );
+      }
+      return copy;
+    }
+    return filtered;
+  }
+  function getWindowLinkGroup(windowId) {
+    return listWindowLinkGroups().find(
+      (g) => g.rootWindowIds.includes(windowId) || g.children.some((c) => c.windowId === windowId)
+    );
+  }
+  function getRelatedWindowIds(windowId) {
+    const related = /* @__PURE__ */ new Set();
+    const group = getWindowLinkGroup(windowId);
+    if (group) {
+      for (const id of [
+        ...group.rootWindowIds,
+        ...group.children.map((c) => c.windowId)
+      ]) {
+        related.add(id);
+      }
+    }
+    for (const edge of listWindowLinkEdges()) {
+      if (edge.fromWindowId === windowId) {
+        related.add(edge.toWindowId);
+      } else if (edge.toWindowId === windowId) {
+        related.add(edge.fromWindowId);
+      }
+    }
+    related.delete(windowId);
+    return Array.from(related);
+  }
+  function getDirectlyRelatedWindowIds(windowId) {
+    const related = /* @__PURE__ */ new Set();
+    for (const edge of listWindowLinkEdges()) {
+      if (edge.fromWindowId === windowId) {
+        related.add(edge.toWindowId);
+      } else if (edge.toWindowId === windowId) {
+        related.add(edge.fromWindowId);
+      }
+    }
+    related.delete(windowId);
+    return Array.from(related);
+  }
+  function listWindowLinkEdges() {
+    const seq = store$g.state.focusSeq;
+    const windowByKey = /* @__PURE__ */ new Map();
+    for (const [windowId, ref] of store$g.state.contentByWindow) {
+      const key = keyOf(ref);
+      const current = windowByKey.get(key);
+      if (!current || (seq.get(windowId) ?? 0) > (seq.get(current) ?? 0)) {
+        windowByKey.set(key, windowId);
+      }
+    }
+    const edges = /* @__PURE__ */ new Map();
+    const directedKey = (from, to) => `${from}→${to}`;
+    for (const [windowId, ref] of store$g.state.contentByWindow) {
+      if (ref.root) {
+        const target2 = windowByKey.get(keyOf(ref.root));
+        if (target2 && target2 !== windowId) {
+          edges.set(directedKey(windowId, target2), {
+            fromWindowId: windowId,
+            toWindowId: target2,
+            kind: "child-root",
+            bidirectional: false
+          });
+        }
+      }
+      for (const link of ref.links ?? []) {
+        const target2 = windowByKey.get(keyOf(link));
+        if (!target2 || target2 === windowId) {
+          continue;
+        }
+        if (link.rel === "child") {
+          const key2 = directedKey(target2, windowId);
+          const existing = edges.get(key2);
+          if (!existing || existing.kind !== "child-root") {
+            edges.set(key2, {
+              fromWindowId: target2,
+              toWindowId: windowId,
+              kind: "child-root",
+              bidirectional: false
+            });
+          }
+          continue;
+        }
+        const key = directedKey(windowId, target2);
+        if (!edges.has(key)) {
+          edges.set(key, {
+            fromWindowId: windowId,
+            toWindowId: target2,
+            kind: "reference",
+            bidirectional: false
+          });
+        }
+      }
+    }
+    const merged = [];
+    const dropped = /* @__PURE__ */ new Set();
+    for (const [key, edge] of edges) {
+      if (dropped.has(key)) {
+        continue;
+      }
+      const reverseKey = directedKey(edge.toWindowId, edge.fromWindowId);
+      const reverse = edges.get(reverseKey);
+      if (reverse && edge.kind === "reference") {
+        if (reverse.kind === "reference") {
+          dropped.add(reverseKey);
+          merged.push({ ...edge, bidirectional: true });
+          continue;
+        }
+        continue;
+      }
+      merged.push(edge);
+    }
+    const filtered = applyFilters(
+      HOOKS.WINDOW_LINK_EDGES,
+      merged
+    );
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.window-links.edges` filter returned a non-array; falling back to derived edges."
+        );
+      }
+      return merged;
+    }
+    return filtered;
+  }
+  function subscribeWindowLinks(cb) {
+    store$g.state.listeners.add(cb);
+    return () => {
+      store$g.state.listeners.delete(cb);
+    };
+  }
+  function notify$g() {
+    for (const cb of Array.from(store$g.state.listeners)) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] window-links listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function relationsSignature() {
+    return Array.from(store$g.state.contentByWindow).map(([id, ref]) => `${id}=${refSignature(ref)}`).sort().join(";");
+  }
+  function broadcastGroupsIfChanged() {
+    const signature = relationsSignature();
+    if (signature === store$g.state.lastGroupsSignature) {
+      return;
+    }
+    store$g.state.lastGroupsSignature = signature;
+    const groups = listWindowLinkGroups();
+    const detail = { groups };
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-window-link-groups-changed", {
+        detail
+      })
+    );
+    doAction(HOOKS.WINDOW_LINK_GROUPS_CHANGED, detail);
+  }
+  const relationsApi = {
+    get: getWindowContent,
+    set: (windowId, ref) => setWindowContent(windowId, ref, { source: "api" }),
+    groups: listWindowLinkGroups,
+    edges: listWindowLinkEdges,
+    groupOf: getWindowLinkGroup,
+    related: getRelatedWindowIds,
+    subscribe: subscribeWindowLinks
+  };
+  function startWindowLinksEngine({
+    manager
+  }) {
+    store$g.state.manager = manager;
+    if (store$g.state.started) {
+      return;
+    }
+    store$g.state.started = true;
+    addAction(
+      HOOKS.WINDOW_OPENED,
+      "desktop-mode/window-links-seed",
+      (e) => {
+        if (!e?.windowId) {
+          return;
+        }
+        const win = store$g.state.manager?.getById(e.windowId);
+        const content = win?.config?.content;
+        if (content) {
+          setWindowContent(e.windowId, content, { source: "config" });
+        }
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_CLOSED,
+      "desktop-mode/window-links-clear",
+      (e) => {
+        if (!e?.windowId) {
+          return;
+        }
+        store$g.state.focusSeq.delete(e.windowId);
+        setWindowContent(e.windowId, null, { source: "config" });
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_FOCUSED,
+      "desktop-mode/window-links-recency",
+      (e) => {
+        if (!e?.windowId) {
+          return;
+        }
+        store$g.state.seq += 1;
+        store$g.state.focusSeq.set(e.windowId, store$g.state.seq);
+      }
+    );
+    window.addEventListener("message", (event) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      const data = event.data;
+      if (!data || data.type !== "desktop-mode-content-identity") {
+        return;
+      }
+      const win = store$g.state.manager?.findByIframeSource?.(
+        event.source
+      );
+      if (!win) {
+        return;
+      }
+      setWindowContent(win.id, data.identity ?? null, {
+        source: "bridge"
+      });
+    });
+  }
+  const adminLinkDepsStore = createSharedStore(
+    "desktop-mode/admin-link-deps",
+    () => ({ deps: null })
+  );
+  function bindAdminLinkDispatch(deps2) {
+    adminLinkDepsStore.state.deps = deps2;
+  }
+  const store$f = createSharedStore(
     "desktop-mode/wallpaper-registry",
     () => ({
       seed: [],
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const seed$3 = store$d.state.seed;
-  const listeners$c = store$d.state.listeners;
+  const seed$3 = store$f.state.seed;
+  const listeners$d = store$f.state.listeners;
   function register$2(def) {
     throwOnRegistrationErrors(
       "Wallpaper",
@@ -4477,17 +5231,17 @@ var desktopMode = function(exports) {
     } else {
       seed$3.push(def);
     }
-    notify$e();
+    notify$f();
   }
   function unregister$2(id) {
     const idx = seed$3.findIndex((w) => w.id === id);
     if (idx >= 0) {
       seed$3.splice(idx, 1);
-      notify$e();
+      notify$f();
     }
   }
-  function notify$e() {
-    const snapshot = Array.from(listeners$c);
+  function notify$f() {
+    const snapshot = Array.from(listeners$d);
     for (const cb of snapshot) {
       try {
         cb();
@@ -4555,6 +5309,22 @@ var desktopMode = function(exports) {
   function isValidDef$1(def) {
     return collectRegistrationErrors(def, WALLPAPER_CHECKS).length === 0;
   }
+  const store$e = createSharedStore(
+    "desktop-mode/wallpaper-settings",
+    () => ({ values: {} })
+  );
+  function getWallpaperSettings(id) {
+    return { ...store$e.state.values[id] ?? {} };
+  }
+  function seedWallpaperSettings(all2) {
+    const values = store$e.state.values;
+    for (const key of Object.keys(values)) {
+      delete values[key];
+    }
+    for (const [id, settings] of Object.entries(all2)) {
+      values[id] = { ...settings };
+    }
+  }
   const STORAGE_KEY = "desktop-mode-os-settings";
   const CUSTOM_GRADIENT_ID = "custom-gradient";
   const CUSTOM_IMAGE_ID = "custom-image";
@@ -4606,19 +5376,21 @@ var desktopMode = function(exports) {
     desktopLayout: "classic",
     dockRailRenderer: "default",
     unfocusEffect: "darken",
+    windowLinkRenderer: "svg-splines",
+    windowLinkVisibility: "always",
+    windowLinksEnabled: true,
+    windowLinkRaiseOnFocus: true,
+    windowLinkHighlight: true,
     customGradient: {
       from: "#2271b1",
       to: "#7c3aed",
       angle: 135
     },
     customImage: null,
+    wallpaperSettings: {},
     libraryHdOnly: true,
     ai: {
-      enabled: false,
-      provider: "openai",
-      apiKey: "",
-      apiKeys: {},
-      transport: "off"
+      enabled: false
     },
     // Opt-IN Beta as of 0.9.1. Fresh installs land on the classic
     // chromeless `edit.php` iframe; a user opts in via OS Settings →
@@ -4646,37 +5418,12 @@ var desktopMode = function(exports) {
     nativeCommentsEnabled: false,
     showDesktopOnWallpaperClick: false,
     showPostStatusRibbons: true,
+    developerModeEnabled: false,
     foldersSharingEnabled: true,
     itemVisibility: {},
     dockOrder: [],
     dockPromotedPositions: {}
   };
-  const AI_TRANSPORTS = [
-    { id: "off", label: "Off" },
-    { id: "sse", label: "Streaming (SSE)" }
-  ];
-  const AI_PROVIDERS = [
-    {
-      id: "openai",
-      label: "OpenAI",
-      apiKeyLabel: "OpenAI API key",
-      apiKeyLink: "https://platform.openai.com/api-keys"
-    }
-  ];
-  function getAiProviders() {
-    const cfg = window.desktopModeConfig;
-    const list2 = cfg?.aiProviders;
-    if (!Array.isArray(list2) || list2.length === 0) {
-      return AI_PROVIDERS;
-    }
-    return list2.map((p) => ({
-      id: p.id,
-      label: p.label,
-      description: p.description,
-      apiKeyLabel: p.api_key_label,
-      apiKeyLink: p.api_key_link
-    }));
-  }
   function isHexColor(value) {
     return typeof value === "string" && /^#[0-9a-f]{3,8}$/i.test(value);
   }
@@ -4784,8 +5531,17 @@ var desktopMode = function(exports) {
       // the `'none'` sentinel survives; the engine resolves at use
       // time and treats an unknown id as "no effect".
       unfocusEffect: typeof parsed.unfocusEffect === "string" && /^[a-z0-9_/-]+$/.test(parsed.unfocusEffect) ? parsed.unfocusEffect : DEFAULTS.unfocusEffect,
+      // Window-link renderer — same id charset as unfocus effects;
+      // the render host resolves at use time and falls back to the
+      // built-in `svg-splines` for unknown ids.
+      windowLinkRenderer: typeof parsed.windowLinkRenderer === "string" && /^[a-z0-9_/-]+$/.test(parsed.windowLinkRenderer) ? parsed.windowLinkRenderer : DEFAULTS.windowLinkRenderer,
+      windowLinkVisibility: parsed.windowLinkVisibility === "focus" || parsed.windowLinkVisibility === "always" || parsed.windowLinkVisibility === "off" ? parsed.windowLinkVisibility : DEFAULTS.windowLinkVisibility,
+      windowLinksEnabled: typeof parsed.windowLinksEnabled === "boolean" ? parsed.windowLinksEnabled : DEFAULTS.windowLinksEnabled,
+      windowLinkRaiseOnFocus: typeof parsed.windowLinkRaiseOnFocus === "boolean" ? parsed.windowLinkRaiseOnFocus : DEFAULTS.windowLinkRaiseOnFocus,
+      windowLinkHighlight: typeof parsed.windowLinkHighlight === "boolean" ? parsed.windowLinkHighlight : DEFAULTS.windowLinkHighlight,
       customGradient: sanitizeCustomGradient(parsed.customGradient),
       customImage: sanitizeCustomImage(parsed.customImage),
+      wallpaperSettings: sanitizeWallpaperSettings(parsed.wallpaperSettings),
       libraryHdOnly: typeof parsed.libraryHdOnly === "boolean" ? parsed.libraryHdOnly : DEFAULTS.libraryHdOnly,
       ai: sanitizeAi(parsed.ai),
       heartbeatRate: parsed.heartbeatRate === 15 || parsed.heartbeatRate === 30 || parsed.heartbeatRate === 45 || parsed.heartbeatRate === 60 ? parsed.heartbeatRate : DEFAULTS.heartbeatRate,
@@ -4797,6 +5553,7 @@ var desktopMode = function(exports) {
       nativeCommentsEnabled: typeof parsed.nativeCommentsEnabled === "boolean" ? parsed.nativeCommentsEnabled : DEFAULTS.nativeCommentsEnabled,
       showDesktopOnWallpaperClick: typeof parsed.showDesktopOnWallpaperClick === "boolean" ? parsed.showDesktopOnWallpaperClick : DEFAULTS.showDesktopOnWallpaperClick,
       showPostStatusRibbons: typeof parsed.showPostStatusRibbons === "boolean" ? parsed.showPostStatusRibbons : DEFAULTS.showPostStatusRibbons,
+      developerModeEnabled: typeof parsed.developerModeEnabled === "boolean" ? parsed.developerModeEnabled : DEFAULTS.developerModeEnabled,
       foldersSharingEnabled: typeof parsed.foldersSharingEnabled === "boolean" ? parsed.foldersSharingEnabled : DEFAULTS.foldersSharingEnabled,
       itemVisibility: sanitizeItemVisibility(parsed.itemVisibility),
       dockOrder: sanitizeDockOrder(parsed.dockOrder),
@@ -4804,6 +5561,54 @@ var desktopMode = function(exports) {
         parsed.dockPromotedPositions
       )
     };
+  }
+  function sanitizeWallpaperSettings(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return {};
+    }
+    const out = {};
+    let idCount = 0;
+    for (const [id, bag] of Object.entries(
+      raw
+    )) {
+      if (idCount >= 64) {
+        break;
+      }
+      if (typeof id !== "string" || id === "" || !/^[a-z0-9_/-]+$/.test(id)) {
+        continue;
+      }
+      if (!bag || typeof bag !== "object" || Array.isArray(bag)) {
+        continue;
+      }
+      const clean = {};
+      let keyCount = 0;
+      for (const [key, value] of Object.entries(
+        bag
+      )) {
+        if (keyCount >= 32) {
+          break;
+        }
+        if (typeof key !== "string" || key === "" || !/^[a-zA-Z0-9_-]+$/.test(key)) {
+          continue;
+        }
+        if (typeof value === "boolean") {
+          clean[key] = value;
+        } else if (typeof value === "number" && Number.isFinite(value)) {
+          clean[key] = value;
+        } else if (typeof value === "string") {
+          clean[key] = value.slice(0, 256);
+        } else {
+          continue;
+        }
+        keyCount++;
+      }
+      if (keyCount === 0) {
+        continue;
+      }
+      out[id] = clean;
+      idCount++;
+    }
+    return out;
   }
   function sanitizeItemVisibility(raw) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -4891,7 +5696,13 @@ var desktopMode = function(exports) {
       ...state2,
       customGradient: { ...state2.customGradient },
       customImage: state2.customImage ? { ...state2.customImage } : null,
-      ai: { ...state2.ai, apiKeys: { ...state2.ai.apiKeys } },
+      wallpaperSettings: Object.fromEntries(
+        Object.entries(state2.wallpaperSettings).map(([k, v]) => [
+          k,
+          { ...v }
+        ])
+      ),
+      ai: { ...state2.ai },
       nativePostsHiddenColumns: state2.nativePostsHiddenColumns.slice(),
       itemVisibility: { ...state2.itemVisibility },
       dockOrder: state2.dockOrder.slice(),
@@ -4989,6 +5800,7 @@ var desktopMode = function(exports) {
       ...DEFAULTS,
       customGradient: { ...DEFAULTS.customGradient },
       customImage: null,
+      wallpaperSettings: { ...DEFAULTS.wallpaperSettings },
       ai: { ...DEFAULTS.ai },
       // Clone the collection fields too. A shallow `...DEFAULTS`
       // aliases these nested objects, so a later in-place mutation
@@ -5008,26 +5820,11 @@ var desktopMode = function(exports) {
   }
   function sanitizeAi(raw) {
     if (!raw || typeof raw !== "object") {
-      return { ...DEFAULTS.ai, apiKeys: {} };
+      return { ...DEFAULTS.ai };
     }
-    const { enabled, provider, apiKey, apiKeys, transport } = raw;
-    const known = getAiProviders();
-    const validProvider = typeof provider === "string" && known.some((p) => p.id === provider) ? provider : DEFAULTS.ai.provider;
-    const cleanKeys = {};
-    if (apiKeys && typeof apiKeys === "object") {
-      for (const [pid, val] of Object.entries(apiKeys)) {
-        if (typeof val === "string") {
-          cleanKeys[pid] = val.slice(0, 512);
-        }
-      }
-    }
-    const validTransport = typeof transport === "string" && AI_TRANSPORTS.some((t) => t.id === transport) ? transport : DEFAULTS.ai.transport;
+    const { enabled } = raw;
     return {
-      enabled: typeof enabled === "boolean" ? enabled : DEFAULTS.ai.enabled,
-      provider: validProvider,
-      apiKey: typeof apiKey === "string" ? apiKey : DEFAULTS.ai.apiKey,
-      apiKeys: cleanKeys,
-      transport: validTransport
+      enabled: typeof enabled === "boolean" ? enabled : DEFAULTS.ai.enabled
     };
   }
   function sanitizeCustomGradient(raw) {
@@ -5054,7 +5851,7 @@ var desktopMode = function(exports) {
     }
     return { id, url };
   }
-  const store$c = createSharedStore(
+  const store$d = createSharedStore(
     "desktop-mode/dock-rail-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
@@ -5062,8 +5859,8 @@ var desktopMode = function(exports) {
       activeId: "default"
     })
   );
-  const registry$9 = store$c.state.registry;
-  const listeners$b = store$c.state.listeners;
+  const registry$a = store$d.state.registry;
+  const listeners$c = store$d.state.listeners;
   const ID_RE = /^[a-z0-9_-]+$/;
   function register$1(renderer) {
     if (!renderer || typeof renderer !== "object") {
@@ -5091,12 +5888,12 @@ var desktopMode = function(exports) {
         `[desktop-mode] registerDockRailRenderer: unsupported apiVersion ${renderer.apiVersion} (this shell speaks v1).`
       );
     }
-    registry$9.set(renderer.id, renderer);
-    notify$d();
+    registry$a.set(renderer.id, renderer);
+    notify$e();
   }
   function unregister$1(id) {
-    if (registry$9.delete(id)) {
-      notify$d();
+    if (registry$a.delete(id)) {
+      notify$e();
     }
   }
   function unregisterByOwner$1(owner) {
@@ -5104,38 +5901,38 @@ var desktopMode = function(exports) {
       return 0;
     }
     let removed = 0;
-    for (const [id, renderer] of Array.from(registry$9.entries())) {
+    for (const [id, renderer] of Array.from(registry$a.entries())) {
       if (renderer.owner === owner) {
-        registry$9.delete(id);
+        registry$a.delete(id);
         removed++;
       }
     }
     if (removed > 0) {
-      notify$d();
+      notify$e();
     }
     return removed;
   }
   function list() {
-    return Array.from(registry$9.values());
+    return Array.from(registry$a.values());
   }
   function subscribe$3(cb) {
-    listeners$b.add(cb);
+    listeners$c.add(cb);
     return () => {
-      listeners$b.delete(cb);
+      listeners$c.delete(cb);
     };
   }
   function setActiveRenderer(id) {
-    if (store$c.state.activeId === id) {
+    if (store$d.state.activeId === id) {
       return;
     }
-    store$c.state.activeId = id;
-    notify$d();
+    store$d.state.activeId = id;
+    notify$e();
   }
   function resolveActive() {
-    return registry$9.get(store$c.state.activeId) ?? registry$9.get("default") ?? registry$9.values().next().value;
+    return registry$a.get(store$d.state.activeId) ?? registry$a.get("default") ?? registry$a.values().next().value;
   }
-  function notify$d() {
-    const snapshot = Array.from(listeners$b);
+  function notify$e() {
+    const snapshot = Array.from(listeners$c);
     for (const cb of snapshot) {
       try {
         cb();
@@ -6023,8 +6820,8 @@ var desktopMode = function(exports) {
       if (oldValue === newValue) {
         return;
       }
-      const prop = camel(name);
-      this._propValues[prop] = newValue;
+      const prop2 = camel(name);
+      this._propValues[prop2] = newValue;
       this.requestUpdate();
     }
     /**
@@ -6095,32 +6892,32 @@ var desktopMode = function(exports) {
      */
     _installPropAccessors() {
       const ctor = this.constructor;
-      for (const prop of ctor.props) {
-        if (Object.getOwnPropertyDescriptor(this, prop)) {
+      for (const prop2 of ctor.props) {
+        if (Object.getOwnPropertyDescriptor(this, prop2)) {
           continue;
         }
-        const attr = kebab(prop);
-        Object.defineProperty(this, prop, {
+        const attr = kebab(prop2);
+        Object.defineProperty(this, prop2, {
           get: () => {
-            if (prop in this._propValues) {
-              return this._propValues[prop];
+            if (prop2 in this._propValues) {
+              return this._propValues[prop2];
             }
             return this.getAttribute(attr);
           },
           set: (value) => {
-            let str;
+            let str2;
             if (value === null || value === void 0 || value === false) {
-              str = null;
+              str2 = null;
             } else if (value === true) {
-              str = "";
+              str2 = "";
             } else {
-              str = String(value);
+              str2 = String(value);
             }
-            this._propValues[prop] = str;
-            if (str === null) {
+            this._propValues[prop2] = str2;
+            if (str2 === null) {
               this.removeAttribute(attr);
             } else {
-              this.setAttribute(attr, str);
+              this.setAttribute(attr, str2);
             }
             this.requestUpdate();
           },
@@ -7240,7 +8037,7 @@ var desktopMode = function(exports) {
         // Card. `getAllByBaseId` returns `[]` / `[one]` for the
         // singleton cases and the full set when a multi-capable
         // system tile (`multi: true`) has been duplicated.
-        getInstances: () => this.windowManager.getAllByBaseId(item.id),
+        getInstances: () => this.windowManager.getAllByBaseIdOnActiveDesktop(item.id),
         enableGhost: !!item.multi,
         windowManager: this.windowManager,
         getOrientation: () => this.orientation,
@@ -7347,7 +8144,7 @@ var desktopMode = function(exports) {
         // For genuine singletons that never get duplicated, the
         // returned array is just `[one]` (or `[]`), same shape the
         // old branch produced.
-        getInstances: () => this.windowManager.getAllByBaseId(baseId),
+        getInstances: () => this.windowManager.getAllByBaseIdOnActiveDesktop(baseId),
         // Ghost Card on EVERY tile, regardless of `multi`. The
         // affordance reads consistently across the dock — every
         // hover-peek surfaces a "+ open another <Page>" card. For
@@ -8263,16 +9060,259 @@ var desktopMode = function(exports) {
   function installDefaultDockRailRenderer() {
     register$1(defaultDockRailRenderer);
   }
+  const modalStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000;--desktop-mode-text:#f0f0f1;--desktop-mode-text-muted:#bbc1c7;--desktop-mode-muted:#a7aaad;--desktop-mode-muted-fg:#a7aaad;--desktop-mode-border:rgba( 255,255,255,0.25 );--wpd-button-bg-hover:rgba( 255,255,255,0.08 )}:host( [ open ] ){display:flex}.dialog{max-width:92vw;max-height:90vh;background:var( --wpd-modal-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-modal-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );display:flex;flex-direction:column;overflow:hidden}:host( [ size='sm' ] ) .dialog{width:min( 360px,92vw )}:host(:not( [ size ] ) ) .dialog,:host( [ size='md' ] ) .dialog{width:min( 540px,92vw )}:host( [ size='lg' ] ) .dialog{width:min( 760px,94vw )}.header{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;border-bottom:1px solid rgba( 255,255,255,0.06 )}.title{margin:0;flex:1;font-size:15px;font-weight:600}.header-actions{display:flex;gap:6px}.header-actions::slotted( * ){margin-inline-start:6px}.close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;cursor:pointer;opacity:0.7}.close:hover{opacity:1;background:rgba( 255,255,255,0.08 )}.body{padding:16px 20px;overflow:auto;flex:1 1 auto;font-size:13px;line-height:1.5}.footer{padding:12px 20px 16px;border-top:1px solid rgba( 255,255,255,0.06 )}.footer slot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}:host( [ mandatory ] ) .close{display:none}`;
+  const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const _WpdModal = class _WpdModal extends Component {
+    constructor() {
+      super(...arguments);
+      this._prevFocus = null;
+      this._onKey = (e) => {
+        if (e.key === "Escape" && !this.hasAttribute("mandatory")) {
+          e.preventDefault();
+          this._cancel();
+          return;
+        }
+        if (e.key === "Tab") {
+          const f = this._focusables();
+          if (f.length === 0) {
+            return;
+          }
+          const first = f[0];
+          const last = f[f.length - 1];
+          const doc = this.ownerDocument;
+          const fallback = doc ? doc.activeElement : null;
+          const active2 = e.composedPath()[0] || fallback;
+          if (e.shiftKey && active2 === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && active2 === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      };
+      this._onBackdrop = (e) => {
+        if (this.hasAttribute("mandatory")) {
+          return;
+        }
+        const path = e.composedPath();
+        const original = path.length > 0 ? path[0] : e.target;
+        if (original === this) {
+          this._cancel();
+        }
+      };
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      this.setAttribute("role", "dialog");
+      this.setAttribute("aria-modal", "true");
+      this.addEventListener("keydown", this._onKey);
+      this.addEventListener("click", this._onBackdrop);
+    }
+    disconnectedCallback() {
+      this.removeEventListener("keydown", this._onKey);
+      this.removeEventListener("click", this._onBackdrop);
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+      super.attributeChangedCallback?.(name, oldValue, newValue);
+      if (name === "open") {
+        if (newValue !== null) {
+          const doc = this.ownerDocument;
+          this._prevFocus = doc ? doc.activeElement : null;
+          queueMicrotask(() => this._focusFirst());
+        } else if (this._prevFocus) {
+          try {
+            this._prevFocus.focus();
+          } catch (e) {
+          }
+          this._prevFocus = null;
+        }
+      }
+    }
+    showModal() {
+      this.setAttribute("open", "");
+    }
+    hideModal() {
+      this.removeAttribute("open");
+    }
+    _focusables() {
+      const root = this.shadowRoot;
+      if (!root) {
+        return [];
+      }
+      const slotted = Array.from(this.querySelectorAll(FOCUSABLE));
+      const inShadow = Array.from(root.querySelectorAll(FOCUSABLE));
+      return [...slotted, ...inShadow].filter((el) => el.offsetParent !== null || el.tagName === "BUTTON");
+    }
+    _focusFirst() {
+      const f = this._focusables();
+      if (f.length > 0) {
+        f[0].focus();
+      } else {
+        const inner = this.shadowRoot?.querySelector(".dialog");
+        inner?.focus?.();
+      }
+    }
+    _cancel() {
+      const ev = new CustomEvent("wpd-modal-cancel", {
+        bubbles: true,
+        cancelable: true,
+        composed: true
+      });
+      const allowed = this.dispatchEvent(ev);
+      if (allowed) {
+        this.hideModal();
+      }
+    }
+    render() {
+      const title = this.getAttribute("title") ?? "";
+      const mandatory = this.hasAttribute("mandatory");
+      return html`
+			<div class="dialog" tabindex="-1">
+				${title ? html`
+						<div class="header">
+							<h2 class="title">${title}</h2>
+							<div class="header-actions">
+								<slot name="header-actions"></slot>
+								${mandatory ? html`` : html`<button
+										type="button"
+										class="close"
+										aria-label="Close"
+										@click=${() => this._cancel()}
+									>×</button>`}
+							</div>
+						</div>
+					` : html``}
+				<div class="body">
+					<slot></slot>
+				</div>
+				<div class="footer">
+					<slot name="footer"></slot>
+				</div>
+			</div>
+		`;
+    }
+  };
+  _WpdModal.props = ["open", "title", "size", "mandatory"];
+  _WpdModal.styles = [modalStyles];
+  _WpdModal.help = {
+    title: "Modal overlay",
+    summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm. The dialog surface is dark and re-points the shared surface tokens (--desktop-mode-text/-muted/-border, --wpd-button-bg-hover) so wpd-* controls slotted into it resolve readable dark-surface colors automatically.",
+    status: "experimental",
+    since: "0.8.5",
+    props: [
+      { name: "open", type: "boolean attribute", description: "Mounts the dialog visible." },
+      { name: "title", type: "string", description: "Heading shown at the top of the dialog." },
+      { name: "size", type: "'sm' | 'md' | 'lg'", default: "md", description: "Width preset." },
+      {
+        name: "mandatory",
+        type: "boolean attribute",
+        description: "Disables ESC, click-outside and the close button."
+      }
+    ],
+    slots: [
+      { name: "(default)", description: "Body content." },
+      { name: "footer", description: "Footer button row, right-aligned." },
+      { name: "header-actions", description: "Extra actions next to the close button." }
+    ],
+    events: [
+      {
+        name: "wpd-modal-cancel",
+        description: "Fires when the user dismisses the modal (ESC, click-outside, close button). Cancelable; calling `preventDefault()` keeps the modal open."
+      }
+    ]
+  };
+  let WpdModal = _WpdModal;
+  defineComponent("wpd-modal", WpdModal);
+  const styles$6 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const _WpdButton = class _WpdButton extends Component {
+    render() {
+      const disabled = this.disabled !== null;
+      const type = this.type || "button";
+      return html`
+			<button part="button" type=${type} ?disabled=${disabled}>
+				<slot></slot>
+			</button>
+		`;
+    }
+  };
+  _WpdButton.props = ["variant", "disabled", "type", "busy", "fill-cell"];
+  _WpdButton.styles = [styles$6];
+  _WpdButton.help = {
+    title: "Button",
+    summary: "Thin wrapper around <button> with consistent variant styling and a slot for the label.",
+    status: "stable",
+    since: "0.9.0",
+    props: [
+      {
+        name: "variant",
+        type: "'primary' | 'secondary' | 'ghost' | 'danger' | 'link'",
+        default: "ghost",
+        description: "Visual weight of the button. Use primary for the single attention-grabbing action per surface."
+      },
+      {
+        name: "disabled",
+        type: "boolean attribute",
+        description: "Disable pointer + keyboard interaction and dim the chrome."
+      },
+      {
+        name: "type",
+        type: "'button' | 'submit' | 'reset'",
+        default: "button",
+        description: "Forwarded to the underlying native <button>."
+      },
+      {
+        name: "busy",
+        type: "boolean attribute",
+        description: "Marks the button as in-progress (e.g., awaiting a fetch)."
+      },
+      {
+        name: "fill-cell",
+        type: "boolean attribute",
+        description: "Grow to fill the parent flex/grid cell. Useful for tiled keypads."
+      }
+    ],
+    slots: [{ name: "(default)", description: "Button label." }],
+    parts: [{ name: "button", description: "Underlying <button> element." }],
+    cssProps: [
+      { name: "--wpd-button-bg", description: "Background color." },
+      {
+        name: "--wpd-button-bg-hover",
+        description: "Hover wash (ghost + secondary variants)."
+      },
+      { name: "--wpd-button-fg", description: "Text color." },
+      { name: "--wpd-button-border", description: "Border shorthand." },
+      { name: "--wpd-button-border-radius", default: "6px" },
+      { name: "--wpd-button-padding", default: "6px 12px" },
+      {
+        name: "--wpd-button-min-height",
+        description: "Minimum height when fill-cell is set."
+      }
+    ],
+    example: html`
+			<wpd-cluster gap="8">
+				<wpd-button variant="primary">Primary</wpd-button>
+				<wpd-button variant="secondary">Secondary</wpd-button>
+				<wpd-button variant="ghost">Ghost</wpd-button>
+				<wpd-button variant="danger">Danger</wpd-button>
+				<wpd-button variant="link">Link</wpd-button>
+			</wpd-cluster>
+		`
+  };
+  let WpdButton = _WpdButton;
+  defineComponent("wpd-button", WpdButton);
   function customGradientCss(state2) {
     const { from, to, angle } = state2.customGradient;
     return `linear-gradient(${angle}deg, ${from}, ${to})`;
   }
+  const CUSTOM_GRADIENT_DESCRIPTION = () => __("Mix your own two-colour gradient and set the angle — your desk, your palette.");
   function registerCustomGradient(ctx) {
     register$2({
       id: CUSTOM_GRADIENT_ID,
       label: __("Custom gradient"),
       type: "css",
       preview: customGradientCss(ctx.state),
+      description: CUSTOM_GRADIENT_DESCRIPTION(),
       resolveValue: () => customGradientCss(ctx.state)
     });
   }
@@ -8288,7 +9328,10 @@ var desktopMode = function(exports) {
       label: __("Custom image"),
       type: "css",
       value,
-      preview: value
+      preview: value,
+      description: __(
+        "Any image from your media library or an upload, sized to cover the whole desk."
+      )
     });
   }
   let _panelLoadPromise = null;
@@ -8377,6 +9420,11 @@ var desktopMode = function(exports) {
         desktopLayout: this.state.desktopLayout,
         dockRailRenderer: this.state.dockRailRenderer,
         unfocusEffect: this.state.unfocusEffect,
+        windowLinkRenderer: this.state.windowLinkRenderer,
+        windowLinkVisibility: this.state.windowLinkVisibility,
+        windowLinksEnabled: this.state.windowLinksEnabled,
+        windowLinkRaiseOnFocus: this.state.windowLinkRaiseOnFocus,
+        windowLinkHighlight: this.state.windowLinkHighlight,
         ai: { ...this.state.ai },
         nativePostsEnabled: this.state.nativePostsEnabled,
         nativePostsHiddenColumns: this.state.nativePostsHiddenColumns.slice(),
@@ -8384,6 +9432,7 @@ var desktopMode = function(exports) {
         nativeUsersEnabled: this.state.nativeUsersEnabled,
         nativePluginsEnabled: this.state.nativePluginsEnabled,
         nativeCommentsEnabled: this.state.nativeCommentsEnabled,
+        developerModeEnabled: this.state.developerModeEnabled,
         foldersSharingEnabled: this.state.foldersSharingEnabled,
         itemVisibility: { ...this.state.itemVisibility },
         dockOrder: this.state.dockOrder.slice(),
@@ -8412,6 +9461,7 @@ var desktopMode = function(exports) {
       if (!shell) {
         return;
       }
+      seedWallpaperSettings(this.state.wallpaperSettings);
       const def = get$1(this.state.wallpaper) || get$1(getDefaultWallpaperId()) || get$1(DEFAULT_WALLPAPER_ID) || all$1()[0];
       if (def) {
         this.layer.apply(def);
@@ -8683,7 +9733,7 @@ var desktopMode = function(exports) {
     }
     return value.replace(/["\\]/g, "\\$&");
   }
-  const registry$8 = /* @__PURE__ */ new Map();
+  const registry$9 = /* @__PURE__ */ new Map();
   function registerModule(def) {
     if (!def || typeof def.id !== "string" || def.id === "") {
       if (typeof console !== "undefined") {
@@ -8699,16 +9749,16 @@ var desktopMode = function(exports) {
       }
       return;
     }
-    registry$8.set(def.id, def);
+    registry$9.set(def.id, def);
   }
   function moduleIds() {
-    return Array.from(registry$8.keys());
+    return Array.from(registry$9.keys());
   }
   async function loadModules(ids) {
     if (!ids || ids.length === 0) {
       return;
     }
-    const unknown = ids.filter((id) => !registry$8.has(id));
+    const unknown = ids.filter((id) => !registry$9.has(id));
     if (unknown.length > 0) {
       throw new Error(
         `[desktop-mode] Unknown module(s) in needs: ${unknown.map((id) => `"${id}"`).join(", ")}. Known modules: ${moduleIds().join(", ") || "(none)"}.`
@@ -8716,7 +9766,7 @@ var desktopMode = function(exports) {
     }
     await Promise.all(
       ids.map((id) => {
-        const def = registry$8.get(id);
+        const def = registry$9.get(id);
         if (!def) {
           return Promise.resolve();
         }
@@ -8732,7 +9782,8 @@ var desktopMode = function(exports) {
       id,
       pluginUrl,
       prefersReducedMotion: prefersReducedMotion(),
-      visible: !document.hidden
+      visible: !document.hidden,
+      settings: getWallpaperSettings(id)
     };
   }
   function prefersReducedMotion() {
@@ -8909,7 +9960,8 @@ var desktopMode = function(exports) {
         label: entry.label,
         type: "css",
         value: entry.value,
-        preview: entry.preview !== "" ? entry.preview : entry.value
+        preview: entry.preview !== "" ? entry.preview : entry.value,
+        description: entry.description || void 0
       };
     };
     const registerEntry = async (entry) => {
@@ -8924,7 +9976,10 @@ var desktopMode = function(exports) {
         return;
       }
       await ensureScript(entry);
-      const def = readDef(entry.id);
+      let def = readDef(entry.id);
+      if (def && !def.description && entry.description) {
+        def = { ...def, description: entry.description };
+      }
       if (!def) {
         doAction(HOOKS.SHELL_ERROR, {
           scope: "wallpaper-missing-def",
@@ -8981,8 +10036,8 @@ var desktopMode = function(exports) {
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const registry$7 = commandRegistryStore.state.registry;
-  const listeners$a = commandRegistryStore.state.listeners;
+  const registry$8 = commandRegistryStore.state.registry;
+  const listeners$b = commandRegistryStore.state.listeners;
   function registerCommand(cmd) {
     const errors = [];
     const slug = typeof cmd?.slug === "string" ? cmd.slug.trim().toLowerCase() : "";
@@ -9004,12 +10059,12 @@ var desktopMode = function(exports) {
       }
     }
     throwOnRegistrationErrors("Command", errors, cmd);
-    registry$7.set(slug, { ...cmd, slug });
-    notify$c();
+    registry$8.set(slug, { ...cmd, slug });
+    notify$d();
   }
   function unregisterCommand(slug) {
-    if (registry$7.delete(slug.toLowerCase())) {
-      notify$c();
+    if (registry$8.delete(slug.toLowerCase())) {
+      notify$d();
     }
   }
   function unregisterByOwner(owner) {
@@ -9017,23 +10072,23 @@ var desktopMode = function(exports) {
       return 0;
     }
     let removed = 0;
-    for (const [slug, cmd] of Array.from(registry$7.entries())) {
+    for (const [slug, cmd] of Array.from(registry$8.entries())) {
       if (cmd.owner === owner) {
-        registry$7.delete(slug);
+        registry$8.delete(slug);
         removed++;
       }
     }
     if (removed > 0) {
-      notify$c();
+      notify$d();
     }
     return removed;
   }
   function listCommands() {
-    return Array.from(registry$7.values());
+    return Array.from(registry$8.values());
   }
   function listAiCallableCommands() {
     const out = [];
-    for (const cmd of registry$7.values()) {
+    for (const cmd of registry$8.values()) {
       if (cmd.aiCallable !== true) {
         continue;
       }
@@ -9047,10 +10102,10 @@ var desktopMode = function(exports) {
     return out;
   }
   function findCommand(slug) {
-    return registry$7.get(slug.toLowerCase()) ?? null;
+    return registry$8.get(slug.toLowerCase()) ?? null;
   }
-  function notify$c() {
-    const snapshot = Array.from(listeners$a);
+  function notify$d() {
+    const snapshot = Array.from(listeners$b);
     for (const cb of snapshot) {
       try {
         cb();
@@ -9147,15 +10202,15 @@ var desktopMode = function(exports) {
       prevSlugsByHandle = slugsByHandleFrom(commands);
     };
   }
-  const store$b = createSharedStore(
+  const store$c = createSharedStore(
     "desktop-mode/settings-tab-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const registry$6 = store$b.state.registry;
-  const listeners$9 = store$b.state.listeners;
+  const registry$7 = store$c.state.registry;
+  const listeners$a = store$c.state.listeners;
   function registerSettingsTab(tab) {
     if (!tab || typeof tab.id !== "string" || tab.id.trim() === "") {
       return;
@@ -9176,12 +10231,12 @@ var desktopMode = function(exports) {
       }
       return;
     }
-    registry$6.set(id, { ...tab, id });
-    notify$b();
+    registry$7.set(id, { ...tab, id });
+    notify$c();
   }
   function unregisterSettingsTab(id) {
-    if (registry$6.delete(id.toLowerCase())) {
-      notify$b();
+    if (registry$7.delete(id.toLowerCase())) {
+      notify$c();
     }
   }
   function unregisterSettingsTabsByOwner(owner) {
@@ -9189,24 +10244,24 @@ var desktopMode = function(exports) {
       return 0;
     }
     let removed = 0;
-    for (const [id, tab] of Array.from(registry$6.entries())) {
+    for (const [id, tab] of Array.from(registry$7.entries())) {
       if (tab.owner === owner) {
-        registry$6.delete(id);
+        registry$7.delete(id);
         removed++;
       }
     }
     if (removed > 0) {
-      notify$b();
+      notify$c();
     }
     return removed;
   }
   function listSettingsTabs() {
-    return Array.from(registry$6.values()).sort(
+    return Array.from(registry$7.values()).sort(
       (a, b) => (a.order ?? 100) - (b.order ?? 100)
     );
   }
-  function notify$b() {
-    const snapshot = Array.from(listeners$9);
+  function notify$c() {
+    const snapshot = Array.from(listeners$a);
     for (const cb of snapshot) {
       try {
         cb();
@@ -9303,12 +10358,12 @@ var desktopMode = function(exports) {
       prevIdsByHandle = idsByHandleFrom(tabs);
     };
   }
-  const store$a = createSharedStore(
+  const store$b = createSharedStore(
     "desktop-mode/title-bar-buttons-registry",
     () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
   );
-  const registry$5 = store$a.state.registry;
-  const listeners$8 = store$a.state.listeners;
+  const registry$6 = store$b.state.registry;
+  const listeners$9 = store$b.state.listeners;
   const TITLE_BAR_BUTTON_ID = /^[a-z0-9_/-]+$/;
   function registerTitleBarButton(def) {
     const errors = [];
@@ -9337,12 +10392,12 @@ var desktopMode = function(exports) {
     }
     throwOnRegistrationErrors("TitleBarButton", errors, def);
     const id = def.id.trim().toLowerCase();
-    registry$5.set(id, { ...def, id });
-    notify$a();
+    registry$6.set(id, { ...def, id });
+    notify$b();
   }
   function unregisterTitleBarButton(id) {
-    if (registry$5.delete(id.toLowerCase())) {
-      notify$a();
+    if (registry$6.delete(id.toLowerCase())) {
+      notify$b();
     }
   }
   function unregisterTitleBarButtonsByOwner(owner) {
@@ -9350,24 +10405,24 @@ var desktopMode = function(exports) {
       return 0;
     }
     let removed = 0;
-    for (const [id, def] of Array.from(registry$5.entries())) {
+    for (const [id, def] of Array.from(registry$6.entries())) {
       if (def.owner === owner) {
-        registry$5.delete(id);
+        registry$6.delete(id);
         removed++;
       }
     }
     if (removed > 0) {
-      notify$a();
+      notify$b();
     }
     return removed;
   }
   function listTitleBarButtons() {
-    return Array.from(registry$5.values()).sort(
+    return Array.from(registry$6.values()).sort(
       (a, b) => (a.order ?? 100) - (b.order ?? 100)
     );
   }
-  function notify$a() {
-    const snapshot = Array.from(listeners$8);
+  function notify$b() {
+    const snapshot = Array.from(listeners$9);
     for (const cb of snapshot) {
       try {
         cb();
@@ -9429,6 +10484,884 @@ var desktopMode = function(exports) {
         await ensureScript(entry);
       }
     };
+  }
+  const WINDOW_LINK_RENDERER_NONE = "none";
+  const WINDOW_LINK_RENDERER_DEFAULT = "svg-splines";
+  const store$a = createSharedStore(
+    "desktop-mode/window-link-renderer-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry$5 = store$a.state.registry;
+  const listeners$8 = store$a.state.listeners;
+  const WINDOW_LINK_RENDERER_ID = /^[a-z0-9_/-]+$/;
+  function registerWindowLinkRenderer(def) {
+    const errors = [];
+    if (!def || typeof def !== "object") {
+      errors.push("def (not an object)");
+    } else {
+      if (typeof def.id !== "string" || def.id.trim() === "") {
+        errors.push("id (missing)");
+      } else if (!WINDOW_LINK_RENDERER_ID.test(def.id.trim().toLowerCase())) {
+        errors.push(
+          `id (must match ${WINDOW_LINK_RENDERER_ID} — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-id)`
+        );
+      } else if (def.id.trim().toLowerCase() === WINDOW_LINK_RENDERER_NONE) {
+        errors.push('id ("none" is reserved)');
+      }
+      if (typeof def.label !== "string" || def.label.trim() === "") {
+        errors.push("label (missing)");
+      }
+      if (typeof def.mount !== "function") {
+        errors.push("mount (not a function)");
+      }
+    }
+    throwOnRegistrationErrors("WindowLinkRenderer", errors, def);
+    const id = def.id.trim().toLowerCase();
+    registry$5.set(id, { ...def, id });
+    notify$a();
+  }
+  function unregisterWindowLinkRenderer(id) {
+    if (registry$5.delete(id.toLowerCase())) {
+      notify$a();
+    }
+  }
+  function unregisterWindowLinkRenderersByOwner(owner) {
+    if (!owner) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [id, def] of Array.from(registry$5.entries())) {
+      if (def.owner === owner) {
+        registry$5.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      notify$a();
+    }
+    return removed;
+  }
+  function listWindowLinkRenderers() {
+    const copy = Array.from(registry$5.values());
+    const filtered = applyFilters(
+      HOOKS.WINDOW_LINK_RENDERERS,
+      copy
+    );
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.window-links.renderers` filter returned a non-array; falling back to registry list."
+        );
+      }
+      return copy;
+    }
+    return filtered;
+  }
+  function getWindowLinkRenderer(id) {
+    return listWindowLinkRenderers().find((r) => r.id === id);
+  }
+  function subscribeWindowLinkRenderers(cb) {
+    listeners$8.add(cb);
+    return () => {
+      listeners$8.delete(cb);
+    };
+  }
+  function notify$a() {
+    const snapshot = Array.from(listeners$8);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] window-link-renderer registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  const MIN_VISIBLE_SEGMENT = 16;
+  function subtractIntervals(base, holes) {
+    const sorted = holes.map((h) => ({
+      start: Math.max(base.start, h.start),
+      end: Math.min(base.end, h.end)
+    })).filter((h) => h.end > h.start).sort((a, b) => a.start - b.start);
+    const out = [];
+    let cursor = base.start;
+    for (const hole of sorted) {
+      if (hole.start > cursor) {
+        out.push({ start: cursor, end: hole.start });
+      }
+      cursor = Math.max(cursor, hole.end);
+    }
+    if (cursor < base.end) {
+      out.push({ start: cursor, end: base.end });
+    }
+    return out;
+  }
+  function anchorOnBorder(rect, toward) {
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    const dx = toward.x - cx;
+    const dy = toward.y - cy;
+    if (dx === 0 && dy === 0) {
+      return { x: cx, y: cy, side: "right" };
+    }
+    const sx = dx !== 0 ? rect.width / 2 / Math.abs(dx) : Infinity;
+    const sy = dy !== 0 ? rect.height / 2 / Math.abs(dy) : Infinity;
+    const s = Math.min(sx, sy);
+    const x = cx + dx * s;
+    const y = cy + dy * s;
+    let side;
+    if (sx <= sy) {
+      side = dx > 0 ? "right" : "left";
+    } else {
+      side = dy > 0 ? "bottom" : "top";
+    }
+    return { x, y, side };
+  }
+  function isPointVisible(point, zIndex, obstacles, selfId) {
+    for (const o of obstacles) {
+      if (o.windowId === selfId || o.zIndex <= zIndex) {
+        continue;
+      }
+      if (point.x >= o.rect.x && point.x <= o.rect.x + o.rect.width && point.y >= o.rect.y && point.y <= o.rect.y + o.rect.height) {
+        return false;
+      }
+    }
+    return true;
+  }
+  function visibleBorderAnchor(rect, zIndex, obstacles, selfId, toward) {
+    const occluders = obstacles.filter(
+      (o) => o.windowId !== selfId && o.zIndex > zIndex
+    );
+    const sides = [
+      {
+        side: "top",
+        base: { start: rect.x, end: rect.x + rect.width },
+        at: rect.y,
+        horizontal: true
+      },
+      {
+        side: "bottom",
+        base: { start: rect.x, end: rect.x + rect.width },
+        at: rect.y + rect.height,
+        horizontal: true
+      },
+      {
+        side: "left",
+        base: { start: rect.y, end: rect.y + rect.height },
+        at: rect.x,
+        horizontal: false
+      },
+      {
+        side: "right",
+        base: { start: rect.y, end: rect.y + rect.height },
+        at: rect.x + rect.width,
+        horizontal: false
+      }
+    ];
+    let best = null;
+    let bestDistance = Infinity;
+    for (const { side, base, at, horizontal } of sides) {
+      const holes = [];
+      for (const { rect: o } of occluders) {
+        const coversLine = horizontal ? o.y <= at && at <= o.y + o.height : o.x <= at && at <= o.x + o.width;
+        if (!coversLine) {
+          continue;
+        }
+        holes.push(
+          horizontal ? { start: o.x, end: o.x + o.width } : { start: o.y, end: o.y + o.height }
+        );
+      }
+      for (const segment of subtractIntervals(base, holes)) {
+        if (segment.end - segment.start < MIN_VISIBLE_SEGMENT) {
+          continue;
+        }
+        const mid = (segment.start + segment.end) / 2;
+        const x = horizontal ? mid : at;
+        const y = horizontal ? at : mid;
+        const distance2 = Math.hypot(toward.x - x, toward.y - y);
+        if (distance2 < bestDistance) {
+          bestDistance = distance2;
+          best = { x, y, side };
+        }
+      }
+    }
+    return best;
+  }
+  function closestBorderAnchors(a, b) {
+    const gapX = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width));
+    const gapY = Math.max(
+      b.y - (a.y + a.height),
+      a.y - (b.y + b.height)
+    );
+    if (gapX < 0 && gapY < 0) {
+      return null;
+    }
+    const overlapX1 = Math.max(a.x, b.x);
+    const overlapX2 = Math.min(a.x + a.width, b.x + b.width);
+    const overlapY1 = Math.max(a.y, b.y);
+    const overlapY2 = Math.min(a.y + a.height, b.y + b.height);
+    let ax;
+    let bx;
+    if (overlapX2 >= overlapX1) {
+      ax = bx = (overlapX1 + overlapX2) / 2;
+    } else if (b.x > a.x) {
+      ax = a.x + a.width;
+      bx = b.x;
+    } else {
+      ax = a.x;
+      bx = b.x + b.width;
+    }
+    let ay;
+    let by;
+    if (overlapY2 >= overlapY1) {
+      ay = by = (overlapY1 + overlapY2) / 2;
+    } else if (b.y > a.y) {
+      ay = a.y + a.height;
+      by = b.y;
+    } else {
+      ay = a.y;
+      by = b.y + b.height;
+    }
+    const horizontal = gapX >= gapY;
+    const sideOf = (rect, x, y) => {
+      if (horizontal) {
+        return x <= rect.x ? "left" : "right";
+      }
+      return y <= rect.y ? "top" : "bottom";
+    };
+    return {
+      from: { x: ax, y: ay, side: sideOf(a, ax, ay) },
+      to: { x: bx, y: by, side: sideOf(b, bx, by) }
+    };
+  }
+  function controlPoint(anchor, distance2) {
+    const k = Math.min(160, Math.max(24, 0.4 * distance2));
+    switch (anchor.side) {
+      case "left":
+        return { x: anchor.x - k, y: anchor.y };
+      case "right":
+        return { x: anchor.x + k, y: anchor.y };
+      case "top":
+        return { x: anchor.x, y: anchor.y - k };
+      default:
+        return { x: anchor.x, y: anchor.y + k };
+    }
+  }
+  function centerOf(rect) {
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  }
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  let _mountSeq = 0;
+  function endpointAnchor(rect, zIndex, windowId, obstacles, toward) {
+    const classic = anchorOnBorder(rect, toward);
+    if (zIndex === null || isPointVisible(classic, zIndex, obstacles, windowId)) {
+      return classic;
+    }
+    return visibleBorderAnchor(rect, zIndex, obstacles, windowId, toward) ?? classic;
+  }
+  function buildMarkers(svg, idBase) {
+    const defs = document.createElementNS(SVG_NS, "defs");
+    const make = (suffix, className, size) => {
+      const id = `${idBase}-${suffix}`;
+      const marker = document.createElementNS(SVG_NS, "marker");
+      marker.setAttribute("id", id);
+      marker.setAttribute("viewBox", "0 0 10 10");
+      marker.setAttribute("refX", "5");
+      marker.setAttribute("refY", "5");
+      marker.setAttribute("markerWidth", size);
+      marker.setAttribute("markerHeight", size);
+      marker.setAttribute("markerUnits", "strokeWidth");
+      const tip = document.createElementNS(SVG_NS, "circle");
+      tip.setAttribute("cx", "5");
+      tip.setAttribute("cy", "5");
+      tip.setAttribute("r", "4");
+      tip.classList.add(className);
+      marker.appendChild(tip);
+      defs.appendChild(marker);
+      return id;
+    };
+    const endpoint = "desktop-mode-window-link__endpoint";
+    const active2 = `${endpoint}--active`;
+    const markers = {
+      dot: {
+        normal: make("dot", endpoint, "7"),
+        active: make("dot-active", active2, "7")
+      },
+      port: {
+        normal: make("port", endpoint, "4.5"),
+        active: make("port-active", active2, "4.5")
+      }
+    };
+    svg.appendChild(defs);
+    return markers;
+  }
+  registerWindowLinkRenderer({
+    id: "svg-splines",
+    label: __("Splines"),
+    description: __(
+      "Curved connectors between related windows, ending in circular dots — the larger dot sits on the window the content belongs to; windows that reference each other get large dots on both ends."
+    ),
+    mount: (ctx) => {
+      const seq = ++_mountSeq;
+      const buildSurface = (container, suffix) => {
+        const svg = document.createElementNS(SVG_NS, "svg");
+        svg.classList.add("desktop-mode-window-links__svg");
+        container.appendChild(svg);
+        return {
+          svg,
+          markers: buildMarkers(
+            svg,
+            `desktop-mode-window-link-${seq}${suffix}`
+          )
+        };
+      };
+      const surfaces = {
+        base: buildSurface(ctx.container, ""),
+        elevated: buildSurface(ctx.elevatedContainer, "-elevated")
+      };
+      const edges = /* @__PURE__ */ new Map();
+      const draw = (frame) => {
+        for (const { svg } of [surfaces.base, surfaces.elevated]) {
+          svg.setAttribute("width", String(frame.container.width));
+          svg.setAttribute(
+            "height",
+            String(frame.container.height)
+          );
+          svg.setAttribute(
+            "viewBox",
+            `0 0 ${frame.container.width} ${frame.container.height}`
+          );
+        }
+        const seen = /* @__PURE__ */ new Set();
+        for (const edge of frame.edges) {
+          if (!edge.from || !edge.to) {
+            continue;
+          }
+          const key = `${edge.fromWindowId}→${edge.toWindowId}:${edge.kind}`;
+          seen.add(key);
+          const surfaceName = edge.elevated ? "elevated" : "base";
+          let el = edges.get(key);
+          if (el && el.surface !== surfaceName) {
+            el.group.remove();
+            edges.delete(key);
+            el = void 0;
+          }
+          if (!el) {
+            const group = document.createElementNS(SVG_NS, "g");
+            group.classList.add("desktop-mode-window-link");
+            const path = document.createElementNS(SVG_NS, "path");
+            path.classList.add("desktop-mode-window-link__path");
+            group.appendChild(path);
+            surfaces[surfaceName].svg.appendChild(group);
+            el = { group, path, surface: surfaceName };
+            edges.set(key, el);
+          }
+          const obstacles = frame.obstacles ?? [];
+          const shortest = closestBorderAnchors(edge.from, edge.to);
+          const visibleAt = (anchor, zIndex, windowId) => zIndex === null || isPointVisible(anchor, zIndex, obstacles, windowId);
+          let start = null;
+          if (shortest && visibleAt(
+            shortest.from,
+            edge.fromZIndex,
+            edge.fromWindowId
+          )) {
+            start = shortest.from;
+          }
+          if (!start) {
+            start = endpointAnchor(
+              edge.from,
+              edge.fromZIndex,
+              edge.fromWindowId,
+              obstacles,
+              shortest ? { x: shortest.to.x, y: shortest.to.y } : centerOf(edge.to)
+            );
+          }
+          let end = null;
+          if (shortest && visibleAt(shortest.to, edge.toZIndex, edge.toWindowId)) {
+            end = shortest.to;
+          }
+          if (!end) {
+            end = endpointAnchor(
+              edge.to,
+              edge.toZIndex,
+              edge.toWindowId,
+              obstacles,
+              // Aim the target anchor at the resolved source
+              // anchor so the curve's two ends agree when
+              // either moved off the shortest pair.
+              { x: start.x, y: start.y }
+            );
+          }
+          const distance2 = Math.hypot(
+            end.x - start.x,
+            end.y - start.y
+          );
+          const c1 = controlPoint(start, distance2);
+          const c2 = controlPoint(end, distance2);
+          el.path.setAttribute(
+            "d",
+            `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`
+          );
+          const markers = surfaces[el.surface].markers;
+          const variant = edge.focused ? "active" : "normal";
+          el.path.setAttribute(
+            "marker-end",
+            `url(#${markers.dot[variant]})`
+          );
+          el.path.setAttribute(
+            "marker-start",
+            `url(#${edge.bidirectional ? markers.dot[variant] : markers.port[variant]})`
+          );
+          el.group.classList.toggle(
+            "desktop-mode-window-link--active",
+            edge.focused
+          );
+        }
+        for (const [key, el] of Array.from(edges)) {
+          if (!seen.has(key)) {
+            el.group.remove();
+            edges.delete(key);
+          }
+        }
+      };
+      const unsubscribe = ctx.onFrame(draw);
+      draw(ctx.getFrame());
+      return () => {
+        unsubscribe();
+        edges.clear();
+        surfaces.base.svg.remove();
+        surfaces.elevated.svg.remove();
+      };
+    }
+  });
+  const LAYER_ID = "desktop-mode-window-links";
+  const LINKED_CLASS = "desktop-mode-window--linked";
+  const VISIBLE_CLASS = "desktop-mode-window-links--visible";
+  let _started$2 = false;
+  function startWindowLinkRenderHost({
+    manager,
+    osSettings
+  }) {
+    if (_started$2) {
+      return;
+    }
+    _started$2 = true;
+    let snapshot = osSettings.getOsSettingsSnapshot();
+    let layer = null;
+    let elevatedLayer = null;
+    let mountedId = null;
+    let teardown = null;
+    let mountToken = 0;
+    const frameSubscribers = /* @__PURE__ */ new Set();
+    let framePending = false;
+    const linkedWindows = /* @__PURE__ */ new Set();
+    let overviewActive = false;
+    const rectOf = (win) => {
+      const el = win.element;
+      if (!el || !el.isConnected || win.state === "minimized" || // Hidden desktops / display-suppressed windows measure 0×0
+      // and have no offsetParent — skip their edges entirely.
+      el.offsetParent === null) {
+        return null;
+      }
+      return {
+        x: el.offsetLeft,
+        y: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight
+      };
+    };
+    const drawableRectOf = (win) => {
+      if (win.state === "snapped-left" || win.state === "snapped-right") {
+        return null;
+      }
+      return rectOf(win);
+    };
+    const buildFrame2 = () => {
+      const groups = [];
+      for (const group of listWindowLinkGroups()) {
+        if (group.rootWindowIds.length === 0 || group.children.length === 0) {
+          continue;
+        }
+        const members = [];
+        const push = (windowId, role, content) => {
+          const win = manager.getById(windowId);
+          if (!win || !content) {
+            return;
+          }
+          members.push({
+            windowId,
+            role,
+            content,
+            rect: drawableRectOf(win),
+            focused: win.isFocused(),
+            state: win.state
+          });
+        };
+        for (const id of group.rootWindowIds) {
+          push(id, "root", getWindowContent(id));
+        }
+        for (const child of group.children) {
+          push(child.windowId, "child", child.content);
+        }
+        if (members.length > 0) {
+          groups.push({ key: group.key, root: group.root, members });
+        }
+      }
+      const zOf = (win) => {
+        const z = Number.parseInt(
+          win.element?.style.zIndex || "",
+          10
+        );
+        return Number.isFinite(z) ? z : null;
+      };
+      const focusedId = manager.getFocused()?.id ?? null;
+      const edges = [];
+      for (const edge of listWindowLinkEdges()) {
+        const fromWin = manager.getById(edge.fromWindowId);
+        const toWin = manager.getById(edge.toWindowId);
+        if (!fromWin || !toWin) {
+          continue;
+        }
+        const focused = fromWin.isFocused() || toWin.isFocused();
+        edges.push({
+          fromWindowId: edge.fromWindowId,
+          toWindowId: edge.toWindowId,
+          kind: edge.kind,
+          bidirectional: edge.bidirectional,
+          focused,
+          from: drawableRectOf(fromWin),
+          to: drawableRectOf(toWin),
+          fromZIndex: zOf(fromWin),
+          toZIndex: zOf(toWin),
+          // Only ties TOUCHING the focused window ride the
+          // elevated layer — an edge between two unfocused
+          // windows must never draw over a window that happens
+          // to share a group with the focused one.
+          elevated: focusedId !== null && (edge.fromWindowId === focusedId || edge.toWindowId === focusedId)
+        });
+      }
+      const obstacles = [];
+      for (const win of manager.getAll()) {
+        const rect = rectOf(win);
+        if (!rect) {
+          continue;
+        }
+        obstacles.push({
+          windowId: win.id,
+          rect,
+          zIndex: zOf(win) ?? 0
+        });
+      }
+      return {
+        groups,
+        edges,
+        obstacles,
+        container: {
+          width: layer?.offsetWidth ?? 0,
+          height: layer?.offsetHeight ?? 0
+        }
+      };
+    };
+    const emitFrame = () => {
+      if (framePending || frameSubscribers.size === 0) {
+        return;
+      }
+      framePending = true;
+      requestAnimationFrame(() => {
+        framePending = false;
+        if (!mountedId) {
+          return;
+        }
+        const frame = buildFrame2();
+        for (const cb of Array.from(frameSubscribers)) {
+          try {
+            cb(frame);
+          } catch (err) {
+            if (typeof console !== "undefined") {
+              console.error(
+                "[desktop-mode] window-link frame subscriber threw:",
+                err
+              );
+            }
+          }
+        }
+      });
+    };
+    const ensureLayer = () => {
+      if (layer && layer.isConnected && elevatedLayer?.isConnected) {
+        return layer;
+      }
+      const area = document.getElementById("desktop-mode-area");
+      if (!area) {
+        return null;
+      }
+      layer = document.createElement("div");
+      layer.id = LAYER_ID;
+      layer.className = "desktop-mode-window-links";
+      layer.setAttribute("aria-hidden", "true");
+      elevatedLayer = document.createElement("div");
+      elevatedLayer.id = `${LAYER_ID}-elevated`;
+      elevatedLayer.className = "desktop-mode-window-links desktop-mode-window-links--elevated";
+      elevatedLayer.setAttribute("aria-hidden", "true");
+      const widgets = document.getElementById("desktop-mode-widgets");
+      if (widgets && widgets.parentElement === area) {
+        widgets.insertAdjacentElement("afterend", elevatedLayer);
+        widgets.insertAdjacentElement("afterend", layer);
+      } else {
+        area.prepend(layer, elevatedLayer);
+      }
+      return layer;
+    };
+    const isRenderable = () => listWindowLinkEdges().length > 0;
+    const resolveRendererId = () => {
+      let id = snapshot.windowLinkRenderer || WINDOW_LINK_RENDERER_DEFAULT;
+      id = applyFilters(HOOKS.WINDOW_LINK_RENDERER, id);
+      if (id === WINDOW_LINK_RENDERER_NONE) {
+        return WINDOW_LINK_RENDERER_NONE;
+      }
+      if (getWindowLinkRenderer(id)) {
+        return id;
+      }
+      return getWindowLinkRenderer(WINDOW_LINK_RENDERER_DEFAULT) ? WINDOW_LINK_RENDERER_DEFAULT : WINDOW_LINK_RENDERER_NONE;
+    };
+    const unmountRenderer = () => {
+      mountToken++;
+      frameSubscribers.clear();
+      framePending = false;
+      if (teardown) {
+        try {
+          teardown();
+        } catch (err) {
+          doAction(HOOKS.SHELL_ERROR, {
+            scope: "window-link-renderer-teardown",
+            error: err
+          });
+        }
+        teardown = null;
+      }
+      mountedId = null;
+      layer?.replaceChildren();
+      elevatedLayer?.replaceChildren();
+    };
+    const mountRenderer = (id) => {
+      const def = getWindowLinkRenderer(id);
+      const host = ensureLayer();
+      if (!def || !host || !elevatedLayer) {
+        return;
+      }
+      mountedId = id;
+      const token = ++mountToken;
+      const ctx = {
+        container: host,
+        elevatedContainer: elevatedLayer,
+        getFrame: buildFrame2,
+        onFrame: (cb) => {
+          frameSubscribers.add(cb);
+          return () => {
+            frameSubscribers.delete(cb);
+          };
+        }
+      };
+      try {
+        const result = def.mount(ctx);
+        if (result instanceof Promise) {
+          result.then((cleanup) => {
+            if (token !== mountToken) {
+              if (typeof cleanup === "function") {
+                cleanup();
+              }
+              return;
+            }
+            if (typeof cleanup === "function") {
+              teardown = cleanup;
+            }
+          }).catch((err) => {
+            doAction(HOOKS.SHELL_ERROR, {
+              scope: "window-link-renderer-mount",
+              error: err
+            });
+            if (token === mountToken) {
+              mountedId = null;
+            }
+          });
+        } else if (typeof result === "function") {
+          teardown = result;
+        }
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "window-link-renderer-mount",
+          error: err
+        });
+        mountedId = null;
+      }
+      emitFrame();
+    };
+    const focusedNeighbors = () => {
+      const focused = manager.getFocused();
+      if (!focused) {
+        return /* @__PURE__ */ new Set();
+      }
+      return new Set(getRelatedWindowIds(focused.id));
+    };
+    const isEnabled = () => snapshot.windowLinksEnabled !== false;
+    const applyVisibility = () => {
+      if (!layer) {
+        return;
+      }
+      const visible = !overviewActive && isEnabled() && (snapshot.windowLinkVisibility === "always" || snapshot.windowLinkVisibility === "focus" && focusedNeighbors().size > 0);
+      layer.classList.toggle(VISIBLE_CLASS, visible);
+      elevatedLayer?.classList.toggle(VISIBLE_CLASS, visible);
+    };
+    const raiseRelated = () => {
+      if (!isEnabled() || snapshot.windowLinkRaiseOnFocus === false || snapshot.windowLinkVisibility === "off") {
+        return;
+      }
+      const focused = manager.getFocused();
+      if (!focused) {
+        return;
+      }
+      for (const id of getDirectlyRelatedWindowIds(focused.id)) {
+        const win = manager.getById(id);
+        if (win && win.state !== "minimized") {
+          manager.raise(id);
+        }
+      }
+    };
+    const applyLayerElevation = () => {
+      if (!elevatedLayer) {
+        return;
+      }
+      const focused = manager.getFocused();
+      const related = focusedNeighbors();
+      if (!focused || related.size === 0 || !isEnabled() || snapshot.windowLinkVisibility === "off") {
+        elevatedLayer.style.zIndex = "";
+        return;
+      }
+      let maxZ = -Infinity;
+      for (const id of [focused.id, ...related]) {
+        const win = manager.getById(id);
+        const el = win?.element;
+        if (!el || win.state === "minimized") {
+          continue;
+        }
+        const z = Number.parseInt(el.style.zIndex || "", 10);
+        if (Number.isFinite(z)) {
+          maxZ = Math.max(maxZ, z);
+        }
+      }
+      elevatedLayer.style.zIndex = Number.isFinite(maxZ) ? String(maxZ) : "";
+    };
+    const applyLinkedHighlight = () => {
+      const next = isEnabled() && snapshot.windowLinkHighlight !== false && snapshot.windowLinkVisibility !== "off" ? focusedNeighbors() : /* @__PURE__ */ new Set();
+      for (const id of linkedWindows) {
+        if (!next.has(id)) {
+          manager.getById(id)?.element?.classList.remove(LINKED_CLASS);
+        }
+      }
+      for (const id of next) {
+        manager.getById(id)?.element?.classList.add(LINKED_CLASS);
+      }
+      linkedWindows.clear();
+      for (const id of next) {
+        linkedWindows.add(id);
+      }
+    };
+    const recompute = () => {
+      const wantedId = isEnabled() && snapshot.windowLinkVisibility !== "off" && isRenderable() ? resolveRendererId() : WINDOW_LINK_RENDERER_NONE;
+      if (wantedId === WINDOW_LINK_RENDERER_NONE) {
+        if (mountedId) {
+          unmountRenderer();
+        }
+      } else if (wantedId !== mountedId) {
+        unmountRenderer();
+        mountRenderer(wantedId);
+      }
+      applyVisibility();
+      applyLinkedHighlight();
+      applyLayerElevation();
+      emitFrame();
+    };
+    addAction(
+      HOOKS.WINDOW_BOUNDS_CHANGED,
+      "desktop-mode/window-links-frame",
+      () => emitFrame()
+    );
+    for (const hook of [
+      HOOKS.WINDOW_MOVED,
+      HOOKS.WINDOW_RESIZED,
+      HOOKS.WINDOW_MINIMIZED,
+      HOOKS.WINDOW_RESTORED,
+      HOOKS.WINDOW_MAXIMIZED,
+      HOOKS.WINDOW_UNMAXIMIZED,
+      HOOKS.WINDOW_FULLSCREEN_ENTERED,
+      HOOKS.WINDOW_FULLSCREEN_EXITED,
+      HOOKS.SNAP_ZONE_COMMITTED,
+      HOOKS.SNAP_SPLIT_FILLED,
+      HOOKS.DESKTOP_SWITCHED,
+      HOOKS.SHELL_RESIZED
+    ]) {
+      addAction(
+        hook,
+        "desktop-mode/window-links-frame",
+        () => emitFrame()
+      );
+    }
+    addAction(
+      HOOKS.WINDOW_FOCUSED,
+      "desktop-mode/window-links-focus",
+      () => {
+        raiseRelated();
+        applyVisibility();
+        applyLinkedHighlight();
+        applyLayerElevation();
+        emitFrame();
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_BLURRED,
+      "desktop-mode/window-links-blur",
+      () => {
+        applyVisibility();
+        applyLinkedHighlight();
+        applyLayerElevation();
+        emitFrame();
+      }
+    );
+    addAction(
+      HOOKS.OVERVIEW_ENTERING,
+      "desktop-mode/window-links-overview",
+      () => {
+        overviewActive = true;
+        applyVisibility();
+      }
+    );
+    addAction(
+      HOOKS.OVERVIEW_EXITED,
+      "desktop-mode/window-links-overview",
+      () => {
+        overviewActive = false;
+        applyVisibility();
+        emitFrame();
+      }
+    );
+    subscribeWindowLinks(recompute);
+    subscribeWindowLinkRenderers(recompute);
+    osSettings.subscribeOsSettings((next) => {
+      const rendererChanged = next.windowLinkRenderer !== snapshot.windowLinkRenderer;
+      const anyChanged = rendererChanged || next.windowLinkVisibility !== snapshot.windowLinkVisibility || next.windowLinksEnabled !== snapshot.windowLinksEnabled || next.windowLinkRaiseOnFocus !== snapshot.windowLinkRaiseOnFocus || next.windowLinkHighlight !== snapshot.windowLinkHighlight;
+      snapshot = next;
+      if (anyChanged) {
+        if (rendererChanged && mountedId) {
+          unmountRenderer();
+        }
+        recompute();
+      }
+    });
+    recompute();
   }
   const UNFOCUS_EFFECT_NONE = "none";
   const store$9 = createSharedStore(
@@ -9598,17 +11531,66 @@ var desktopMode = function(exports) {
       }
     };
   }
+  function createWindowLinkRendererRegistrySync() {
+    const loadedHandles = /* @__PURE__ */ new Set();
+    const loadedUrls = /* @__PURE__ */ new Set();
+    const ensureScript = async (entry) => {
+      if (!entry.scriptUrl || loadedUrls.has(entry.scriptUrl)) {
+        loadedHandles.add(entry.handle);
+        return;
+      }
+      try {
+        await loadVendorScript(entry.scriptUrl, {
+          translations: entry.scriptTranslations,
+          l10n: entry.scriptL10n,
+          before: entry.scriptBefore,
+          after: entry.scriptAfter
+        });
+      } catch (err) {
+        doAction(HOOKS.SHELL_ERROR, {
+          scope: "window-link-renderer-script-load",
+          handle: entry.handle,
+          url: entry.scriptUrl,
+          error: err
+        });
+        return;
+      }
+      loadedUrls.add(entry.scriptUrl);
+      loadedHandles.add(entry.handle);
+    };
+    return async (scripts) => {
+      const incomingHandles = /* @__PURE__ */ new Set();
+      for (const entry of scripts) {
+        if (entry.handle) {
+          incomingHandles.add(entry.handle);
+        }
+      }
+      for (const handle of Array.from(loadedHandles)) {
+        if (incomingHandles.has(handle)) {
+          continue;
+        }
+        unregisterWindowLinkRenderersByOwner(handle);
+        loadedHandles.delete(handle);
+      }
+      for (const entry of scripts) {
+        if (!entry.handle || loadedHandles.has(entry.handle)) {
+          continue;
+        }
+        await ensureScript(entry);
+      }
+    };
+  }
   const EFFECT_ATTR = "data-desktop-unfocus-effect";
   const EFFECT_CLASS_ATTR = "data-desktop-unfocus-effect-class";
-  let _started = false;
+  let _started$1 = false;
   function hostsCanvas(el) {
     return el.querySelector("canvas") !== null;
   }
   function startUnfocusEngine({ manager, osSettings }) {
-    if (_started) {
+    if (_started$1) {
       return;
     }
-    _started = true;
+    _started$1 = true;
     let currentId = osSettings.getOsSettingsSnapshot().unfocusEffect;
     const clear = (el, allEffects) => {
       const storedClass = el.getAttribute(EFFECT_CLASS_ATTR);
@@ -10380,7 +12362,7 @@ var desktopMode = function(exports) {
       writeMap(map);
     }
   }
-  const styles$6 = css`:host{display:flex;align-items:flex-start;gap:10px;width:100%;box-sizing:border-box;padding:10px 14px;font:var( --wpd-notice-font,13px/1.5 var( --desktop-mode-font,system-ui ) );color:var( --wpd-notice-color,var( --desktop-mode-text,#1d2327 ) );background:var( --wpd-notice-bg,rgba( 0,0,0,0.04 ) );border-block-end:1px solid var( --wpd-notice-border,rgba( 0,0,0,0.08 ) );border-inline-start:4px solid var( --wpd-notice-accent,#646970 )}:host( [ hidden ] ){display:none}.wpd-notice__icon{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var( --wpd-notice-accent,#646970 )}.wpd-notice__icon[ hidden ]{display:none}.wpd-notice__label{flex:1;min-width:0;word-wrap:break-word}::slotted( a ){color:var( --wpd-notice-link,var( --wp-admin-theme-color,#2271b1 ) )}::slotted( p:first-child ){margin-block-start:0}::slotted( p:last-child ){margin-block-end:0}.wpd-notice__close{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;background:transparent;color:inherit;opacity:0.6;cursor:pointer;border-radius:4px;transition:opacity 0.12s ease,background-color 0.12s ease}.wpd-notice__close:hover{opacity:1;background:rgba( 0,0,0,0.06 )}.wpd-notice__close:focus-visible{opacity:1;outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:1px}.wpd-notice__close[ hidden ]{display:none}.wpd-notice__close svg{width:14px;height:14px}:host( [ tone='info' ] ){--wpd-notice-accent:var( --wpd-notice-info,#0969da );--wpd-notice-bg:var( --wpd-notice-info-bg,rgba( 9,105,218,0.08 ) );--wpd-notice-border:var( --wpd-notice-info-border,rgba( 9,105,218,0.16 ) )}:host( [ tone='success' ] ){--wpd-notice-accent:var( --wpd-notice-success,#1a7f37 );--wpd-notice-bg:var( --wpd-notice-success-bg,rgba( 26,127,55,0.08 ) );--wpd-notice-border:var( --wpd-notice-success-border,rgba( 26,127,55,0.16 ) )}:host( [ tone='warning' ] ){--wpd-notice-accent:var( --wpd-notice-warning,#9a6700 );--wpd-notice-bg:var( --wpd-notice-warning-bg,rgba( 154,103,0,0.08 ) );--wpd-notice-border:var( --wpd-notice-warning-border,rgba( 154,103,0,0.16 ) )}:host( [ tone='error' ] ),:host( [ tone='danger' ] ){--wpd-notice-accent:var( --wpd-notice-error,#cf222e );--wpd-notice-bg:var( --wpd-notice-error-bg,rgba( 207,34,46,0.08 ) );--wpd-notice-border:var( --wpd-notice-error-border,rgba( 207,34,46,0.16 ) )}:host( [ tone='neutral' ] ){--wpd-notice-accent:var( --wpd-notice-neutral,#57606a );--wpd-notice-bg:var( --wpd-notice-neutral-bg,rgba( 87,96,106,0.08 ) );--wpd-notice-border:var( --wpd-notice-neutral-border,rgba( 87,96,106,0.16 ) )}`;
+  const styles$5 = css`:host{display:flex;align-items:flex-start;gap:10px;width:100%;box-sizing:border-box;padding:10px 14px;font:var( --wpd-notice-font,13px/1.5 var( --desktop-mode-font,system-ui ) );color:var( --wpd-notice-color,var( --desktop-mode-text,#1d2327 ) );background:var( --wpd-notice-bg,rgba( 0,0,0,0.04 ) );border-block-end:1px solid var( --wpd-notice-border,rgba( 0,0,0,0.08 ) );border-inline-start:4px solid var( --wpd-notice-accent,#646970 )}:host( [ hidden ] ){display:none}.wpd-notice__icon{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var( --wpd-notice-accent,#646970 )}.wpd-notice__icon[ hidden ]{display:none}.wpd-notice__label{flex:1;min-width:0;word-wrap:break-word}::slotted( a ){color:var( --wpd-notice-link,var( --wp-admin-theme-color,#2271b1 ) )}::slotted( p:first-child ){margin-block-start:0}::slotted( p:last-child ){margin-block-end:0}.wpd-notice__close{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;background:transparent;color:inherit;opacity:0.6;cursor:pointer;border-radius:4px;transition:opacity 0.12s ease,background-color 0.12s ease}.wpd-notice__close:hover{opacity:1;background:rgba( 0,0,0,0.06 )}.wpd-notice__close:focus-visible{opacity:1;outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:1px}.wpd-notice__close[ hidden ]{display:none}.wpd-notice__close svg{width:14px;height:14px}:host( [ tone='info' ] ){--wpd-notice-accent:var( --wpd-notice-info,#0969da );--wpd-notice-bg:var( --wpd-notice-info-bg,rgba( 9,105,218,0.08 ) );--wpd-notice-border:var( --wpd-notice-info-border,rgba( 9,105,218,0.16 ) )}:host( [ tone='success' ] ){--wpd-notice-accent:var( --wpd-notice-success,#1a7f37 );--wpd-notice-bg:var( --wpd-notice-success-bg,rgba( 26,127,55,0.08 ) );--wpd-notice-border:var( --wpd-notice-success-border,rgba( 26,127,55,0.16 ) )}:host( [ tone='warning' ] ){--wpd-notice-accent:var( --wpd-notice-warning,#9a6700 );--wpd-notice-bg:var( --wpd-notice-warning-bg,rgba( 154,103,0,0.08 ) );--wpd-notice-border:var( --wpd-notice-warning-border,rgba( 154,103,0,0.16 ) )}:host( [ tone='error' ] ),:host( [ tone='danger' ] ){--wpd-notice-accent:var( --wpd-notice-error,#cf222e );--wpd-notice-bg:var( --wpd-notice-error-bg,rgba( 207,34,46,0.08 ) );--wpd-notice-border:var( --wpd-notice-error-border,rgba( 207,34,46,0.16 ) )}:host( [ tone='neutral' ] ){--wpd-notice-accent:var( --wpd-notice-neutral,#57606a );--wpd-notice-bg:var( --wpd-notice-neutral-bg,rgba( 87,96,106,0.08 ) );--wpd-notice-border:var( --wpd-notice-neutral-border,rgba( 87,96,106,0.16 ) )}`;
   const _WpdNotice = class _WpdNotice extends Component {
     connectedCallback() {
       super.connectedCallback();
@@ -10454,7 +12436,7 @@ var desktopMode = function(exports) {
     }
   };
   _WpdNotice.props = ["tone", "notDismissible", "icon", "noticeId"];
-  _WpdNotice.styles = [styles$6];
+  _WpdNotice.styles = [styles$5];
   _WpdNotice.help = {
     title: "Notice",
     summary: "Full-width banner placed inside a window (typically the after-titlebar slot). Tone-coded background + accent stripe, optional close button, optional dashicons leading glyph. Slotted content is HTML — links and basic formatting are supported.",
@@ -11835,9 +13817,9 @@ var desktopMode = function(exports) {
       };
       const realLocation = window.location;
       const locationProxy = new Proxy(realLocation, {
-        get(target2, prop) {
-          const value = target2[prop];
-          if (prop === "assign" || prop === "replace") {
+        get(target2, prop2) {
+          const value = target2[prop2];
+          if (prop2 === "assign" || prop2 === "replace") {
             return (url) => setCaptured(url);
           }
           if (typeof value === "function") {
@@ -11845,8 +13827,8 @@ var desktopMode = function(exports) {
           }
           return value;
         },
-        set(_target, prop, value) {
-          if (prop === "href") {
+        set(_target, prop2, value) {
+          if (prop2 === "href") {
             setCaptured(value);
             return true;
           }
@@ -12137,12 +14119,16 @@ var desktopMode = function(exports) {
     const body = document.createElement("div");
     body.className = "desktop-mode-widgets__card-body";
     card.appendChild(body);
-    let isFloating = false;
     if (ctx.geometry) {
-      applyGeometry(card, ctx.geometry);
+      applyGeometry(
+        card,
+        clampGeometryToParent(ctx.geometry, ctx.floatingParent)
+      );
       card.classList.add(FLOATING_CLASS);
-      isFloating = true;
+    } else if (resizable && typeof ctx.dockedHeight === "number") {
+      card.style.height = `${clampDockedHeight(ctx.dockedHeight, def)}px`;
     }
+    const isFloating = () => card.classList.contains(FLOATING_CLASS);
     const resizeCleanups = [];
     if (resizable) {
       for (const dir of allHandleDirs()) {
@@ -12152,7 +14138,7 @@ var desktopMode = function(exports) {
         handle.dataset.dir = dir;
         card.appendChild(handle);
         resizeCleanups.push(
-          attachResize(card, handle, dir, def, ctx, handlers, () => isFloating)
+          attachResize(card, handle, dir, def, ctx, handlers, isFloating)
         );
       }
     }
@@ -12162,9 +14148,7 @@ var desktopMode = function(exports) {
         ".desktop-mode-widgets__chrome"
       );
       if (chrome) {
-        dragCleanup = attachDrag(card, chrome, def, ctx, handlers, (next) => {
-          isFloating = next;
-        });
+        dragCleanup = attachDrag(card, chrome, def, ctx, handlers);
       }
     }
     return {
@@ -12239,7 +14223,7 @@ var desktopMode = function(exports) {
     });
     return close;
   }
-  function attachDrag(card, chrome, def, ctx, handlers, setFloating) {
+  function attachDrag(card, chrome, def, ctx, handlers) {
     let pointerId = null;
     let startX = 0;
     let startY = 0;
@@ -12275,7 +14259,6 @@ var desktopMode = function(exports) {
         };
         applyGeometry(card, initial);
         card.classList.add(FLOATING_CLASS);
-        setFloating(true);
         handlers.onLiberate(initial);
         initialLeft = parseFloat(card.style.left) || 0;
         initialTop = parseFloat(card.style.top) || 0;
@@ -12396,7 +14379,11 @@ var desktopMode = function(exports) {
       }
       pointerId = null;
       card.classList.remove(RESIZING_CLASS);
-      handlers.onGeometryChanged(currentGeometry(card));
+      if (isFloating()) {
+        handlers.onGeometryChanged(currentGeometry(card));
+      } else {
+        handlers.onDockedHeightChanged(card.offsetHeight);
+      }
     };
     handle.addEventListener("pointerdown", onDown);
     handle.addEventListener("pointermove", onMove);
@@ -12428,6 +14415,26 @@ var desktopMode = function(exports) {
       width: card.offsetWidth,
       height: card.offsetHeight
     };
+  }
+  function clampDockedHeight(height, def) {
+    return clamp$1(
+      height,
+      def.minHeight ?? DEFAULT_MIN_HEIGHT,
+      def.maxHeight ?? Infinity
+    );
+  }
+  function clampGeometryToParent(geometry, parent) {
+    if (!parent.clientWidth || !parent.clientHeight) {
+      return geometry;
+    }
+    const clamped = clampToParent(
+      geometry.x,
+      geometry.y,
+      geometry.width,
+      geometry.height,
+      parent
+    );
+    return { ...geometry, x: clamped.x, y: clamped.y };
   }
   function clampToParent(x, y, width, height, parent) {
     const parentWidth = parent.clientWidth || parent.getBoundingClientRect().width;
@@ -12484,6 +14491,7 @@ var desktopMode = function(exports) {
   }
   const IDS_KEY = "desktop-mode-widgets";
   const GEOMETRY_KEY$1 = "desktop-mode-widgets-geometry";
+  const DOCKED_HEIGHTS_KEY = "desktop-mode-widgets-docked-heights";
   function readRawEnabled() {
     try {
       return window.localStorage.getItem(IDS_KEY);
@@ -12537,6 +14545,36 @@ var desktopMode = function(exports) {
   function saveGeometry$1(geometry) {
     try {
       window.localStorage.setItem(GEOMETRY_KEY$1, JSON.stringify(geometry));
+    } catch {
+    }
+  }
+  function loadDockedHeights() {
+    try {
+      const raw = window.localStorage.getItem(DOCKED_HEIGHTS_KEY);
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return {};
+      }
+      const out = {};
+      for (const [id, value] of Object.entries(parsed)) {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+          out[id] = value;
+        }
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+  function saveDockedHeights(heights) {
+    try {
+      window.localStorage.setItem(
+        DOCKED_HEIGHTS_KEY,
+        JSON.stringify(heights)
+      );
     } catch {
     }
   }
@@ -12613,6 +14651,7 @@ var desktopMode = function(exports) {
       this.pluginUrl = pluginUrl;
       this.enabledIds = loadEnabledIds();
       this.geometry = loadGeometry$1();
+      this.dockedHeights = loadDockedHeights();
       this.floatingHost = floatingHost ?? root.parentElement ?? root;
       this.listEl = document.createElement("div");
       this.listEl.className = "desktop-mode-widgets__list";
@@ -12674,6 +14713,10 @@ var desktopMode = function(exports) {
       if (this.geometry[id]) {
         delete this.geometry[id];
         saveGeometry$1(this.geometry);
+      }
+      if (this.dockedHeights[id] !== void 0) {
+        delete this.dockedHeights[id];
+        saveDockedHeights(this.dockedHeights);
       }
       this.unmountById(id);
       this.paintEmptyState();
@@ -12774,10 +14817,15 @@ var desktopMode = function(exports) {
       const initialGeometry = def.movable === true ? this.geometry[id] : void 0;
       const frame = buildFrame(
         def,
-        { floatingParent: this.floatingHost, geometry: initialGeometry },
+        {
+          floatingParent: this.floatingHost,
+          geometry: initialGeometry,
+          dockedHeight: this.dockedHeights[id]
+        },
         {
           onRemove: () => this.remove(id),
           onGeometryChanged: (geom) => this.persistGeometry(id, geom),
+          onDockedHeightChanged: (height) => this.persistDockedHeight(id, height),
           onLiberate: (geom) => this.liberate(id, geom),
           onRedock: () => this.redock(id)
         }
@@ -12950,13 +14998,21 @@ var desktopMode = function(exports) {
       card.style.left = "";
       card.style.top = "";
       card.style.width = "";
-      card.style.height = "";
+      const dockedHeight = this.dockedHeights[id];
+      card.style.height = dockedHeight !== void 0 ? `${dockedHeight}px` : "";
       this.listEl.appendChild(card);
       this.paintEmptyState();
     }
     persistGeometry(id, geometry) {
       this.geometry[id] = geometry;
       saveGeometry$1(this.geometry);
+    }
+    persistDockedHeight(id, height) {
+      if (!Number.isFinite(height) || height <= 0) {
+        return;
+      }
+      this.dockedHeights[id] = height;
+      saveDockedHeights(this.dockedHeights);
     }
     /**
      * Toggle a `--has-widgets` modifier so CSS can hide the column's
@@ -13497,6 +15553,21 @@ var desktopMode = function(exports) {
     }
     return tpl.content.cloneNode(true);
   }
+  function findMenuEntryForUrl(url) {
+    const wp = window.wp?.desktop;
+    const bootConfig = window.desktopModeConfig;
+    const adminUrl = wp?.config?.adminUrl ?? bootConfig?.adminUrl;
+    if (!adminUrl) {
+      return null;
+    }
+    const items = wp?.getMenuItems?.() ?? bootConfig?.dockItems ?? [];
+    const targetId = deriveWindowId(url, adminUrl);
+    return items.find(
+      (item) => deriveWindowId(item.url, adminUrl) === targetId || (item.submenu ?? []).some(
+        (sub) => deriveWindowId(sub.url, adminUrl) === targetId
+      )
+    ) ?? null;
+  }
   function renderIcon(icon, opts) {
     const className = opts.className ?? "";
     const title = opts.title ?? "";
@@ -13766,12 +15837,16 @@ var desktopMode = function(exports) {
       try {
         const parsed = new URL(entry.url, window.location.origin);
         const windowId = deps2.deriveWindowId(parsed.toString());
+        const menuEntry = findMenuEntryForUrl(parsed.toString());
         void deps2.manager.open({
           id: windowId,
           baseId: windowId,
           url: parsed.toString(),
+          parentUrl: menuEntry?.url ?? parsed.toString(),
           title: entry.title,
-          icon: entry.icon
+          icon: entry.icon,
+          submenu: menuEntry?.submenu,
+          multi: !!menuEntry?.multi
         });
       } catch {
       }
@@ -14611,7 +16686,11 @@ var desktopMode = function(exports) {
     desktop?.icons?.setBadge?.(TARGET_ID, visible);
   }
   function isBinWindowActive() {
-    return !!getDesktopApi()?.windowManager?.isActive?.(TARGET_ID);
+    const mgr = getDesktopApi()?.windowManager;
+    if (mgr?.isActiveByBaseId) {
+      return mgr.isActiveByBaseId(TARGET_ID);
+    }
+    return !!mgr?.isActive?.(TARGET_ID);
   }
   function startRecycleBinBadge(initialRaw, countUrl = "") {
     const initial = Number(initialRaw) || 0;
@@ -14655,7 +16734,12 @@ var desktopMode = function(exports) {
     const ns = "desktop-mode/recycle-bin/badge-lifecycle";
     const repaint = (payload) => {
       const detail = payload;
-      if (detail?.windowId !== TARGET_ID) {
+      const windowId = detail?.windowId;
+      if (!windowId) {
+        return;
+      }
+      const isBin = windowId === TARGET_ID || windowId.startsWith(TARGET_ID + "-");
+      if (!isBin) {
         return;
       }
       paintBadge(store$3.state.current);
@@ -15873,12 +17957,12 @@ var desktopMode = function(exports) {
   function defaultOffsetY(source) {
     return source.offsetHeight / 2;
   }
-  let _installed$2 = false;
+  let _installed$3 = false;
   function installRecovery(cancelActive) {
-    if (_installed$2) {
+    if (_installed$3) {
       return;
     }
-    _installed$2 = true;
+    _installed$3 = true;
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         cancelActive("escape");
@@ -16231,10 +18315,27 @@ var desktopMode = function(exports) {
       el.removeAttribute(FILES_DROP_ACTIVE_ATTR);
     }
   }
+  const WINDOW_ROOT_SELECTOR = ".desktop-mode-window";
+  const WINDOW_ID_PREFIX = "wp-window-";
+  function findWindowRootAtPoint(clientX, clientY) {
+    const el = document.elementFromPoint(clientX, clientY);
+    if (!el) {
+      return null;
+    }
+    const root = el.closest(WINDOW_ROOT_SELECTOR);
+    return root instanceof HTMLElement ? root : null;
+  }
+  function windowIdFromRoot(root) {
+    if (!root.id.startsWith(WINDOW_ID_PREFIX)) {
+      return null;
+    }
+    const id = root.id.slice(WINDOW_ID_PREFIX.length);
+    return id.length > 0 ? id : null;
+  }
   const TARGET_ID_PREFIX = "desktop-mode-iframe-drop-";
   const IFRAME_SELECTOR = "iframe.desktop-mode-window__iframe";
   const DROP_ACTIVE_ATTR = "data-desktop-mode-iframe-drop-active";
-  let _installed$1 = false;
+  let _installed$2 = false;
   let _dragManager = null;
   const _suppressedIframes = /* @__PURE__ */ new Map();
   const _activeRegistrations = /* @__PURE__ */ new Map();
@@ -16259,12 +18360,8 @@ var desktopMode = function(exports) {
     _suppressedIframes.clear();
   }
   function findIframeAtCursor(clientX, clientY) {
-    const el = document.elementFromPoint(clientX, clientY);
-    if (!el) {
-      return null;
-    }
-    const win = el.closest(".desktop-mode-window");
-    if (!(win instanceof HTMLElement)) {
+    const win = findWindowRootAtPoint(clientX, clientY);
+    if (!win) {
       return null;
     }
     const iframe = win.querySelector(IFRAME_SELECTOR);
@@ -16457,7 +18554,7 @@ var desktopMode = function(exports) {
       _activeRegistrations.set(iframe, deregister);
     });
   }
-  function onDragEnd() {
+  function onDragEnd$1() {
     _suppressedIframes.forEach((prev, iframe) => {
       iframe.style.pointerEvents = prev;
     });
@@ -16471,17 +18568,17 @@ var desktopMode = function(exports) {
     _activeRegistrations.clear();
   }
   function installIframeDropTargets(dragManager) {
-    if (_installed$1) {
+    if (_installed$2) {
       return;
     }
-    _installed$1 = true;
+    _installed$2 = true;
     _dragManager = dragManager;
     document.addEventListener(DRAG_EVENTS.START, (e) => {
       const detail = e.detail;
       onDragStart(detail?.payload);
     });
     document.addEventListener(DRAG_EVENTS.END, () => {
-      onDragEnd();
+      onDragEnd$1();
     });
     document.addEventListener(DRAG_BRIDGE_EVENTS.START, (e) => {
       const detail = e.detail;
@@ -16514,7 +18611,7 @@ var desktopMode = function(exports) {
       }
     );
     window.__desktopModeIframeDropDebug = () => ({
-      installed: _installed$1,
+      installed: _installed$2,
       iframesInDom: document.querySelectorAll(IFRAME_SELECTOR).length,
       suppressedCount: _suppressedIframes.size,
       registeredCount: _activeRegistrations.size,
@@ -16522,6 +18619,167 @@ var desktopMode = function(exports) {
         deriveWindowIdFromIframe
       )
     });
+  }
+  const FOCUS_ON_DRAG_HOVER_DWELL_MS = 250;
+  const FOCUS_ON_DRAG_HOVER_WATCHDOG_MS = 1e3;
+  const DRAG_HOVER_MESSAGE_TYPE = "desktop-mode-drag-hover";
+  let _installed$1 = false;
+  let _host = null;
+  let _lastHoverWindowId = null;
+  let _dwellTimer = null;
+  let _watchdogTimer = null;
+  let _bridgePayloadKind = null;
+  function clearDwell() {
+    if (_dwellTimer !== null) {
+      clearTimeout(_dwellTimer);
+      _dwellTimer = null;
+    }
+  }
+  function clearWatchdog() {
+    if (_watchdogTimer !== null) {
+      clearTimeout(_watchdogTimer);
+      _watchdogTimer = null;
+    }
+  }
+  function resetHoverState() {
+    clearDwell();
+    clearWatchdog();
+    _lastHoverWindowId = null;
+  }
+  function bumpWatchdog() {
+    clearWatchdog();
+    _watchdogTimer = setTimeout(() => {
+      _watchdogTimer = null;
+      resetHoverState();
+    }, FOCUS_ON_DRAG_HOVER_WATCHDOG_MS);
+  }
+  function fireFocus(windowId, payloadType) {
+    const win = _host?.getById(windowId);
+    if (!win || win.isFocused()) {
+      return;
+    }
+    const shouldFocus = applyFilters(
+      HOOKS.WINDOW_FOCUS_ON_DRAG_HOVER,
+      true,
+      { windowId, payloadType }
+    );
+    if (!shouldFocus) {
+      return;
+    }
+    try {
+      _host?.focus(win);
+    } catch (err) {
+      console.error("[desktop-mode] focus-on-drag-hover focus() threw:", windowId, err);
+    }
+  }
+  function trackHoverWindowId(windowId, payloadType) {
+    if (windowId === _lastHoverWindowId) {
+      return;
+    }
+    clearDwell();
+    _lastHoverWindowId = windowId;
+    if (windowId === null) {
+      return;
+    }
+    _dwellTimer = setTimeout(() => {
+      _dwellTimer = null;
+      fireFocus(windowId, payloadType);
+    }, FOCUS_ON_DRAG_HOVER_DWELL_MS);
+  }
+  function trackHoverAtPoint(clientX, clientY, payloadType) {
+    const root = findWindowRootAtPoint(clientX, clientY);
+    trackHoverWindowId(root ? windowIdFromRoot(root) : null, payloadType);
+  }
+  const onDragMove = (e) => {
+    const detail = e.detail;
+    if (typeof detail?.clientX !== "number" || typeof detail?.clientY !== "number") {
+      return;
+    }
+    trackHoverAtPoint(detail.clientX, detail.clientY, detail.payload?.type ?? "");
+  };
+  const onDragEnd = () => {
+    resetHoverState();
+  };
+  function dragHasFiles$1(e) {
+    const types = e.dataTransfer?.types;
+    if (!types) {
+      return false;
+    }
+    const list2 = types;
+    if (typeof list2.includes === "function") {
+      return list2.includes("Files");
+    }
+    return typeof list2.contains === "function" && list2.contains("Files");
+  }
+  const onNativeDragOver = (e) => {
+    bumpWatchdog();
+    const payloadType = _bridgePayloadKind ?? (dragHasFiles$1(e) ? "os-file" : "external");
+    trackHoverAtPoint(e.clientX, e.clientY, payloadType);
+  };
+  const onNativeDragSettled = () => {
+    resetHoverState();
+  };
+  const onNativeDragLeave = (e) => {
+    if (e.relatedTarget === null) {
+      resetHoverState();
+    }
+  };
+  function windowIdFromMessageSource(source) {
+    if (!source) {
+      return null;
+    }
+    const iframes = document.querySelectorAll("iframe");
+    for (const f of Array.from(iframes)) {
+      if (f.contentWindow === source) {
+        const host = f.closest("[data-window-id]");
+        return host?.getAttribute("data-window-id") || null;
+      }
+    }
+    return null;
+  }
+  const onHoverMessage = (e) => {
+    if (e.origin !== window.location.origin) {
+      return;
+    }
+    const data = e.data;
+    if (!data || data.type !== DRAG_HOVER_MESSAGE_TYPE) {
+      return;
+    }
+    const windowId = windowIdFromMessageSource(e.source);
+    if (!windowId) {
+      return;
+    }
+    bumpWatchdog();
+    trackHoverWindowId(
+      windowId,
+      typeof data.payloadType === "string" ? data.payloadType : "external"
+    );
+  };
+  const onBridgeStart = (e) => {
+    const detail = e.detail;
+    if (detail?.payload) {
+      _bridgePayloadKind = detail.payload.kind ?? "";
+    }
+  };
+  const onBridgeEnd = () => {
+    _bridgePayloadKind = null;
+    resetHoverState();
+  };
+  function installFocusWindowOnDragHover(host) {
+    if (_installed$1) {
+      return;
+    }
+    _installed$1 = true;
+    _host = host;
+    document.addEventListener(DRAG_EVENTS.MOVE, onDragMove);
+    document.addEventListener(DRAG_EVENTS.END, onDragEnd);
+    document.addEventListener(DRAG_BRIDGE_EVENTS.START, onBridgeStart);
+    document.addEventListener(DRAG_BRIDGE_EVENTS.END, onBridgeEnd);
+    document.addEventListener("dragover", onNativeDragOver, true);
+    document.addEventListener("drop", onNativeDragSettled, true);
+    document.addEventListener("dragend", onNativeDragSettled, true);
+    document.addEventListener("dragleave", onNativeDragLeave, true);
+    window.addEventListener("message", onHoverMessage);
   }
   function collectOpenables() {
     const desktop = window.wp?.desktop;
@@ -17235,8 +19493,10 @@ var desktopMode = function(exports) {
       syncServerSettingsTabs,
       syncServerTitleBarButtons,
       syncServerUnfocusEffects,
+      syncServerWindowLinkRenderers,
       syncServerDockRailRenderers,
-      renderIcons
+      renderIcons,
+      syncShortcuts
     } = deps2;
     return function applyPayload(payload) {
       const dockItems = payload.dockItems;
@@ -17250,6 +19510,7 @@ var desktopMode = function(exports) {
       const serverDockRailRendererScripts = payload.serverDockRailRendererScripts;
       const serverTitleBarButtonScripts = payload.serverTitleBarButtonScripts;
       const serverUnfocusEffectScripts = payload.serverUnfocusEffectScripts;
+      const serverWindowLinkRendererScripts = payload.serverWindowLinkRendererScripts;
       const serverWindowNotices = payload.serverWindowNotices;
       const desktopIcons = payload.desktopIcons;
       if (!Array.isArray(dockItems) || dockItems.length === 0) {
@@ -17263,6 +19524,7 @@ var desktopMode = function(exports) {
         prevDockItems,
         dockItems
       );
+      syncShortcuts?.();
       if (Array.isArray(nativeWindows)) {
         const prevNativeWindows = config.nativeWindows;
         void syncNativeWindows(
@@ -17319,6 +19581,12 @@ var desktopMode = function(exports) {
         );
         config.serverUnfocusEffectScripts = serverUnfocusEffectScripts;
       }
+      if (Array.isArray(serverWindowLinkRendererScripts)) {
+        void syncServerWindowLinkRenderers(
+          serverWindowLinkRendererScripts
+        );
+        config.serverWindowLinkRendererScripts = serverWindowLinkRendererScripts;
+      }
       if (Array.isArray(serverDockRailRendererScripts)) {
         void syncServerDockRailRenderers(
           serverDockRailRendererScripts
@@ -17356,8 +19624,10 @@ var desktopMode = function(exports) {
       syncServerSettingsTabs,
       syncServerTitleBarButtons,
       syncServerUnfocusEffects,
+      syncServerWindowLinkRenderers,
       syncServerDockRailRenderers,
-      renderIcons
+      renderIcons,
+      syncShortcuts
     } = deps2;
     const applyPayload = createApplyPayload({
       applyDockItems: (items) => layoutDispatcher?.applyDockItems(items),
@@ -17369,21 +19639,13 @@ var desktopMode = function(exports) {
       syncServerSettingsTabs,
       syncServerTitleBarButtons,
       syncServerUnfocusEffects,
+      syncServerWindowLinkRenderers,
       syncServerDockRailRenderers,
-      renderIcons
+      renderIcons,
+      syncShortcuts
     });
-    window.addEventListener("message", (e) => {
-      if (e.origin !== INITIAL_ORIGIN$1) {
-        return;
-      }
-      const data = e.data;
-      if (!data || data.type !== "desktop-mode-plugins-changed") {
-        return;
-      }
-      if (data.payload) {
-        applyPayload(data.payload);
-      }
-    });
+    let lastMenuSig = typeof config.menuSig === "string" ? config.menuSig : "";
+    let sigRefreshInFlight = false;
     const refresh = () => {
       if (!config.adminUrl) {
         return Promise.resolve();
@@ -17441,6 +19703,33 @@ var desktopMode = function(exports) {
         document.body.appendChild(iframe);
       });
     };
+    window.addEventListener("message", (e) => {
+      if (e.origin !== INITIAL_ORIGIN$1) {
+        return;
+      }
+      const data = e.data;
+      if (!data) {
+        return;
+      }
+      if (data.type === "desktop-mode-plugins-changed") {
+        if (data.payload) {
+          applyPayload(data.payload);
+          if (typeof data.payload.menuSig === "string") {
+            lastMenuSig = data.payload.menuSig;
+          }
+        }
+        return;
+      }
+      if (data.type === "desktop-mode-menu-signature") {
+        const sig = data.sig;
+        if (typeof sig === "string" && sig !== "" && sig !== lastMenuSig && !sigRefreshInFlight) {
+          sigRefreshInFlight = true;
+          void refresh().finally(() => {
+            sigRefreshInFlight = false;
+          });
+        }
+      }
+    });
     return refresh;
   }
   function hasRestorableSession(session) {
@@ -18677,6 +20966,10 @@ var desktopMode = function(exports) {
     "registerUnfocusEffect",
     "unregisterUnfocusEffect",
     "listUnfocusEffects",
+    "relations",
+    "registerWindowLinkRenderer",
+    "unregisterWindowLinkRenderer",
+    "listWindowLinkRenderers",
     "registerWindowTheme",
     "unregisterWindowTheme",
     "listWindowThemes",
@@ -18827,6 +21120,21 @@ var desktopMode = function(exports) {
         if (typeof patch.dockRailRenderer === "string") {
           osSettings.state.dockRailRenderer = patch.dockRailRenderer;
         }
+        if (typeof patch.windowLinkRenderer === "string") {
+          osSettings.state.windowLinkRenderer = patch.windowLinkRenderer;
+        }
+        if (patch.windowLinkVisibility === "focus" || patch.windowLinkVisibility === "always" || patch.windowLinkVisibility === "off") {
+          osSettings.state.windowLinkVisibility = patch.windowLinkVisibility;
+        }
+        if (typeof patch.windowLinksEnabled === "boolean") {
+          osSettings.state.windowLinksEnabled = patch.windowLinksEnabled;
+        }
+        if (typeof patch.windowLinkRaiseOnFocus === "boolean") {
+          osSettings.state.windowLinkRaiseOnFocus = patch.windowLinkRaiseOnFocus;
+        }
+        if (typeof patch.windowLinkHighlight === "boolean") {
+          osSettings.state.windowLinkHighlight = patch.windowLinkHighlight;
+        }
         if (patch.ai && typeof patch.ai === "object") {
           osSettings.state.ai = { ...osSettings.state.ai, ...patch.ai };
         }
@@ -18847,6 +21155,9 @@ var desktopMode = function(exports) {
         }
         if (typeof patch.foldersSharingEnabled === "boolean") {
           osSettings.state.foldersSharingEnabled = patch.foldersSharingEnabled;
+        }
+        if (typeof patch.developerModeEnabled === "boolean") {
+          osSettings.state.developerModeEnabled = patch.developerModeEnabled;
         }
         if (Array.isArray(patch.nativePostsHiddenColumns)) {
           osSettings.state.nativePostsHiddenColumns = patch.nativePostsHiddenColumns.filter(
@@ -18919,6 +21230,10 @@ var desktopMode = function(exports) {
       registerUnfocusEffect,
       unregisterUnfocusEffect,
       listUnfocusEffects,
+      relations: relationsApi,
+      registerWindowLinkRenderer,
+      unregisterWindowLinkRenderer,
+      listWindowLinkRenderers,
       registerWindowTheme,
       unregisterWindowTheme,
       listWindowThemes,
@@ -19696,15 +22011,15 @@ var desktopMode = function(exports) {
     removePlacement,
     removeFolder
   };
-  const styles$5 = css`:host{display:inline-block}`;
-  const styles$4 = css`:host{position:absolute;width:var( --wpd-ribbon-size,90px );height:var( --wpd-ribbon-size,90px );overflow:hidden;pointer-events:none;z-index:var( --wpd-ribbon-z,2 )}:host( [ hidden ] ){display:none}.banner{position:absolute;display:block;width:var( --wpd-ribbon-banner-width,140px );padding:var( --wpd-ribbon-padding,4px 0 );text-align:center;font:var( --wpd-ribbon-font,700 10px/1.4 var( --desktop-mode-font,system-ui ) );letter-spacing:var( --wpd-ribbon-tracking,0.06em );text-transform:uppercase;color:var( --wpd-ribbon-fg,#fff );background:var( --wpd-ribbon-bg,var( --wp-admin-theme-color,#2271b1 ) );box-shadow:var( --wpd-ribbon-shadow,0 2px 4px rgba( 0,0,0,0.2 ) )}:host(:not( [ placement ] ) ),:host( [ placement='top-end' ] ){inset-block-start:0;inset-inline-end:0}:host(:not( [ placement ] ) ) .banner,:host( [ placement='top-end' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host( [ placement='top-start' ] ){inset-block-start:0;inset-inline-start:0}:host( [ placement='top-start' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-end' ] ){inset-block-end:0;inset-inline-end:0}:host( [ placement='bottom-end' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-start' ] ){inset-block-end:0;inset-inline-start:0}:host( [ placement='bottom-start' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host(:not( [ placement ] ) ) .banner,:host-context( [ dir='rtl' ] ):host( [ placement='top-end' ] ) .banner{transform:rotate( -45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='top-start' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-end' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-start' ] ) .banner{transform:rotate( -45deg )}:host( [ tone='success' ] ) .banner{background:var( --wpd-ribbon-success,#1a7f37 )}:host( [ tone='warning' ] ) .banner{background:var( --wpd-ribbon-warning,#9a6700 )}:host( [ tone='danger' ] ) .banner{background:var( --wpd-ribbon-danger,#cf222e )}:host( [ tone='info' ] ) .banner{background:var( --wpd-ribbon-info,#0969da )}:host( [ tone='neutral' ] ) .banner{background:var( --wpd-ribbon-neutral,#57606a )}`;
+  const styles$4 = css`:host{display:inline-block}`;
+  const styles$3 = css`:host{position:absolute;width:var( --wpd-ribbon-size,90px );height:var( --wpd-ribbon-size,90px );overflow:hidden;pointer-events:none;z-index:var( --wpd-ribbon-z,2 )}:host( [ hidden ] ){display:none}.banner{position:absolute;display:block;width:var( --wpd-ribbon-banner-width,140px );padding:var( --wpd-ribbon-padding,4px 0 );text-align:center;font:var( --wpd-ribbon-font,700 10px/1.4 var( --desktop-mode-font,system-ui ) );letter-spacing:var( --wpd-ribbon-tracking,0.06em );text-transform:uppercase;color:var( --wpd-ribbon-fg,#fff );background:var( --wpd-ribbon-bg,var( --wp-admin-theme-color,#2271b1 ) );box-shadow:var( --wpd-ribbon-shadow,0 2px 4px rgba( 0,0,0,0.2 ) )}:host(:not( [ placement ] ) ),:host( [ placement='top-end' ] ){inset-block-start:0;inset-inline-end:0}:host(:not( [ placement ] ) ) .banner,:host( [ placement='top-end' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host( [ placement='top-start' ] ){inset-block-start:0;inset-inline-start:0}:host( [ placement='top-start' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-end' ] ){inset-block-end:0;inset-inline-end:0}:host( [ placement='bottom-end' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-start' ] ){inset-block-end:0;inset-inline-start:0}:host( [ placement='bottom-start' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host(:not( [ placement ] ) ) .banner,:host-context( [ dir='rtl' ] ):host( [ placement='top-end' ] ) .banner{transform:rotate( -45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='top-start' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-end' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-start' ] ) .banner{transform:rotate( -45deg )}:host( [ tone='success' ] ) .banner{background:var( --wpd-ribbon-success,#1a7f37 )}:host( [ tone='warning' ] ) .banner{background:var( --wpd-ribbon-warning,#9a6700 )}:host( [ tone='danger' ] ) .banner{background:var( --wpd-ribbon-danger,#cf222e )}:host( [ tone='info' ] ) .banner{background:var( --wpd-ribbon-info,#0969da )}:host( [ tone='neutral' ] ) .banner{background:var( --wpd-ribbon-neutral,#57606a )}`;
   const _WpdRibbon = class _WpdRibbon extends Component {
     render() {
       return html`<span class="banner" part="banner"><slot></slot></span>`;
     }
   };
   _WpdRibbon.props = ["placement", "tone"];
-  _WpdRibbon.styles = [styles$4];
+  _WpdRibbon.styles = [styles$3];
   _WpdRibbon.help = {
     title: "Ribbon",
     summary: "45° corner ribbon. Wraps the top-end (default), top-start, bottom-end, or bottom-start corner of its positioned parent. The host owns clipping + rotation; consumers only set position-relative on the parent and drop a label inside.",
@@ -19993,7 +22308,7 @@ var desktopMode = function(exports) {
   };
   _WpdTile.shadow = false;
   _WpdTile.props = REACTIVE_PROPS;
-  _WpdTile.styles = [styles$5];
+  _WpdTile.styles = [styles$4];
   _WpdTile.help = {
     title: "Tile",
     summary: "Canonical file/entity tile. Used across the wallpaper, folder windows, every My WordPress section, and plugin surfaces. Renders the standard `.desktop-mode-file-tile` chrome + optional status ribbon and wires the shared drag-out helper.",
@@ -23125,12 +25440,16 @@ var desktopMode = function(exports) {
               }
               const adminUrl = wp.config?.adminUrl;
               const id = adminUrl ? deriveWindowId(u.toString(), adminUrl) : `desktop-icon-${file.ref()}`;
+              const entry = findMenuEntryForUrl(u.toString());
               wp.windowManager.open({
                 id,
                 baseId: id,
                 url: u.toString(),
+                parentUrl: entry?.url ?? u.toString(),
                 title: file.title(),
-                icon: file.icon()
+                icon: file.icon(),
+                submenu: entry?.submenu,
+                multi: !!entry?.multi
               });
             } catch {
             }
@@ -23339,170 +25658,6 @@ var desktopMode = function(exports) {
     }
     s.notify();
   }
-  const modalStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000}:host( [ open ] ){display:flex}.dialog{max-width:92vw;max-height:90vh;background:var( --wpd-modal-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-modal-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );display:flex;flex-direction:column;overflow:hidden}:host( [ size='sm' ] ) .dialog{width:min( 360px,92vw )}:host(:not( [ size ] ) ) .dialog,:host( [ size='md' ] ) .dialog{width:min( 540px,92vw )}:host( [ size='lg' ] ) .dialog{width:min( 760px,94vw )}.header{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;border-bottom:1px solid rgba( 255,255,255,0.06 )}.title{margin:0;flex:1;font-size:15px;font-weight:600}.header-actions{display:flex;gap:6px}.header-actions::slotted( * ){margin-inline-start:6px}.close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;cursor:pointer;opacity:0.7}.close:hover{opacity:1;background:rgba( 255,255,255,0.08 )}.body{padding:16px 20px;overflow:auto;flex:1 1 auto;font-size:13px;line-height:1.5}.footer{padding:12px 20px 16px;border-top:1px solid rgba( 255,255,255,0.06 )}.footer slot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}:host( [ mandatory ] ) .close{display:none}`;
-  const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-  const _WpdModal = class _WpdModal extends Component {
-    constructor() {
-      super(...arguments);
-      this._prevFocus = null;
-      this._onKey = (e) => {
-        if (e.key === "Escape" && !this.hasAttribute("mandatory")) {
-          e.preventDefault();
-          this._cancel();
-          return;
-        }
-        if (e.key === "Tab") {
-          const f = this._focusables();
-          if (f.length === 0) {
-            return;
-          }
-          const first = f[0];
-          const last = f[f.length - 1];
-          const doc = this.ownerDocument;
-          const fallback = doc ? doc.activeElement : null;
-          const active2 = e.composedPath()[0] || fallback;
-          if (e.shiftKey && active2 === first) {
-            e.preventDefault();
-            last.focus();
-          } else if (!e.shiftKey && active2 === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      };
-      this._onBackdrop = (e) => {
-        if (this.hasAttribute("mandatory")) {
-          return;
-        }
-        const path = e.composedPath();
-        const original = path.length > 0 ? path[0] : e.target;
-        if (original === this) {
-          this._cancel();
-        }
-      };
-    }
-    connectedCallback() {
-      super.connectedCallback();
-      this.setAttribute("role", "dialog");
-      this.setAttribute("aria-modal", "true");
-      this.addEventListener("keydown", this._onKey);
-      this.addEventListener("click", this._onBackdrop);
-    }
-    disconnectedCallback() {
-      this.removeEventListener("keydown", this._onKey);
-      this.removeEventListener("click", this._onBackdrop);
-    }
-    attributeChangedCallback(name, oldValue, newValue) {
-      super.attributeChangedCallback?.(name, oldValue, newValue);
-      if (name === "open") {
-        if (newValue !== null) {
-          const doc = this.ownerDocument;
-          this._prevFocus = doc ? doc.activeElement : null;
-          queueMicrotask(() => this._focusFirst());
-        } else if (this._prevFocus) {
-          try {
-            this._prevFocus.focus();
-          } catch (e) {
-          }
-          this._prevFocus = null;
-        }
-      }
-    }
-    showModal() {
-      this.setAttribute("open", "");
-    }
-    hideModal() {
-      this.removeAttribute("open");
-    }
-    _focusables() {
-      const root = this.shadowRoot;
-      if (!root) {
-        return [];
-      }
-      const slotted = Array.from(this.querySelectorAll(FOCUSABLE));
-      const inShadow = Array.from(root.querySelectorAll(FOCUSABLE));
-      return [...slotted, ...inShadow].filter((el) => el.offsetParent !== null || el.tagName === "BUTTON");
-    }
-    _focusFirst() {
-      const f = this._focusables();
-      if (f.length > 0) {
-        f[0].focus();
-      } else {
-        const inner = this.shadowRoot?.querySelector(".dialog");
-        inner?.focus?.();
-      }
-    }
-    _cancel() {
-      const ev = new CustomEvent("wpd-modal-cancel", {
-        bubbles: true,
-        cancelable: true,
-        composed: true
-      });
-      const allowed = this.dispatchEvent(ev);
-      if (allowed) {
-        this.hideModal();
-      }
-    }
-    render() {
-      const title = this.getAttribute("title") ?? "";
-      const mandatory = this.hasAttribute("mandatory");
-      return html`
-			<div class="dialog" tabindex="-1">
-				${title ? html`
-						<div class="header">
-							<h2 class="title">${title}</h2>
-							<div class="header-actions">
-								<slot name="header-actions"></slot>
-								${mandatory ? html`` : html`<button
-										type="button"
-										class="close"
-										aria-label="Close"
-										@click=${() => this._cancel()}
-									>×</button>`}
-							</div>
-						</div>
-					` : html``}
-				<div class="body">
-					<slot></slot>
-				</div>
-				<div class="footer">
-					<slot name="footer"></slot>
-				</div>
-			</div>
-		`;
-    }
-  };
-  _WpdModal.props = ["open", "title", "size", "mandatory"];
-  _WpdModal.styles = [modalStyles];
-  _WpdModal.help = {
-    title: "Modal overlay",
-    summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm.",
-    status: "experimental",
-    since: "0.8.5",
-    props: [
-      { name: "open", type: "boolean attribute", description: "Mounts the dialog visible." },
-      { name: "title", type: "string", description: "Heading shown at the top of the dialog." },
-      { name: "size", type: "'sm' | 'md' | 'lg'", default: "md", description: "Width preset." },
-      {
-        name: "mandatory",
-        type: "boolean attribute",
-        description: "Disables ESC, click-outside and the close button."
-      }
-    ],
-    slots: [
-      { name: "(default)", description: "Body content." },
-      { name: "footer", description: "Footer button row, right-aligned." },
-      { name: "header-actions", description: "Extra actions next to the close button." }
-    ],
-    events: [
-      {
-        name: "wpd-modal-cancel",
-        description: "Fires when the user dismisses the modal (ESC, click-outside, close button). Cancelable; calling `preventDefault()` keeps the modal open."
-      }
-    ]
-  };
-  let WpdModal = _WpdModal;
-  defineComponent("wpd-modal", WpdModal);
   const userSearchStyles = css`:host{display:block;position:relative;font-size:13px}.input{width:100%;padding:8px 10px;background:var( --wpd-input-bg,rgba( 255,255,255,0.06 ) );color:inherit;border:1px solid rgba( 255,255,255,0.12 );border-radius:6px;font:inherit;box-sizing:border-box}.input:focus{outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:-1px}.dropdown{background:var( --desktop-mode-bg,#1d2327 );color:var( --desktop-mode-fg,#fff );border:1px solid rgba( 255,255,255,0.18 );border-radius:6px;overflow:auto;z-index:11000;box-shadow:0 12px 32px rgba( 0,0,0,0.5 )}.empty.error{color:#ff8080}.item{display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border:0;background:transparent;color:inherit;width:100%;text-align:start;font:inherit}.item:hover,.item:focus{background:rgba( 255,255,255,0.06 );outline:none}.avatar{width:24px;height:24px;border-radius:50%;flex:0 0 auto;background:rgba( 255,255,255,0.1 )}.name{font-weight:500}.slug{opacity:0.6;font-size:12px}.empty{padding:12px;color:rgba( 255,255,255,0.5 );font-size:12px}`;
   const _WpdUserSearch = class _WpdUserSearch extends Component {
     constructor() {
@@ -23975,81 +26130,8 @@ var desktopMode = function(exports) {
   };
   let WpdSegmented = _WpdSegmented;
   defineComponent("wpd-segmented", WpdSegmented);
-  const styles$3 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
-  const _WpdButton = class _WpdButton extends Component {
-    render() {
-      const disabled = this.disabled !== null;
-      const type = this.type || "button";
-      return html`
-			<button part="button" type=${type} ?disabled=${disabled}>
-				<slot></slot>
-			</button>
-		`;
-    }
-  };
-  _WpdButton.props = ["variant", "disabled", "type", "busy", "fill-cell"];
-  _WpdButton.styles = [styles$3];
-  _WpdButton.help = {
-    title: "Button",
-    summary: "Thin wrapper around <button> with consistent variant styling and a slot for the label.",
-    status: "stable",
-    since: "0.9.0",
-    props: [
-      {
-        name: "variant",
-        type: "'primary' | 'secondary' | 'ghost' | 'danger' | 'link'",
-        default: "ghost",
-        description: "Visual weight of the button. Use primary for the single attention-grabbing action per surface."
-      },
-      {
-        name: "disabled",
-        type: "boolean attribute",
-        description: "Disable pointer + keyboard interaction and dim the chrome."
-      },
-      {
-        name: "type",
-        type: "'button' | 'submit' | 'reset'",
-        default: "button",
-        description: "Forwarded to the underlying native <button>."
-      },
-      {
-        name: "busy",
-        type: "boolean attribute",
-        description: "Marks the button as in-progress (e.g., awaiting a fetch)."
-      },
-      {
-        name: "fill-cell",
-        type: "boolean attribute",
-        description: "Grow to fill the parent flex/grid cell. Useful for tiled keypads."
-      }
-    ],
-    slots: [{ name: "(default)", description: "Button label." }],
-    parts: [{ name: "button", description: "Underlying <button> element." }],
-    cssProps: [
-      { name: "--wpd-button-bg", description: "Background color." },
-      { name: "--wpd-button-fg", description: "Text color." },
-      { name: "--wpd-button-border", description: "Border shorthand." },
-      { name: "--wpd-button-border-radius", default: "6px" },
-      { name: "--wpd-button-padding", default: "6px 12px" },
-      {
-        name: "--wpd-button-min-height",
-        description: "Minimum height when fill-cell is set."
-      }
-    ],
-    example: html`
-			<wpd-cluster gap="8">
-				<wpd-button variant="primary">Primary</wpd-button>
-				<wpd-button variant="secondary">Secondary</wpd-button>
-				<wpd-button variant="ghost">Ghost</wpd-button>
-				<wpd-button variant="danger">Danger</wpd-button>
-				<wpd-button variant="link">Link</wpd-button>
-			</wpd-cluster>
-		`
-  };
-  let WpdButton = _WpdButton;
-  defineComponent("wpd-button", WpdButton);
   const containerStyles = css`:host{position:fixed;top:calc( var( --wp-admin--admin-bar--height,32px ) + 16px );inset-inline-end:16px;display:flex;flex-direction:column;gap:8px;z-index:calc( var( --desktop-mode-z-fullscreen,99999 ) + 10 );pointer-events:none}`;
-  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:8px;box-shadow:0 8px 24px rgba( 0,0,0,0.2 ),0 2px 6px rgba( 0,0,0,0.1 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
+  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:10px;border:1px solid rgba( 255,255,255,0.12 );box-shadow:0 10px 30px rgba( 0,0,0,0.4 ),0 2px 6px rgba( 0,0,0,0.18 ),inset 0 0 0 1px rgba( 255,255,255,0.04 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}.wpd-toast__close{display:inline-flex;align-items:center;justify-content:center;padding:4px;border-radius:6px;background:transparent;color:rgba( 255,255,255,0.7 )}.wpd-toast__close:hover{background:rgba( 255,255,255,0.14 );color:#fff}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
   const _WpdToastContainer = class _WpdToastContainer extends Component {
     connectedCallback() {
       super.connectedCallback();
@@ -24089,6 +26171,7 @@ var desktopMode = function(exports) {
     }
     render() {
       const action = this.action || "";
+      const dismissible = this.hasAttribute("dismissible");
       return html`
 			<span class="wpd-toast__label"><slot></slot></span>
 			<button
@@ -24098,6 +26181,23 @@ var desktopMode = function(exports) {
 			>
 				${action}
 			</button>
+			<button
+				type="button"
+				class="wpd-toast__close"
+				aria-label=${__("Dismiss")}
+				?hidden=${!dismissible}
+				@click=${(e) => this._onDismiss(e)}
+			>
+				<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true" focusable="false">
+					<path
+						d="M3 3 L11 11 M11 3 L3 11"
+						stroke="currentColor"
+						stroke-width="1.7"
+						stroke-linecap="round"
+						fill="none"
+					></path>
+				</svg>
+			</button>
 		`;
     }
     _onAction(e) {
@@ -24105,8 +26205,13 @@ var desktopMode = function(exports) {
       e.stopPropagation();
       this.emit("wpd-toast-action", {});
     }
+    _onDismiss(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.emit("wpd-toast-dismiss", {});
+    }
   };
-  _WpdToast.props = ["action", "state"];
+  _WpdToast.props = ["action", "state", "dismissible"];
   _WpdToast.styles = [toastStyles];
   _WpdToast.help = {
     title: "Toast",
@@ -24123,6 +26228,11 @@ var desktopMode = function(exports) {
         name: "state",
         type: "'in' | 'out'",
         description: 'Drives the CSS fade transition. Set to "in" when rendered, flip to "out" before removal.'
+      },
+      {
+        name: "dismissible",
+        type: "boolean",
+        description: "When set, a close (×) button renders on the right and emits wpd-toast-dismiss on click. Use for persistent toasts the user must be able to close."
       }
     ],
     slots: [
@@ -24132,6 +26242,11 @@ var desktopMode = function(exports) {
       {
         name: "wpd-toast-action",
         description: "Fires when the action button is clicked.",
+        detail: "{}"
+      },
+      {
+        name: "wpd-toast-dismiss",
+        description: "Fires when the close (×) button is clicked.",
         detail: "{}"
       }
     ],
@@ -24799,7 +26914,8 @@ var desktopMode = function(exports) {
         icon: i.icon,
         url: i.url,
         badge: i.badge ?? 0,
-        submenu: i.submenu ?? []
+        submenu: i.submenu ?? [],
+        isCore: i.isCore
       }));
     }
     const cfg = window.desktopModeConfig;
@@ -24829,7 +26945,7 @@ var desktopMode = function(exports) {
       api.updateOsSettings({ dockPromotedPositions: next });
     }
   }
-  function syncShortcutsWithVisibility(visibility, positions = {}) {
+  function syncShortcutsWithVisibility(visibility, positions = {}, layout) {
     if (reentrant) {
       return;
     }
@@ -24837,6 +26953,9 @@ var desktopMode = function(exports) {
     try {
       const dockItems = readDockItems();
       const serverIcons = readServerIcons();
+      const dockItemsById = new Map(
+        dockItems.map((item) => [item.id, item])
+      );
       const state2 = filesApi.store.getState();
       const root = state2.placementsByFolder.get(0) ?? [];
       const currentSynth = /* @__PURE__ */ new Map();
@@ -24858,8 +26977,10 @@ var desktopMode = function(exports) {
       }
       const desiredSynth = /* @__PURE__ */ new Set();
       for (const item of dockItems) {
-        const placement = visibility[item.id];
-        if (placement === "desktop" || placement === "both") {
+        const resolved = resolvePlacement(item.id, "dock", visibility);
+        const explicitlyPromoted = resolved === "desktop" || resolved === "both";
+        const spatialCore = layout === "spatial" && Boolean(item.isCore) && (resolved === "dock" || resolved === "both");
+        if (explicitlyPromoted || spatialCore) {
           desiredSynth.add(item.id);
           if (!currentSynth.has(item.id)) {
             filesApi.store.upsertPlacement(
@@ -24870,11 +26991,14 @@ var desktopMode = function(exports) {
       }
       const positionsToPrune = [];
       for (const [sourceId, p] of currentSynth) {
-        if (!desiredSynth.has(sourceId)) {
-          filesApi.store.removePlacement(p.id);
-          if (positions[sourceId]) {
-            positionsToPrune.push(sourceId);
-          }
+        if (desiredSynth.has(sourceId)) {
+          continue;
+        }
+        filesApi.store.removePlacement(p.id);
+        const sourceItem = dockItemsById.get(sourceId);
+        const wasOnlySpatialCore = Boolean(sourceItem?.isCore) && visibility[sourceId] === void 0;
+        if (positions[sourceId] && !wasOnlySpatialCore) {
+          positionsToPrune.push(sourceId);
         }
       }
       if (positionsToPrune.length > 0) {
@@ -24902,12 +27026,20 @@ var desktopMode = function(exports) {
       reentrant = false;
     }
   }
-  function installShortcutsSync(getVisibility, getPositions = () => ({})) {
+  function installShortcutsSync(getVisibility, getPositions = () => ({}), getLayout = () => void 0) {
     queueMicrotask(
-      () => syncShortcutsWithVisibility(getVisibility(), getPositions())
+      () => syncShortcutsWithVisibility(
+        getVisibility(),
+        getPositions(),
+        getLayout()
+      )
     );
     const off = filesApi.store.subscribe(() => {
-      syncShortcutsWithVisibility(getVisibility(), getPositions());
+      syncShortcutsWithVisibility(
+        getVisibility(),
+        getPositions(),
+        getLayout()
+      );
     });
     return off;
   }
@@ -26726,6 +28858,505 @@ ${content}`;
   function registerBuiltInWidgets() {
     register(clock);
   }
+  const STYLE_ID = "desktop-mode-release-card-styles";
+  const HOST_CLASS = "desktop-mode-release-host";
+  const WP_LOGO = '<svg viewBox="0 0 122.52 122.523" aria-hidden="true"><path fill="currentColor" d="M8.708 61.26c0 20.802 12.089 38.779 29.619 47.298L13.258 39.872a52.352 52.352 0 0 0-4.55 21.388zm87.892-2.652c0-6.495-2.333-10.993-4.334-14.494-2.664-4.329-5.161-7.995-5.161-12.324 0-4.831 3.664-9.328 8.825-9.328.233 0 .454.029.681.042-9.35-8.566-21.807-13.796-35.489-13.796-18.36 0-34.513 9.42-43.91 23.688 1.233.037 2.395.063 3.382.063 5.497 0 14.006-.667 14.006-.667 2.833-.167 3.167 3.994.337 4.329 0 0-2.847.335-6.015.501l19.138 56.925 11.502-34.493-8.187-22.432c-2.831-.166-5.51-.501-5.51-.501-2.831-.167-2.499-4.496.332-4.329 0 0 8.679.667 13.843.667 5.496 0 14.006-.667 14.006-.667 2.835-.167 3.168 3.994.337 4.329 0 0-2.852.335-6.015.501l18.992 56.494 5.242-17.517c2.272-7.269 4.001-12.49 4.001-16.989zm-34.404 7.223l-15.768 45.819a52.552 52.552 0 0 0 14.807 2.136c6.309 0 12.36-1.091 17.996-3.075a4.617 4.617 0 0 1-.374-.724L62.196 65.831zm45.192-29.81c.226 1.674.354 3.471.354 5.404 0 5.333-.996 11.328-3.996 18.824l-16.053 46.413c15.624-9.111 26.133-26.038 26.133-45.426.001-9.137-2.333-17.729-6.438-25.215zM61.262 0C27.483 0 0 27.481 0 61.26c0 33.783 27.483 61.263 61.262 61.263 33.778 0 61.265-27.48 61.265-61.263C122.526 27.481 95.04 0 61.262 0zm0 119.715c-32.23 0-58.453-26.223-58.453-58.455 0-32.23 26.222-58.451 58.453-58.451 32.229 0 58.45 26.221 58.45 58.451 0 32.232-26.221 58.455-58.45 58.455z"/></svg>';
+  const CLOSE_ICON = '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3 L11 11 M11 3 L3 11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path></svg>';
+  const STYLES = `
+.dm-release-card {
+	position: relative; box-sizing: border-box; width: 268px; padding: 11px;
+	border-radius: 14px; color: #fff;
+	font-family: var( --desktop-mode-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif );
+	background: #34373f; border: 1px solid rgba( 255, 255, 255, 0.14 );
+	box-shadow: 0 16px 40px rgba( 0, 0, 0, 0.55 ), 0 3px 8px rgba( 0, 0, 0, 0.3 ), inset 0 0 0 1px rgba( 255, 255, 255, 0.04 );
+	--accent: #2271b1; --accent-ink: #ffffff;
+	animation: dmRcCardIn 0.5s cubic-bezier( 0.2, 1.2, 0.35, 1 ) both;
+}
+.dm-release-card, .dm-release-card * { box-sizing: border-box; }
+@keyframes dmRcCardIn {
+	from { opacity: 0; transform: translateY( -16px ) scale( 0.96 ); }
+	to   { opacity: 1; transform: none; }
+}
+.dm-rc__close {
+	position: absolute; top: 9px; right: 9px; z-index: 10;
+	width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
+	display: inline-flex; align-items: center; justify-content: center;
+	background: rgba( 0, 0, 0, 0.5 ); color: #fff; opacity: 0.72; cursor: pointer;
+	transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+.dm-rc__close:hover { opacity: 1; background: rgba( 0, 0, 0, 0.7 ); }
+.dm-rc__close:focus-visible { opacity: 1; outline: 2px solid #fff; outline-offset: 2px; }
+.dm-rc__close svg { width: 11px; height: 11px; }
+.dm-rc__art { position: relative; height: 150px; }
+.dm-rc__cover {
+	position: absolute; left: 2px; top: 0; width: 150px; height: 150px;
+	border-radius: 2px; overflow: hidden; z-index: 3;
+	box-shadow: 0 8px 20px rgba( 0, 0, 0, 0.5 ), inset 0 0 0 1px rgba( 255, 255, 255, 0.08 );
+}
+.dm-rc__canvas { width: 100%; height: 100%; display: block; }
+.dm-rc__disc-wrap {
+	position: absolute; left: 94px; top: 2px; width: 148px; height: 148px; z-index: 2;
+	border-radius: 50%; box-shadow: 0 14px 26px rgba( 0, 0, 0, 0.6 );
+	animation: dmRcEmerge 0.8s cubic-bezier( 0.2, 1, 0.28, 1 ) 0.45s both;
+}
+@keyframes dmRcEmerge {
+	from { transform: translateX( -84px ); }
+	to   { transform: translateX( 0 ); }
+}
+.dm-rc__disc {
+	position: absolute; inset: 0; border-radius: 50%;
+	background:
+		repeating-radial-gradient( circle at 50% 50%, rgba( 255, 255, 255, 0.05 ) 0 1px, rgba( 0, 0, 0, 0 ) 1px 2.4px ),
+		radial-gradient( circle at 50% 50%, #1a1a1e 0 11%, #0a0a0c 12% 62%, #050506 100% );
+	box-shadow: inset 0 0 26px rgba( 0, 0, 0, 0.9 ), inset 0 0 0 1px rgba( 255, 255, 255, 0.05 );
+	animation: dmRcSettle 2.5s cubic-bezier( 0.12, 0.72, 0.16, 1 ) 0.45s both;
+}
+@keyframes dmRcSettle {
+	from { transform: rotate( 0 ); }
+	to   { transform: rotate( 720deg ); }
+}
+.dm-rc__label {
+	position: absolute; inset: 34%; border-radius: 50%; display: grid; place-items: center;
+	background: var( --accent ); color: var( --accent-ink );
+	box-shadow: inset 0 0 0 2px rgba( 0, 0, 0, 0.18 ), 0 1px 2px rgba( 0, 0, 0, 0.4 );
+}
+.dm-rc__label svg { width: 59%; height: 59%; display: block; }
+.dm-rc__sheen {
+	position: absolute; inset: 0; border-radius: 50%; pointer-events: none; z-index: 3;
+	background: linear-gradient( 118deg, rgba( 255, 255, 255, 0.18 ) 0%, transparent 24%, transparent 74%, rgba( 255, 255, 255, 0.1 ) 100% );
+	mix-blend-mode: screen;
+}
+.dm-rc__meta {
+	display: flex; align-items: center; gap: 10px; margin-top: 11px;
+	opacity: 0; animation: dmRcFade 0.5s ease 1.05s forwards;
+}
+@keyframes dmRcFade { to { opacity: 1; } }
+.dm-rc__text { flex: 1; font-size: 13px; line-height: 1.35; color: #fff; }
+.dm-rc__text b { font-weight: 650; }
+.dm-rc__btn {
+	flex-shrink: 0; padding: 7px 12px; border: none; border-radius: 7px;
+	color: var( --accent-ink ); background: var( --accent ); font: inherit; font-size: 12px; font-weight: 600;
+	cursor: pointer; box-shadow: 0 2px 8px rgba( 0, 0, 0, 0.3 ); transition: filter 0.12s;
+}
+.dm-rc__btn:hover { filter: brightness( 1.12 ); }
+.dm-rc__btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media ( prefers-reduced-motion: reduce ) {
+	.dm-release-card, .dm-rc__disc-wrap, .dm-rc__disc, .dm-rc__meta { animation: none !important; }
+	.dm-rc__disc-wrap { transform: translateX( 0 ); }
+	.dm-rc__meta { opacity: 1; }
+}
+`;
+  function ensureStyles() {
+    if (document.getElementById(STYLE_ID)) {
+      return;
+    }
+    const el = document.createElement("style");
+    el.id = STYLE_ID;
+    el.textContent = STYLES;
+    document.head.appendChild(el);
+  }
+  function ensureHost() {
+    const existing = document.querySelector("." + HOST_CLASS);
+    if (existing) {
+      return existing;
+    }
+    const el = document.createElement("div");
+    el.className = HOST_CLASS;
+    el.style.cssText = "position:fixed;top:calc(var(--wp-admin--admin-bar--height,32px) + 16px);inset-inline-end:16px;z-index:calc(var(--desktop-mode-z-fullscreen,99999) + 10);pointer-events:none;";
+    document.body.appendChild(el);
+    return el;
+  }
+  function paintSleeve(root, canvas, artUrl, hasExplicitAccent) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.addEventListener(
+      "load",
+      () => {
+        const w = img.naturalWidth || 0;
+        const h = img.naturalHeight || 0;
+        if (!w || !h) {
+          return;
+        }
+        const size = 320;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          return;
+        }
+        const baseSide = Math.min(w, h);
+        ctx.drawImage(img, 0, 0, baseSide, baseSide, 0, 0, size, size);
+        try {
+          const work = document.createElement("canvas");
+          work.width = w;
+          work.height = h;
+          const wctx = work.getContext("2d");
+          if (!wctx) {
+            return;
+          }
+          wctx.drawImage(img, 0, 0);
+          const data = wctx.getImageData(0, 0, w, h).data;
+          const isWhite = (x, y) => {
+            const i = (y * w + x) * 4;
+            return data[i] > 248 && data[i + 1] > 248 && data[i + 2] > 248 && data[i + 3] > 200;
+          };
+          const rowWhite = (y) => {
+            for (let x = 0; x < w; x += 2) {
+              if (!isWhite(x, y)) {
+                return false;
+              }
+            }
+            return true;
+          };
+          const colWhite = (x) => {
+            for (let y = 0; y < h; y += 2) {
+              if (!isWhite(x, y)) {
+                return false;
+              }
+            }
+            return true;
+          };
+          let top = 0;
+          while (top < h - 1 && rowWhite(top)) {
+            top++;
+          }
+          let bottom = h - 1;
+          while (bottom > top && rowWhite(bottom)) {
+            bottom--;
+          }
+          let left = 0;
+          while (left < w - 1 && colWhite(left)) {
+            left++;
+          }
+          let right = w - 1;
+          while (right > left && colWhite(right)) {
+            right--;
+          }
+          const side = Math.max(1, Math.min(right - left + 1, bottom - top + 1));
+          ctx.clearRect(0, 0, size, size);
+          ctx.drawImage(img, left, top, side, side, 0, 0, size, size);
+          if (!hasExplicitAccent) {
+            extractAccent(root, ctx, size);
+          }
+        } catch {
+        }
+      },
+      { once: true }
+    );
+    img.src = artUrl;
+  }
+  function extractAccent(root, ctx, size) {
+    const { data } = ctx.getImageData(0, 0, size, size);
+    const buckets = /* @__PURE__ */ new Map();
+    let best = null;
+    let bestScore = -1;
+    for (let i = 0; i < data.length; i += 4) {
+      const r2 = data[i];
+      const g2 = data[i + 1];
+      const b2 = data[i + 2];
+      if (data[i + 3] < 200) {
+        continue;
+      }
+      const max = Math.max(r2, g2, b2);
+      const min = Math.min(r2, g2, b2);
+      const v = max / 255;
+      const s = max === 0 ? 0 : (max - min) / max;
+      if (v < 0.2 || s < 0.25) {
+        continue;
+      }
+      const key = `${Math.floor(r2 / 16)},${Math.floor(g2 / 16)},${Math.floor(b2 / 16)}`;
+      let bucket2 = buckets.get(key);
+      if (!bucket2) {
+        bucket2 = { r: 0, g: 0, b: 0, n: 0, score: 0 };
+        buckets.set(key, bucket2);
+      }
+      bucket2.r += r2;
+      bucket2.g += g2;
+      bucket2.b += b2;
+      bucket2.n += 1;
+      bucket2.score += s * v;
+      if (bucket2.score > bestScore) {
+        bestScore = bucket2.score;
+        best = bucket2;
+      }
+    }
+    if (!best) {
+      return;
+    }
+    const r = Math.round(best.r / best.n);
+    const g = Math.round(best.g / best.n);
+    const b = Math.round(best.b / best.n);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    root.style.setProperty("--accent", `rgb(${r}, ${g}, ${b})`);
+    root.style.setProperty("--accent-ink", lum > 0.6 ? "#1a1a1a" : "#ffffff");
+  }
+  function showReleaseCard(opts) {
+    ensureStyles();
+    const host = ensureHost();
+    host.textContent = "";
+    const root = document.createElement("div");
+    root.className = "dm-release-card";
+    root.setAttribute("role", "status");
+    root.style.pointerEvents = "auto";
+    if (opts.accent) {
+      root.style.setProperty("--accent", opts.accent);
+    }
+    if (opts.accentInk) {
+      root.style.setProperty("--accent-ink", opts.accentInk);
+    }
+    root.innerHTML = `<button type="button" class="dm-rc__close">${CLOSE_ICON}</button><div class="dm-rc__art"><div class="dm-rc__disc-wrap"><div class="dm-rc__disc"><div class="dm-rc__label">${WP_LOGO}</div></div><div class="dm-rc__sheen"></div></div><div class="dm-rc__cover"><canvas class="dm-rc__canvas"></canvas></div></div><div class="dm-rc__meta"><span class="dm-rc__text"></span><button type="button" class="dm-rc__btn"></button></div>`;
+    root.querySelector(".dm-rc__text").textContent = opts.message;
+    const closeBtn = root.querySelector(".dm-rc__close");
+    closeBtn.setAttribute("aria-label", __("Dismiss"));
+    const updateBtn = root.querySelector(".dm-rc__btn");
+    updateBtn.textContent = __("Update now");
+    host.appendChild(root);
+    paintSleeve(
+      root,
+      root.querySelector(".dm-rc__canvas"),
+      opts.artUrl,
+      !!opts.accent
+    );
+    let done = false;
+    let timer = null;
+    const removeNow = () => {
+      done = true;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      root.remove();
+    };
+    closeBtn.addEventListener(
+      "click",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (done) {
+          return;
+        }
+        markNoticeDismissed(opts.dismissKey);
+        const reduce = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (reduce) {
+          removeNow();
+          return;
+        }
+        done = true;
+        root.style.animation = "none";
+        root.style.transition = "opacity 0.2s ease";
+        requestAnimationFrame(() => {
+          root.style.opacity = "0";
+        });
+        timer = window.setTimeout(() => root.remove(), 240);
+      }
+    );
+    updateBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      opts.onUpdate();
+      removeNow();
+    });
+    return removeNow;
+  }
+  const CACHE_PREFIX = "desktop-mode/release-art:v1:";
+  const MISS_TTL_MS = 6 * 60 * 60 * 1e3;
+  function str(v) {
+    return typeof v === "string" ? v : "";
+  }
+  function prop(o, key) {
+    return o && typeof o === "object" ? o[key] : void 0;
+  }
+  function decodeEntities(s) {
+    const el = document.createElement("textarea");
+    el.innerHTML = s;
+    return el.value;
+  }
+  function pickMedia(post) {
+    const media = prop(prop(post, "_embedded"), "wp:featuredmedia");
+    const first = Array.isArray(media) ? media[0] : void 0;
+    const sizes = prop(prop(first, "media_details"), "sizes");
+    for (const key of ["medium_large", "large", "1536x1536", "medium"]) {
+      const url = str(prop(prop(sizes, key), "source_url"));
+      if (url) {
+        return url;
+      }
+    }
+    return str(prop(first, "source_url"));
+  }
+  function parseReleaseArt(posts, branch) {
+    if (!Array.isArray(posts)) {
+      return null;
+    }
+    const escaped = branch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(
+      "^WordPress " + escaped + '\\s*[“"]([^”"]+)[”"]'
+    );
+    for (const post of posts) {
+      const title = decodeEntities(str(prop(prop(post, "title"), "rendered")));
+      const m = re.exec(title);
+      if (!m) {
+        continue;
+      }
+      const artUrl = pickMedia(post);
+      if (artUrl) {
+        return { name: m[1].trim(), artUrl };
+      }
+    }
+    return null;
+  }
+  function readCache(branch) {
+    try {
+      const raw = localStorage.getItem(CACHE_PREFIX + branch);
+      if (!raw) {
+        return null;
+      }
+      const v = JSON.parse(raw);
+      if (v.ok === true && str(v.name) && str(v.artUrl)) {
+        return { name: str(v.name), artUrl: str(v.artUrl) };
+      }
+      if (v.ok === false && typeof v.ts === "number" && Date.now() - v.ts < MISS_TTL_MS) {
+        return "miss";
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  function writeCache(branch, value) {
+    try {
+      localStorage.setItem(CACHE_PREFIX + branch, JSON.stringify(value));
+    } catch {
+    }
+  }
+  async function resolveReleaseArt(branch) {
+    if (!branch) {
+      return null;
+    }
+    const cached = readCache(branch);
+    if (cached === "miss") {
+      return null;
+    }
+    if (cached) {
+      return cached;
+    }
+    try {
+      const url = "https://wordpress.org/news/wp-json/wp/v2/posts?search=" + encodeURIComponent(branch) + "&per_page=100&_fields=title,_links,_embedded&_embed=wp:featuredmedia";
+      const res = await trackedFetch$1(
+        url,
+        { credentials: "omit" },
+        { silent: true, source: "desktop-mode/release-art" }
+      );
+      if (!res.ok) {
+        writeCache(branch, { ok: false, ts: Date.now() });
+        return null;
+      }
+      const art = parseReleaseArt(await res.json(), branch);
+      if (art) {
+        writeCache(branch, { ok: true, name: art.name, artUrl: art.artUrl });
+        return art;
+      }
+      writeCache(branch, { ok: false, ts: Date.now() });
+      return null;
+    } catch {
+      writeCache(branch, { ok: false, ts: Date.now() });
+      return null;
+    }
+  }
+  function preloadImage(url, timeoutMs = 5e3) {
+    return new Promise((resolve2) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      let done = false;
+      const finish = (ok) => {
+        if (done) {
+          return;
+        }
+        done = true;
+        resolve2(ok);
+      };
+      img.addEventListener("load", () => finish(true), { once: true });
+      img.addEventListener("error", () => finish(false), { once: true });
+      window.setTimeout(() => finish(false), timeoutMs);
+      img.src = url;
+    });
+  }
+  function updateMessage(version, name) {
+    if (name) {
+      const withName = __('WordPress %1$s "%2$s" is available.');
+      return sprintf(withName, version, name);
+    }
+    const versionOnly = __("WordPress %s is available.");
+    return sprintf(versionOnly, version);
+  }
+  async function maybeShowUpdate(deps2) {
+    const { update, openUrl } = deps2;
+    if (!update || typeof update.version !== "string" || !update.version || typeof update.url !== "string" || !update.url) {
+      return;
+    }
+    const version = update.version;
+    const branch = typeof update.branch === "string" && update.branch ? update.branch : version;
+    const crossing = update.crossing === true;
+    const exact = typeof update.available === "string" && update.available ? update.available : version;
+    const dismissKey = `desktop-mode/core-update:${exact}`;
+    if (isNoticeDismissed(dismissKey)) {
+      return;
+    }
+    const openUpdateScreen = () => openUrl({ url: update.url, title: __("WordPress Updates") });
+    const resolveArt = deps2.resolveArt ?? resolveReleaseArt;
+    const load = deps2.loadImage ?? preloadImage;
+    const art = await resolveArt(branch);
+    if (art && art.artUrl && await load(art.artUrl)) {
+      showReleaseCard({
+        message: updateMessage(version, crossing ? art.name : ""),
+        artUrl: art.artUrl,
+        dismissKey,
+        onUpdate: openUpdateScreen
+      });
+      return;
+    }
+    showToast({
+      message: updateMessage(version, ""),
+      persistent: true,
+      dismissible: true,
+      onDismiss: () => markNoticeDismissed(dismissKey),
+      action: {
+        label: __("Update now"),
+        onClick: openUpdateScreen
+      }
+    });
+  }
+  const STARTER_WIDGET_ID = "desktop-mode/starter";
+  const FILTER_NAMESPACE = "desktop-mode/dev-mode-gate";
+  let _started = false;
+  function setupDevModeWidgetGate({ osSettings, layer }) {
+    if (_started) {
+      return;
+    }
+    _started = true;
+    addFilter(
+      HOOKS.WIDGETS,
+      FILTER_NAMESPACE,
+      (defs) => {
+        if (osSettings.getOsSettingsSnapshot().developerModeEnabled) {
+          return defs;
+        }
+        return defs.filter((def) => def.id !== STARTER_WIDGET_ID);
+      }
+    );
+    let developerModeEnabled = osSettings.getOsSettingsSnapshot().developerModeEnabled;
+    osSettings.subscribeOsSettings((snapshot) => {
+      if (snapshot.developerModeEnabled === developerModeEnabled) {
+        return;
+      }
+      developerModeEnabled = snapshot.developerModeEnabled;
+      if (developerModeEnabled) {
+        layer.mountIfEnabled(STARTER_WIDGET_ID);
+      } else {
+        layer.unmount(STARTER_WIDGET_ID);
+      }
+      refreshWidgetPicker();
+    });
+  }
   function createWidgetRegistrySync(deps2) {
     const { layer } = deps2;
     const registered = /* @__PURE__ */ new Set();
@@ -27892,8 +30523,6 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         restNonce: config.restNonce,
         canUpload: !!config.canUpload,
         isAdmin: !!config.currentUserIsAdmin,
-        aiPlatformSettings: config.aiPlatformSettings ?? null,
-        aiPlatformSettingsUrl: config.aiPlatformSettingsUrl ?? "",
         extendedOptions: config.extendedOptions ?? null,
         extendedOptionsUrl: config.extendedOptionsUrl ?? "",
         osSettingsPanelBundleUrl: config.osSettingsPanelBundleUrl ?? ""
@@ -27901,15 +30530,18 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       wallpaperLayer ?? new WallpaperLayer(document.createElement("div"), pluginUrl)
     );
     osSettings.apply();
+    if (widgetLayer) {
+      setupDevModeWidgetGate({ osSettings, layer: widgetLayer });
+    }
     const aiAssistant = new AiAssistantStub(
       {
         aiSearchUrl: config.aiSearchUrl ?? "",
         aiSearchStreamUrl: config.aiSearchStreamUrl ?? "",
         restNonce: config.restNonce,
-        // Transport picker lives in OS Settings → AI Settings. Read
-        // live (not captured at construction) so a change applies on
-        // the next search without a page reload.
-        getTransport: () => osSettings.getOsSettingsSnapshot().ai.transport
+        // Progress streaming is on by default now that the per-user
+        // transport picker is gone; the assistant falls back gracefully
+        // if the host drops the SSE connection.
+        getTransport: () => "sse"
       },
       config.aiAssistantBundleUrl ?? ""
     );
@@ -27949,6 +30581,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       dragBridge.end();
     });
     scheduleIdleBoot(() => installIframeDropTargets(dragManager));
+    scheduleIdleBoot(() => installFocusWindowOnDragHover(manager));
     window.addEventListener("message", (e) => {
       if (e.origin !== window.location.origin) {
         return;
@@ -27961,13 +30594,32 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         message: "Could not insert into the editor."
       });
     });
-    registerPalette({
-      id: "desktop-mode-ai-assistant",
-      label: "AI Assistant",
-      open: () => aiAssistant.open(),
-      close: () => aiAssistant.close(),
-      isOpen: () => aiAssistant.isOpen
-    });
+    const aiAvailable = config.aiAssistant?.available === true;
+    const isAiAssistantActive = () => aiAvailable && config.aiAssistant?.assistantProviderConfigured === true && osSettings.getOsSettingsSnapshot().ai.enabled !== false;
+    let unregisterAiPalette = null;
+    const syncAiAssistant = () => {
+      const active2 = isAiAssistantActive();
+      document.body.classList.toggle("desktop-mode-ai-enabled", active2);
+      if (active2 && !unregisterAiPalette) {
+        unregisterAiPalette = registerPalette({
+          id: "desktop-mode-ai-assistant",
+          label: "AI Assistant",
+          open: () => aiAssistant.open(),
+          close: () => aiAssistant.close(),
+          isOpen: () => aiAssistant.isOpen
+        });
+      } else if (!active2 && unregisterAiPalette) {
+        aiAssistant.close();
+        unregisterAiPalette();
+        unregisterAiPalette = null;
+      }
+    };
+    syncAiAssistant();
+    osSettings.subscribeOsSettings(() => syncAiAssistant());
+    document.addEventListener(
+      "desktop-mode-ai-status-changed",
+      () => syncAiAssistant()
+    );
     installPaletteShortcut();
     installWindowSwitcherShortcut(manager);
     installDesktopArrowShortcuts(manager);
@@ -27982,6 +30634,9 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       }).install();
     });
     document.addEventListener("desktop-mode-open-ai", () => {
+      if (!isAiAssistantActive()) {
+        return;
+      }
       openPaletteOnly("desktop-mode-ai-assistant");
     });
     const bottomDockEl = document.getElementById("desktop-mode-dock");
@@ -28192,6 +30847,9 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       });
     }
     function openOsSettings(opts = {}) {
+      if (opts.tabId === "extended") {
+        opts = { ...opts, tabId: "features" };
+      }
       if (opts.tabId) {
         osSettings.activeTabId = opts.tabId;
       }
@@ -28369,7 +31027,13 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     void syncServerUnfocusEffects(
       Array.isArray(config.serverUnfocusEffectScripts) ? config.serverUnfocusEffectScripts : []
     );
+    const syncServerWindowLinkRenderers = createWindowLinkRendererRegistrySync();
+    void syncServerWindowLinkRenderers(
+      Array.isArray(config.serverWindowLinkRendererScripts) ? config.serverWindowLinkRendererScripts : []
+    );
     startUnfocusEngine({ manager, osSettings });
+    startWindowLinksEngine({ manager });
+    startWindowLinkRenderHost({ manager, osSettings });
     const syncServerDockRailRenderers = createDockRailRendererSync();
     void syncServerDockRailRenderers(
       Array.isArray(config.serverDockRailRendererScripts) ? config.serverDockRailRendererScripts : []
@@ -28459,8 +31123,17 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       syncServerSettingsTabs,
       syncServerTitleBarButtons,
       syncServerUnfocusEffects,
+      syncServerWindowLinkRenderers,
       syncServerDockRailRenderers,
-      renderIcons
+      renderIcons,
+      syncShortcuts: () => {
+        const snapshot = osSettings.getOsSettingsSnapshot();
+        syncShortcutsWithVisibility(
+          snapshot.itemVisibility,
+          snapshot.dockPromotedPositions,
+          snapshot.desktopLayout
+        );
+      }
     });
     osSettings.subscribeOsSettings((snapshot) => {
       if (!layoutDispatcher) {
@@ -28476,13 +31149,15 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       }
       syncShortcutsWithVisibility(
         snapshot.itemVisibility,
-        snapshot.dockPromotedPositions
+        snapshot.dockPromotedPositions,
+        snapshot.desktopLayout
       );
       setCurrentLayout(snapshot.desktopLayout);
     });
     installShortcutsSync(
       () => osSettings.getOsSettingsSnapshot().itemVisibility,
-      () => osSettings.getOsSettingsSnapshot().dockPromotedPositions
+      () => osSettings.getOsSettingsSnapshot().dockPromotedPositions,
+      () => osSettings.getOsSettingsSnapshot().desktopLayout
     );
     setCurrentLayout(osSettings.getOsSettingsSnapshot().desktopLayout);
     const desktopApi = buildPublicApi({
@@ -28549,6 +31224,21 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     setUserAssociations(
       config.userFileAssociations ?? {}
     );
+    void maybeShowUpdate({
+      update: config.coreUpdate,
+      openUrl: ({ url, title }) => {
+        if (tryNativeUrlRemap(url)) {
+          return;
+        }
+        void manager.open({
+          id: "update-core",
+          baseId: "update-core",
+          url,
+          title,
+          icon: "dashicons-update"
+        });
+      }
+    });
     if (typeof config.filesUrl === "string" && config.filesUrl) {
       installRestDeps({
         baseUrl: config.filesUrl,
@@ -29088,7 +31778,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         dragWatchdog = null;
       }
     };
-    const bumpWatchdog = () => {
+    const bumpWatchdog2 = () => {
       if (dragWatchdog !== null) {
         clearTimeout(dragWatchdog);
       }
@@ -29101,7 +31791,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       ev.preventDefault();
       dragDepth++;
       overlayEl.classList.add("is-active");
-      bumpWatchdog();
+      bumpWatchdog2();
     };
     const onDragOver = (ev) => {
       if (!dragHasFiles(ev)) {
@@ -29115,7 +31805,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       if (ev.dataTransfer) {
         ev.dataTransfer.dropEffect = "copy";
       }
-      bumpWatchdog();
+      bumpWatchdog2();
     };
     const onDragLeave = () => {
       dragDepth = Math.max(0, dragDepth - 1);

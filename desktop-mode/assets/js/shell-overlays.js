@@ -666,8 +666,15 @@
     element.id = id;
     return id;
   }
+  const TEXT_DOMAIN = "desktop-mode";
+  function i18n() {
+    return window.wp?.i18n;
+  }
+  function __(text, domain = TEXT_DOMAIN) {
+    return i18n()?.__(text, domain) ?? text;
+  }
   const containerStyles = css`:host{position:fixed;top:calc( var( --wp-admin--admin-bar--height,32px ) + 16px );inset-inline-end:16px;display:flex;flex-direction:column;gap:8px;z-index:calc( var( --desktop-mode-z-fullscreen,99999 ) + 10 );pointer-events:none}`;
-  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:8px;box-shadow:0 8px 24px rgba( 0,0,0,0.2 ),0 2px 6px rgba( 0,0,0,0.1 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
+  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:10px;border:1px solid rgba( 255,255,255,0.12 );box-shadow:0 10px 30px rgba( 0,0,0,0.4 ),0 2px 6px rgba( 0,0,0,0.18 ),inset 0 0 0 1px rgba( 255,255,255,0.04 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}.wpd-toast__close{display:inline-flex;align-items:center;justify-content:center;padding:4px;border-radius:6px;background:transparent;color:rgba( 255,255,255,0.7 )}.wpd-toast__close:hover{background:rgba( 255,255,255,0.14 );color:#fff}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
   const _WpdToastContainer = class _WpdToastContainer extends Component {
     connectedCallback() {
       super.connectedCallback();
@@ -707,6 +714,7 @@
     }
     render() {
       const action = this.action || "";
+      const dismissible = this.hasAttribute("dismissible");
       return html`
 			<span class="wpd-toast__label"><slot></slot></span>
 			<button
@@ -716,6 +724,23 @@
 			>
 				${action}
 			</button>
+			<button
+				type="button"
+				class="wpd-toast__close"
+				aria-label=${__("Dismiss")}
+				?hidden=${!dismissible}
+				@click=${(e) => this._onDismiss(e)}
+			>
+				<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true" focusable="false">
+					<path
+						d="M3 3 L11 11 M11 3 L3 11"
+						stroke="currentColor"
+						stroke-width="1.7"
+						stroke-linecap="round"
+						fill="none"
+					></path>
+				</svg>
+			</button>
 		`;
     }
     _onAction(e) {
@@ -723,8 +748,13 @@
       e.stopPropagation();
       this.emit("wpd-toast-action", {});
     }
+    _onDismiss(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.emit("wpd-toast-dismiss", {});
+    }
   };
-  _WpdToast.props = ["action", "state"];
+  _WpdToast.props = ["action", "state", "dismissible"];
   _WpdToast.styles = [toastStyles];
   _WpdToast.help = {
     title: "Toast",
@@ -741,6 +771,11 @@
         name: "state",
         type: "'in' | 'out'",
         description: 'Drives the CSS fade transition. Set to "in" when rendered, flip to "out" before removal.'
+      },
+      {
+        name: "dismissible",
+        type: "boolean",
+        description: "When set, a close (×) button renders on the right and emits wpd-toast-dismiss on click. Use for persistent toasts the user must be able to close."
       }
     ],
     slots: [
@@ -750,6 +785,11 @@
       {
         name: "wpd-toast-action",
         description: "Fires when the action button is clicked.",
+        detail: "{}"
+      },
+      {
+        name: "wpd-toast-dismiss",
+        description: "Fires when the close (×) button is clicked.",
         detail: "{}"
       }
     ],
@@ -1962,7 +2002,7 @@
     return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   defineComponent("wpd-spinner", WpdSpinner);
-  const styles = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
@@ -2014,6 +2054,10 @@
     parts: [{ name: "button", description: "Underlying <button> element." }],
     cssProps: [
       { name: "--wpd-button-bg", description: "Background color." },
+      {
+        name: "--wpd-button-bg-hover",
+        description: "Hover wash (ghost + secondary variants)."
+      },
       { name: "--wpd-button-fg", description: "Text color." },
       { name: "--wpd-button-border", description: "Border shorthand." },
       { name: "--wpd-button-border-radius", default: "6px" },

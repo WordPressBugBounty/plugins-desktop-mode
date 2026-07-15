@@ -390,6 +390,24 @@ function desktop_mode_chromeless_suppress_admin_bar() {
 add_action( 'admin_init', 'desktop_mode_chromeless_suppress_admin_bar' );
 
 /**
+ * Detaches core's update / maintenance nags inside chromeless iframes so
+ * they don't repeat in every window — the shell surfaces the update once
+ * instead.
+ *
+ * @since 0.9.4
+ */
+function desktop_mode_chromeless_suppress_update_nags() {
+	if ( ! desktop_mode_is_chromeless_request() ) {
+		return;
+	}
+	remove_action( 'admin_notices', 'update_nag', 3 );
+	remove_action( 'network_admin_notices', 'update_nag', 3 );
+	remove_action( 'admin_notices', 'maintenance_nag', 10 );
+	remove_action( 'network_admin_notices', 'maintenance_nag', 10 );
+}
+add_action( 'admin_init', 'desktop_mode_chromeless_suppress_update_nags' );
+
+/**
  * Preserves the `desktop_mode_chromeless` flag through admin
  * redirects.
  *

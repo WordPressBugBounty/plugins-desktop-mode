@@ -13,7 +13,10 @@ var desktopModeRecycleBin = function(exports) {
       return impl(format, ...args);
     }
     let i = 0;
-    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+    return format.replace(/%(?:(\d+)\$)?[sd]/g, (_match, pos) => {
+      const idx = pos ? Number.parseInt(pos, 10) - 1 : i++;
+      return String(args[idx] ?? "");
+    });
   }
   function html(strings, ...values) {
     return { __wpdHtml: true, strings, values };
@@ -725,6 +728,25 @@ var desktopModeRecycleBin = function(exports) {
       });
       return out;
     }
+    /**
+     * The rows currently visible — i.e. passing the active client-side
+     * filters, in data order. This is the row set `selectAll()` and
+     * the header select-all tri-state operate on.
+     *
+     * Destructive bulk consumers should resolve `selection` against
+     * THIS list rather than `data`: selection deliberately survives
+     * `data` reassignment, and a data-driven change (a realtime
+     * refresh editing a row so it no longer matches an active filter)
+     * can hide a selected row without any filter event firing. Rows
+     * the user cannot see must never be swept into a destructive
+     * action. See `collectSelectedItems()` in src/recycle-bin/index.ts
+     * for the canonical consumer.
+     *
+     * @since 0.9.4
+     */
+    get visibleRows() {
+      return this._filteredRows().map((entry) => entry.row);
+    }
     /** Stable row-id extractor. Default is row index. */
     get getRowId() {
       return this._getRowId;
@@ -866,14 +888,14 @@ var desktopModeRecycleBin = function(exports) {
       this._emitSelectionChange();
       this._syncSelectionDom([id]);
     }
-    /** Select every row currently in `data` (multi-mode only). */
+    /** Select every visible row — the rows passing the active client-side filters (multi-mode only). */
     selectAll() {
       if (this._readSelectable() !== "multi") {
         return;
       }
-      this._data.forEach(
-        (row, i) => this._selection.add(this._getRowId(row, i))
-      );
+      for (const { row, index } of this._filteredRows()) {
+        this._selection.add(this._getRowId(row, index));
+      }
       this._emitSelectionChange();
       this._syncSelectionDom("all");
     }
@@ -945,10 +967,9 @@ var desktopModeRecycleBin = function(exports) {
         "thead .select-all-checkbox"
       );
       if (headerCb) {
-        const total = this._data.length;
-        const selectedCount = this._countSelectedInData();
-        headerCb.checked = total > 0 && selectedCount === total;
-        headerCb.indeterminate = selectedCount > 0 && selectedCount < total;
+        const { total, selected } = this._visibleSelectionStats();
+        headerCb.checked = total > 0 && selected === total;
+        headerCb.indeterminate = selected > 0 && selected < total;
       }
     }
     /** Scroll the (filtered) row at `index` into view inside the table's scroll container. */
@@ -1228,10 +1249,9 @@ var desktopModeRecycleBin = function(exports) {
           cb.className = "select-all-checkbox";
           cb.setAttribute("data-noclick", "");
           cb.setAttribute("aria-label", "Select all rows");
-          const total = this._data.length;
-          const selectedCount = this._countSelectedInData();
-          cb.checked = total > 0 && selectedCount === total;
-          cb.indeterminate = selectedCount > 0 && selectedCount < total;
+          const { total, selected } = this._visibleSelectionStats();
+          cb.checked = total > 0 && selected === total;
+          cb.indeterminate = selected > 0 && selected < total;
           cb.addEventListener("change", () => {
             if (cb.checked) {
               this.selectAll();
@@ -1699,14 +1719,23 @@ var desktopModeRecycleBin = function(exports) {
       }
       return Array.from(seen).sort();
     }
-    _countSelectedInData() {
-      let n = 0;
-      this._data.forEach((row, i) => {
-        if (this._selection.has(this._getRowId(row, i))) {
-          n++;
+    /**
+     * Selection stats over the VISIBLE (client-side-filtered) rows —
+     * the same set `selectAll()` operates on. The header select-all
+     * tri-state derives from these so "checked" always means "every
+     * row the user can see is selected", even while ids of currently
+     * hidden rows linger in the selection set.
+     */
+    _visibleSelectionStats() {
+      let total = 0;
+      let selected = 0;
+      for (const { row, index } of this._filteredRows()) {
+        total++;
+        if (this._selection.has(this._getRowId(row, index))) {
+          selected++;
         }
-      });
-      return n;
+      }
+      return { total, selected };
     }
     // ------------------------------------------------------------------
     // Sticky columns + attribute reads
@@ -2414,7 +2443,11 @@ var desktopModeRecycleBin = function(exports) {
     desktop?.icons?.setBadge?.(TARGET_ID, visible);
   }
   function isBinWindowActive() {
-    return !!getDesktopApi()?.windowManager?.isActive?.(TARGET_ID);
+    const mgr = getDesktopApi()?.windowManager;
+    if (mgr?.isActiveByBaseId) {
+      return mgr.isActiveByBaseId(TARGET_ID);
+    }
+    return !!mgr?.isActive?.(TARGET_ID);
   }
   const DEFAULT_MAX_ITERATIONS = 1e3;
   async function runEmptyLoop(options) {
@@ -2752,7 +2785,7 @@ var desktopModeRecycleBin = function(exports) {
     if (items.length === 0) {
       return "";
     }
-    const parts = items.map((i) => `${i.id}:${i.deleted_at}`).sort();
+    const parts = items.map((i) => `${i.type}:${i.id}:${i.deleted_at}`).sort();
     return parts.join("|");
   }
   function buildColumns() {
@@ -2938,7 +2971,7 @@ var desktopModeRecycleBin = function(exports) {
     currentRowActionRestore = (ref) => void handleRestore([ref]);
     currentRowActionPurge = (ref) => void handlePurge([ref]);
     table.columns = buildColumns();
-    table.getRowId = (row) => row.id;
+    table.getRowId = (row) => `${row.type}:${row.id}`;
     let currentFingerprint = "";
     if (cachedItems) {
       table.data = cachedItems;
@@ -2966,6 +2999,15 @@ var desktopModeRecycleBin = function(exports) {
           table.data = items;
           currentFingerprint = next;
           cachedItems = items;
+          const visible = new Set(
+            (table.visibleRows ?? []).map(
+              (row) => `${row.type}:${row.id}`
+            )
+          );
+          const kept = Array.from(table.selection ?? [], String).filter((key) => visible.has(key));
+          if (kept.length !== (table.selection?.size ?? 0)) {
+            table.selection = kept;
+          }
         } else {
           cachedItems = items;
         }
@@ -3007,11 +3049,10 @@ var desktopModeRecycleBin = function(exports) {
       );
     };
     const collectSelectedItems = () => {
-      const sel = Array.from(table.selection ?? []);
-      const idSet = new Set(sel.map((id) => Number(id)));
+      const sel = new Set(Array.from(table.selection ?? [], String));
       const out = [];
-      for (const row of table.data ?? []) {
-        if (idSet.has(row.id)) {
+      for (const row of table.visibleRows ?? []) {
+        if (sel.has(`${row.type}:${row.id}`)) {
           out.push({ id: row.id, type: row.type });
         }
       }
@@ -3036,36 +3077,40 @@ var desktopModeRecycleBin = function(exports) {
         return;
       }
       const types = Array.from(new Set(refs.map((r) => r.type)));
-      try {
-        const restored = await restoreItems(refs);
-        const filesApi = window.wp?.desktop?.files?.rest;
-        if (filesApi) {
-          let i = 0;
-          for (const ref of refs) {
-            if (!restored.ok.includes(ref.id)) {
-              continue;
-            }
-            const desktopType = mapRecycleTypeToFileType(ref.type);
-            if (!desktopType) {
-              continue;
-            }
-            try {
-              await filesApi.createPlacement({
-                type: desktopType,
-                ref: String(ref.id),
-                x: 16 + i % 5 * 96,
-                y: 16 + Math.floor(i / 5) * 110
-              });
-            } catch (err) {
-              console.error("[recycle-bin] pin-to-desktop placement failed", err);
-            }
-            i += 1;
-          }
+      const okIds = [];
+      const allErrors = [];
+      const filesApi = window.wp?.desktop?.files?.rest;
+      let placed = 0;
+      for (const ref of refs) {
+        let restored;
+        try {
+          restored = await restoreItems([ref]);
+        } catch (err) {
+          console.error("[recycle-bin] pin-to-desktop restore failed", err);
+          continue;
         }
-        emitDoneEvent("restore", restored.ok, restored.errors, types, restored.ok);
-      } catch (err) {
-        console.error("[recycle-bin] pin-to-desktop failed", err);
+        allErrors.push(...restored.errors);
+        if (!restored.ok.includes(ref.id)) {
+          continue;
+        }
+        okIds.push(ref.id);
+        const desktopType = mapRecycleTypeToFileType(ref.type);
+        if (!filesApi || !desktopType) {
+          continue;
+        }
+        try {
+          await filesApi.createPlacement({
+            type: desktopType,
+            ref: String(ref.id),
+            x: 16 + placed % 5 * 96,
+            y: 16 + Math.floor(placed / 5) * 110
+          });
+        } catch (err) {
+          console.error("[recycle-bin] pin-to-desktop placement failed", err);
+        }
+        placed += 1;
       }
+      emitDoneEvent("restore", okIds, allErrors, types, okIds);
       table.clearSelection();
       await refresh();
     };
@@ -3139,7 +3184,7 @@ var desktopModeRecycleBin = function(exports) {
       const ok = await wpdConfirmGlobal({
         title: __("Empty bin?"),
         message: __(
-          "Empty the recycle bin? Every item visible in the current view will be permanently deleted."
+          "Permanently delete ALL items in the recycle bin? This includes every type and any items hidden by the current filter or search. This cannot be undone."
         ),
         confirmLabel: __("Empty bin"),
         danger: true
@@ -3184,6 +3229,7 @@ var desktopModeRecycleBin = function(exports) {
     root.querySelector(FILTER)?.addEventListener("wpd-pick", (e) => {
       const detail = e.detail;
       state2.filter = detail?.value ?? "";
+      table.clearSelection();
       void refresh();
     });
     const search = root.querySelector(SEARCH);
@@ -3194,6 +3240,7 @@ var desktopModeRecycleBin = function(exports) {
         window.clearTimeout(state2.searchDebounce);
       }
       state2.searchDebounce = window.setTimeout(() => {
+        table.clearSelection();
         void refresh();
       }, 250);
     });
@@ -3224,6 +3271,9 @@ var desktopModeRecycleBin = function(exports) {
     });
     table.addEventListener("wpd-table-selection-change", () => {
       refreshBulkBar();
+    });
+    table.addEventListener("wpd-table-filter-change", () => {
+      table.clearSelection();
     });
     table.sort = { key: "deleted_at", direction: "desc" };
     start();

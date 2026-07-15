@@ -7,13 +7,19 @@ var desktopModePostsWindow = function(exports) {
   function __(text, domain = TEXT_DOMAIN) {
     return i18n()?.__(text, domain) ?? text;
   }
+  function _n(single, plural, number, domain = TEXT_DOMAIN) {
+    return i18n()?._n(single, plural, number, domain) ?? (number === 1 ? single : plural);
+  }
   function sprintf(format, ...args) {
     const impl = i18n()?.sprintf;
     if (impl) {
       return impl(format, ...args);
     }
     let i = 0;
-    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+    return format.replace(/%(?:(\d+)\$)?[sd]/g, (_match, pos) => {
+      const idx = pos ? Number.parseInt(pos, 10) - 1 : i++;
+      return String(args[idx] ?? "");
+    });
   }
   const NONCE_HEADER = "X-WP-Nonce";
   function injectRestNonce(input, init) {
@@ -1143,7 +1149,7 @@ var desktopModePostsWindow = function(exports) {
       window.removeEventListener("pointercancel", onUp);
       clearFakePosts();
       try {
-        app.destroy(true, { children: true });
+        app.destroy({ removeView: true }, { children: true });
       } catch {
       }
     };
@@ -1906,6 +1912,25 @@ var desktopModePostsWindow = function(exports) {
       });
       return out;
     }
+    /**
+     * The rows currently visible — i.e. passing the active client-side
+     * filters, in data order. This is the row set `selectAll()` and
+     * the header select-all tri-state operate on.
+     *
+     * Destructive bulk consumers should resolve `selection` against
+     * THIS list rather than `data`: selection deliberately survives
+     * `data` reassignment, and a data-driven change (a realtime
+     * refresh editing a row so it no longer matches an active filter)
+     * can hide a selected row without any filter event firing. Rows
+     * the user cannot see must never be swept into a destructive
+     * action. See `collectSelectedItems()` in src/recycle-bin/index.ts
+     * for the canonical consumer.
+     *
+     * @since 0.9.4
+     */
+    get visibleRows() {
+      return this._filteredRows().map((entry) => entry.row);
+    }
     /** Stable row-id extractor. Default is row index. */
     get getRowId() {
       return this._getRowId;
@@ -2047,14 +2072,14 @@ var desktopModePostsWindow = function(exports) {
       this._emitSelectionChange();
       this._syncSelectionDom([id]);
     }
-    /** Select every row currently in `data` (multi-mode only). */
+    /** Select every visible row — the rows passing the active client-side filters (multi-mode only). */
     selectAll() {
       if (this._readSelectable() !== "multi") {
         return;
       }
-      this._data.forEach(
-        (row, i) => this._selection.add(this._getRowId(row, i))
-      );
+      for (const { row, index } of this._filteredRows()) {
+        this._selection.add(this._getRowId(row, index));
+      }
       this._emitSelectionChange();
       this._syncSelectionDom("all");
     }
@@ -2126,10 +2151,9 @@ var desktopModePostsWindow = function(exports) {
         "thead .select-all-checkbox"
       );
       if (headerCb) {
-        const total = this._data.length;
-        const selectedCount = this._countSelectedInData();
-        headerCb.checked = total > 0 && selectedCount === total;
-        headerCb.indeterminate = selectedCount > 0 && selectedCount < total;
+        const { total, selected } = this._visibleSelectionStats();
+        headerCb.checked = total > 0 && selected === total;
+        headerCb.indeterminate = selected > 0 && selected < total;
       }
     }
     /** Scroll the (filtered) row at `index` into view inside the table's scroll container. */
@@ -2409,10 +2433,9 @@ var desktopModePostsWindow = function(exports) {
           cb.className = "select-all-checkbox";
           cb.setAttribute("data-noclick", "");
           cb.setAttribute("aria-label", "Select all rows");
-          const total = this._data.length;
-          const selectedCount = this._countSelectedInData();
-          cb.checked = total > 0 && selectedCount === total;
-          cb.indeterminate = selectedCount > 0 && selectedCount < total;
+          const { total, selected } = this._visibleSelectionStats();
+          cb.checked = total > 0 && selected === total;
+          cb.indeterminate = selected > 0 && selected < total;
           cb.addEventListener("change", () => {
             if (cb.checked) {
               this.selectAll();
@@ -2880,14 +2903,23 @@ var desktopModePostsWindow = function(exports) {
       }
       return Array.from(seen).sort();
     }
-    _countSelectedInData() {
-      let n = 0;
-      this._data.forEach((row, i) => {
-        if (this._selection.has(this._getRowId(row, i))) {
-          n++;
+    /**
+     * Selection stats over the VISIBLE (client-side-filtered) rows —
+     * the same set `selectAll()` operates on. The header select-all
+     * tri-state derives from these so "checked" always means "every
+     * row the user can see is selected", even while ids of currently
+     * hidden rows linger in the selection set.
+     */
+    _visibleSelectionStats() {
+      let total = 0;
+      let selected = 0;
+      for (const { row, index } of this._filteredRows()) {
+        total++;
+        if (this._selection.has(this._getRowId(row, index))) {
+          selected++;
         }
-      });
-      return n;
+      }
+      return { total, selected };
     }
     // ------------------------------------------------------------------
     // Sticky columns + attribute reads
@@ -8059,7 +8091,7 @@ var desktopModePostsWindow = function(exports) {
       bulkDeleteUsers
     };
   }
-  const styles$2 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles$2 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
@@ -8111,6 +8143,10 @@ var desktopModePostsWindow = function(exports) {
     parts: [{ name: "button", description: "Underlying <button> element." }],
     cssProps: [
       { name: "--wpd-button-bg", description: "Background color." },
+      {
+        name: "--wpd-button-bg-hover",
+        description: "Hover wash (ghost + secondary variants)."
+      },
       { name: "--wpd-button-fg", description: "Text color." },
       { name: "--wpd-button-border", description: "Border shorthand." },
       { name: "--wpd-button-border-radius", default: "6px" },
@@ -8843,7 +8879,7 @@ var desktopModePostsWindow = function(exports) {
     cell.setAttribute(
       "aria-label",
       // translators: %d is the comment count for a row.
-      `${sprintf(__("%d comments"), count)}`
+      `${sprintf(_n("%d comment", "%d comments", count), count)}`
     );
     return cell;
   }
@@ -9925,6 +9961,9 @@ var desktopModePostsWindow = function(exports) {
         sel.length
       );
     };
+    const clearSelectionOnQueryChange = () => {
+      table.clearSelection();
+    };
     const buildParams = () => ({
       page: view.page,
       perPage: view.perPage,
@@ -10009,6 +10048,7 @@ var desktopModePostsWindow = function(exports) {
       const value = e.detail?.value ?? "";
       view.status = value;
       goToFirstPage();
+      clearSelectionOnQueryChange();
       void refresh();
     });
     root.querySelector(SEARCH$1)?.addEventListener(
@@ -10021,6 +10061,7 @@ var desktopModePostsWindow = function(exports) {
         }
         view.searchDebounce = window.setTimeout(() => {
           goToFirstPage();
+          clearSelectionOnQueryChange();
           void refresh();
         }, SEARCH_DEBOUNCE_MS$1);
       }
@@ -10035,15 +10076,17 @@ var desktopModePostsWindow = function(exports) {
         return;
       }
       if (target.closest(NEW_BTN$1)) {
+        const isPages = cfg.mode === "pages";
         openAdminUrl(cfg.newPostUrl, {
-          title: __("Add New Post"),
-          icon: "dashicons-admin-post"
+          title: isPages ? __("Add New Page") : __("Add New Post"),
+          icon: isPages ? "dashicons-admin-page" : "dashicons-admin-post"
         });
         return;
       }
       if (target.closest(PREV$1)) {
         if (view.page > 1) {
           view.page -= 1;
+          clearSelectionOnQueryChange();
           void refresh();
         }
         return;
@@ -10051,6 +10094,7 @@ var desktopModePostsWindow = function(exports) {
       if (target.closest(NEXT$1)) {
         if (view.page < totalPages) {
           view.page += 1;
+          clearSelectionOnQueryChange();
           void refresh();
         }
       }
@@ -10073,6 +10117,7 @@ var desktopModePostsWindow = function(exports) {
       }
       view.perPage = next;
       goToFirstPage();
+      clearSelectionOnQueryChange();
       void refresh();
     });
     table.addEventListener("wpd-table-selection-change", () => {
@@ -10087,6 +10132,7 @@ var desktopModePostsWindow = function(exports) {
         view.orderby = mapColumnToOrderby(detail.sort.key);
         view.order = detail.sort.direction;
       }
+      clearSelectionOnQueryChange();
       void refresh();
     });
     const parseIds = (raw) => raw.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0);
@@ -10103,6 +10149,7 @@ var desktopModePostsWindow = function(exports) {
       view.author = nextAuthor;
       view.tag = nextTag;
       view.page = 1;
+      clearSelectionOnQueryChange();
       void refresh();
     });
     activeRunBulkAction = async (action, actionCtx) => {
@@ -10473,16 +10520,18 @@ var desktopModePostsWindow = function(exports) {
       fetchInsights
     };
   }
-  const styles$1 = css`:host{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var( --desktop-mode-text,#1d2327 );cursor:pointer}label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}input[ type='checkbox' ]{accent-color:var( --wp-admin-theme-color,#2271b1 );cursor:pointer}`;
+  const styles$1 = css`:host{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var( --desktop-mode-text,#1d2327 );cursor:pointer}label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}input[ type='checkbox' ]{accent-color:var( --wp-admin-theme-color,#2271b1 );cursor:pointer}:host( [ disabled ] ){opacity:0.5;cursor:not-allowed}:host( [ disabled ] ) label,:host( [ disabled ] ) input[ type='checkbox' ]{cursor:not-allowed}`;
   const _WpdCheckboxLabel = class _WpdCheckboxLabel extends Component {
     render() {
       const label = this.label || "";
       const checked = this.checked !== null;
+      const disabled = this.disabled !== null;
       return html`
 			<label>
 				<input
 					type="checkbox"
 					?checked=${checked}
+					?disabled=${disabled}
 					@change=${(e) => this._onChange(e)}
 				/>
 				<span class="wpd-checkbox-label__text">${label}</span>
@@ -10490,6 +10539,9 @@ var desktopModePostsWindow = function(exports) {
 		`;
     }
     _onChange(e) {
+      if (this.disabled !== null) {
+        return;
+      }
       const next = e.target.checked;
       if (next) {
         this.setAttribute("checked", "");
@@ -10499,7 +10551,7 @@ var desktopModePostsWindow = function(exports) {
       this.emit("wpd-checkbox-change", { checked: next });
     }
   };
-  _WpdCheckboxLabel.props = ["label", "checked"];
+  _WpdCheckboxLabel.props = ["label", "checked", "disabled"];
   _WpdCheckboxLabel.styles = [styles$1];
   _WpdCheckboxLabel.help = {
     title: "Checkbox label",
@@ -10516,6 +10568,11 @@ var desktopModePostsWindow = function(exports) {
         name: "checked",
         type: "boolean attribute",
         description: "Reflects and controls the checked state."
+      },
+      {
+        name: "disabled",
+        type: "boolean attribute",
+        description: "When present, the checkbox is not interactive and dimmed."
       }
     ],
     events: [
@@ -11491,13 +11548,16 @@ var desktopModePostsWindow = function(exports) {
       return card;
     };
     const stats = data.stats;
-    grid.appendChild(
-      tile(
-        __("Posts"),
-        String(stats.posts),
+    let postsSub;
+    if (stats.pages > 0) {
+      postsSub = sprintf(
         // translators: %d is a count of pages.
-        stats.pages > 0 ? sprintf(__("+ %d pages"), stats.pages) : void 0
-      )
+        _n("+ %d page", "+ %d pages", stats.pages),
+        stats.pages
+      );
+    }
+    grid.appendChild(
+      tile(__("Posts"), String(stats.posts), postsSub)
     );
     let commentsSub;
     if (stats.commentsReceived > 0) {
@@ -11521,7 +11581,7 @@ var desktopModePostsWindow = function(exports) {
     if (stats.daysSinceRegistration !== null) {
       memberValue = sprintf(
         // translators: %d is a number of days.
-        __("%d days"),
+        _n("%d day", "%d days", stats.daysSinceRegistration),
         stats.daysSinceRegistration
       );
     }
@@ -13988,7 +14048,11 @@ var desktopModePostsWindow = function(exports) {
       meta.className = "wpd-mindmap__sidebar-meta";
       meta.textContent = sprintf(
         /* translators: %d: post count. */
-        __("%d posts in this category."),
+        _n(
+          "%d post in this category.",
+          "%d posts in this category.",
+          node.count
+        ),
         node.count
       );
       sidebar.appendChild(meta);
@@ -14291,7 +14355,7 @@ var desktopModePostsWindow = function(exports) {
         countEl.className = "wpd-mindmap__search-meta";
         countEl.textContent = sprintf(
           /* translators: %d: number of posts assigned to a category. */
-          __("%d posts"),
+          _n("%d post", "%d posts", n.count),
           n.count
         );
         btn.appendChild(nameEl);
@@ -14371,7 +14435,7 @@ var desktopModePostsWindow = function(exports) {
       } catch {
       }
       try {
-        app.canvas?.remove();
+        app.destroy({ removeView: true }, { children: true });
       } catch {
       }
       host.replaceChildren();
@@ -15809,7 +15873,11 @@ var desktopModePostsWindow = function(exports) {
       meta.className = "wpd-tagcloud__sidebar-meta";
       meta.textContent = sprintf(
         /* translators: %d: post count. */
-        __("%d posts tagged with this."),
+        _n(
+          "%d post tagged with this.",
+          "%d posts tagged with this.",
+          box.count
+        ),
         box.count
       );
       sidebar.appendChild(meta);
@@ -16146,7 +16214,7 @@ var desktopModePostsWindow = function(exports) {
         countEl.className = "wpd-tagcloud__search-meta";
         countEl.textContent = sprintf(
           /* translators: %d: number of posts assigned to a tag. */
-          __("%d posts"),
+          _n("%d post", "%d posts", t.count),
           t.count
         );
         btn.appendChild(nameEl);
@@ -16226,7 +16294,7 @@ var desktopModePostsWindow = function(exports) {
       } catch {
       }
       try {
-        app.canvas?.remove();
+        app.destroy({ removeView: true }, { children: true });
       } catch {
       }
       host.replaceChildren();
@@ -17359,6 +17427,9 @@ var desktopModePostsWindow = function(exports) {
     if (perPageEl) {
       perPageEl.value = String(view.perPage);
     }
+    const clearSelectionOnQueryChange = () => {
+      table.clearSelection();
+    };
     const indicator = root.querySelector(PAGE_INDICATOR);
     const prevBtn = root.querySelector(PREV);
     const nextBtn = root.querySelector(NEXT);
@@ -17378,6 +17449,7 @@ var desktopModePostsWindow = function(exports) {
         const detail = e.detail;
         view.status = detail?.value ?? "";
         view.page = 1;
+        clearSelectionOnQueryChange();
         void refresh();
       });
     }
@@ -17390,6 +17462,7 @@ var desktopModePostsWindow = function(exports) {
         view.searchDebounce = window.setTimeout(() => {
           view.search = searchEl.value.trim();
           view.page = 1;
+          clearSelectionOnQueryChange();
           void refresh();
         }, SEARCH_DEBOUNCE_MS);
       });
@@ -17421,6 +17494,7 @@ var desktopModePostsWindow = function(exports) {
       if (Number.isFinite(n) && n > 0) {
         view.perPage = n;
         view.page = 1;
+        clearSelectionOnQueryChange();
         void refresh();
       }
     });
@@ -17477,12 +17551,18 @@ var desktopModePostsWindow = function(exports) {
           if (!role) {
             return;
           }
+          const targetIds = Array.from(
+            table.selection ?? []
+          ).map((id) => Number(id));
+          if (targetIds.length === 0) {
+            return;
+          }
           const ok = await wpdConfirmGlobal({
             title: __("Change role for selected users?"),
             message: sprintf(
               // translators: %1$d is a user count, %2$s is a role label.
               __("Set %1$d user(s)' role to %2$s?"),
-              ids.length,
+              targetIds.length,
               assignable[role]
             ),
             confirmLabel: __("Set role")
@@ -17490,7 +17570,7 @@ var desktopModePostsWindow = function(exports) {
           if (!ok) {
             return;
           }
-          const out = await client.bulkSetRole(ids, role).catch((err) => {
+          const out = await client.bulkSetRole(targetIds, role).catch((err) => {
             notifyToast(
               String(err.message ?? err),
               { kind: "error" }
@@ -17503,7 +17583,7 @@ var desktopModePostsWindow = function(exports) {
           const successes = Object.values(out.results).filter(
             (r) => r.ok
           ).length;
-          const failures = ids.length - successes;
+          const failures = targetIds.length - successes;
           if (successes > 0) {
             notifyToast(
               sprintf(
@@ -17517,6 +17597,7 @@ var desktopModePostsWindow = function(exports) {
           } else {
             notifyToast(__("No users updated."), { kind: "error" });
           }
+          table.clearSelection();
           void refresh();
         });
         wrap.appendChild(roleDropdown);
@@ -17528,12 +17609,14 @@ var desktopModePostsWindow = function(exports) {
     prevBtn?.addEventListener("click", () => {
       if (view.page > 1) {
         view.page -= 1;
+        clearSelectionOnQueryChange();
         void refresh();
       }
     });
     nextBtn?.addEventListener("click", () => {
       if (view.page < totalPages) {
         view.page += 1;
+        clearSelectionOnQueryChange();
         void refresh();
       }
     });

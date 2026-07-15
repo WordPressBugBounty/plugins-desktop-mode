@@ -124,6 +124,7 @@
     });
   }
   const HEART_PALETTE = {
+    rim: 6950693,
     bright: 16731501,
     hi: 16754104
   };
@@ -194,7 +195,7 @@
     });
     stage.appendChild(app.canvas);
     const halo = buildHalo(pixi);
-    const heart = buildHeart(pixi);
+    const { view: heart, body: heartBody } = buildHeart(pixi);
     const logo = buildLogoSprite(pixi, logoUrl(ctx));
     app.stage.addChild(halo);
     app.stage.addChild(heart);
@@ -270,7 +271,7 @@
       halo.alpha = 0.1 + glow * 0.55;
       const haloScale = 1 + glow * 0.15;
       halo.scale.set(haloScale);
-      heart.tint = lerpColor(
+      heartBody.tint = lerpColor(
         HEART_COLOR_REST,
         HEART_COLOR_BEAT,
         Math.min(1, glow * 0.6 + bigBeatT * 0.4)
@@ -426,6 +427,7 @@
     gradientSprite.height = heartHeight;
     gradientSprite.x = -overscan / 2;
     gradientSprite.y = bounds.minY;
+    gradientSprite.tint = HEART_COLOR_REST;
     const mask = new pixi.Graphics();
     mask.poly(heartPath(1));
     mask.fill({ color: 16777215, alpha: 1 });
@@ -456,14 +458,21 @@
     outline.poly(heartPath(1));
     outline.stroke({ color: 16777215, alpha: 0.18, width: 1 });
     wrap.addChild(outline);
-    return wrap;
+    return { view: wrap, body: gradientSprite };
   }
   function heartBoundingY() {
-    const s = HEART_SIZE / 17;
-    return {
-      minY: -15 * s,
-      maxY: 9 * s
-    };
+    const pts = heartPath(1);
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = 1; i < pts.length; i += 2) {
+      if (pts[i] < minY) {
+        minY = pts[i];
+      }
+      if (pts[i] > maxY) {
+        maxY = pts[i];
+      }
+    }
+    return { minY, maxY };
   }
   function makeGradientCanvas() {
     const c = document.createElement("canvas");
@@ -484,18 +493,66 @@
     return c;
   }
   function buildLogoSprite(pixi, url) {
-    const sprite = new pixi.Sprite();
-    sprite.anchor.set(0.5);
-    sprite.alpha = 0.95;
-    sprite.y = HEART_SIZE * 0.08;
+    const wrap = new pixi.Container();
+    wrap.y = HEART_SIZE * 0.08;
+    const shadow = new pixi.Sprite();
+    shadow.anchor.set(0.5);
+    shadow.tint = HEART_PALETTE.rim;
+    shadow.alpha = 0.6;
+    shadow.y = HEART_SIZE * 0.035;
+    wrap.addChild(shadow);
+    const mark = new pixi.Sprite();
+    mark.anchor.set(0.5);
+    wrap.addChild(mark);
     const targetWidth = HEART_SIZE * 0.92;
-    pixi.Assets.load(url).then((texture) => {
-      sprite.texture = texture;
-      const scale = targetWidth / Math.max(1, texture.width);
-      sprite.scale.set(scale);
+    const img = new Image();
+    img.src = url;
+    img.decode().then(() => {
+      const resolution = Math.min(window.devicePixelRatio || 1, 2);
+      const widthPx = Math.ceil(targetWidth * resolution * 1.7);
+      const canvas = rasterizeLogo(img, widthPx);
+      const texture = pixi.Texture.from(canvas);
+      const scale = targetWidth / canvas.width;
+      shadow.texture = texture;
+      shadow.scale.set(scale);
+      mark.texture = texture;
+      mark.scale.set(scale);
     }).catch(() => {
     });
-    return sprite;
+    return wrap;
+  }
+  function rasterizeLogo(img, widthPx) {
+    let src = img;
+    let w2 = img.naturalWidth;
+    let h = img.naturalHeight;
+    while (w2 / 2 >= widthPx * 2) {
+      w2 = Math.round(w2 / 2);
+      h = Math.round(h / 2);
+      const step = document.createElement("canvas");
+      step.width = w2;
+      step.height = h;
+      const g2 = step.getContext("2d");
+      if (!g2) {
+        break;
+      }
+      g2.imageSmoothingEnabled = true;
+      g2.imageSmoothingQuality = "high";
+      g2.drawImage(src, 0, 0, w2, h);
+      src = step;
+    }
+    const out = document.createElement("canvas");
+    out.width = Math.max(1, widthPx);
+    out.height = Math.max(
+      1,
+      Math.round(widthPx * img.naturalHeight / Math.max(1, img.naturalWidth))
+    );
+    const g = out.getContext("2d");
+    if (g) {
+      g.imageSmoothingEnabled = true;
+      g.imageSmoothingQuality = "high";
+      g.drawImage(src, 0, 0, out.width, out.height);
+    }
+    return out;
   }
   function wpHeartbeatInterval() {
     const wp = window.wp;

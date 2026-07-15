@@ -7,13 +7,19 @@
   function __(text, domain = TEXT_DOMAIN) {
     return i18n()?.__(text, domain) ?? text;
   }
+  function _n(single, plural, number, domain = TEXT_DOMAIN) {
+    return i18n()?._n(single, plural, number, domain) ?? (number === 1 ? single : plural);
+  }
   function sprintf(format, ...args) {
     const impl = i18n()?.sprintf;
     if (impl) {
       return impl(format, ...args);
     }
     let i = 0;
-    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+    return format.replace(/%(?:(\d+)\$)?[sd]/g, (_match, pos) => {
+      const idx = pos ? Number.parseInt(pos, 10) - 1 : i++;
+      return String(args[idx] ?? "");
+    });
   }
   const FALLBACK_BASE = "http://localhost/";
   function joinRestUrl(restRoot, path) {
@@ -1129,7 +1135,7 @@
       labelEl.className = "desktop-mode-content-graph__panel-section-label";
       labelEl.textContent = sprintf(
         /* translators: %d: number of comment replies. */
-        __("Replies (%d)"),
+        _n("Reply (%d)", "Replies (%d)", replies.length),
         replies.length
       );
       wrap.appendChild(labelEl);
@@ -3280,7 +3286,7 @@
       this.groupLabelOverlay?.remove();
       this.groupLabelOverlay = null;
       try {
-        this.app.destroy(true, { children: true });
+        this.app.destroy({ removeView: true }, { children: true });
       } catch {
       }
     }

@@ -91,6 +91,58 @@
         }
         return;
       }
+      if (data.type === "desktop-mode-bridge-beforeunload-query") {
+        let prevent = false;
+        let msg = "";
+        const shimReturnValue = (e) => {
+          const self = e;
+          Object.defineProperty(e, "returnValue", {
+            get() {
+              return self._returnValue || "";
+            },
+            set(v) {
+              self._returnValue = v;
+            }
+          });
+        };
+        const checkPrevent = (event, result) => {
+          const retVal = event.returnValue;
+          const hasResult = typeof result === "string" && result !== "";
+          const hasRetVal = typeof retVal === "string" && retVal !== "";
+          if (event.defaultPrevented || hasResult || hasRetVal) {
+            prevent = true;
+            if (hasResult) {
+              msg = result;
+            } else if (hasRetVal) {
+              msg = retVal;
+            }
+          }
+        };
+        if (typeof window.onbeforeunload === "function") {
+          const unloadEvent = new Event("beforeunload", { cancelable: true });
+          shimReturnValue(unloadEvent);
+          const res = window.onbeforeunload(unloadEvent);
+          checkPrevent(unloadEvent, res);
+        }
+        if (!prevent) {
+          const dispatchEvent = new Event("beforeunload", { cancelable: true });
+          shimReturnValue(dispatchEvent);
+          window.dispatchEvent(dispatchEvent);
+          checkPrevent(dispatchEvent, null);
+        }
+        try {
+          window.parent.postMessage(
+            {
+              type: "desktop-mode-bridge-beforeunload-response",
+              prevent,
+              message: msg
+            },
+            parentOrigin
+          );
+        } catch {
+        }
+        return;
+      }
       if (data.type === "desktop-mode-bridge-publish" && typeof data.topic === "string") {
         const meta = {
           topic: data.topic,
@@ -480,6 +532,42 @@
           }
         },
         false
+      );
+    }
+    if (!sentinelHost.__desktopModeDragHoverForwarderInstalled) {
+      sentinelHost.__desktopModeDragHoverForwarderInstalled = true;
+      const hoverHasFiles = (ev) => {
+        const types = ev.dataTransfer?.types;
+        if (!types) {
+          return false;
+        }
+        const list = types;
+        if (typeof list.includes === "function") {
+          return list.includes("Files");
+        }
+        return typeof list.contains === "function" && list.contains("Files");
+      };
+      let dragHoverLastSent = 0;
+      document.addEventListener(
+        "dragover",
+        (ev) => {
+          const now = Date.now();
+          if (now - dragHoverLastSent < 150) {
+            return;
+          }
+          dragHoverLastSent = now;
+          try {
+            window.parent.postMessage(
+              {
+                type: "desktop-mode-drag-hover",
+                payloadType: hoverHasFiles(ev) ? "os-file" : "external"
+              },
+              parentOrigin
+            );
+          } catch {
+          }
+        },
+        true
       );
     }
     try {

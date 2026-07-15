@@ -76,7 +76,10 @@
       return impl(format, ...args);
     }
     let i = 0;
-    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+    return format.replace(/%(?:(\d+)\$)?[sd]/g, (_match, pos) => {
+      const idx = pos ? Number.parseInt(pos, 10) - 1 : i++;
+      return String(args[idx] ?? "");
+    });
   }
   function html(strings, ...values) {
     return { __wpdHtml: true, strings, values };
@@ -836,6 +839,25 @@
       });
       return out;
     }
+    /**
+     * The rows currently visible — i.e. passing the active client-side
+     * filters, in data order. This is the row set `selectAll()` and
+     * the header select-all tri-state operate on.
+     *
+     * Destructive bulk consumers should resolve `selection` against
+     * THIS list rather than `data`: selection deliberately survives
+     * `data` reassignment, and a data-driven change (a realtime
+     * refresh editing a row so it no longer matches an active filter)
+     * can hide a selected row without any filter event firing. Rows
+     * the user cannot see must never be swept into a destructive
+     * action. See `collectSelectedItems()` in src/recycle-bin/index.ts
+     * for the canonical consumer.
+     *
+     * @since 0.9.4
+     */
+    get visibleRows() {
+      return this._filteredRows().map((entry) => entry.row);
+    }
     /** Stable row-id extractor. Default is row index. */
     get getRowId() {
       return this._getRowId;
@@ -977,14 +999,14 @@
       this._emitSelectionChange();
       this._syncSelectionDom([id]);
     }
-    /** Select every row currently in `data` (multi-mode only). */
+    /** Select every visible row — the rows passing the active client-side filters (multi-mode only). */
     selectAll() {
       if (this._readSelectable() !== "multi") {
         return;
       }
-      this._data.forEach(
-        (row, i) => this._selection.add(this._getRowId(row, i))
-      );
+      for (const { row, index } of this._filteredRows()) {
+        this._selection.add(this._getRowId(row, index));
+      }
       this._emitSelectionChange();
       this._syncSelectionDom("all");
     }
@@ -1056,10 +1078,9 @@
         "thead .select-all-checkbox"
       );
       if (headerCb) {
-        const total = this._data.length;
-        const selectedCount = this._countSelectedInData();
-        headerCb.checked = total > 0 && selectedCount === total;
-        headerCb.indeterminate = selectedCount > 0 && selectedCount < total;
+        const { total, selected } = this._visibleSelectionStats();
+        headerCb.checked = total > 0 && selected === total;
+        headerCb.indeterminate = selected > 0 && selected < total;
       }
     }
     /** Scroll the (filtered) row at `index` into view inside the table's scroll container. */
@@ -1339,10 +1360,9 @@
           cb.className = "select-all-checkbox";
           cb.setAttribute("data-noclick", "");
           cb.setAttribute("aria-label", "Select all rows");
-          const total = this._data.length;
-          const selectedCount = this._countSelectedInData();
-          cb.checked = total > 0 && selectedCount === total;
-          cb.indeterminate = selectedCount > 0 && selectedCount < total;
+          const { total, selected } = this._visibleSelectionStats();
+          cb.checked = total > 0 && selected === total;
+          cb.indeterminate = selected > 0 && selected < total;
           cb.addEventListener("change", () => {
             if (cb.checked) {
               this.selectAll();
@@ -1810,14 +1830,23 @@
       }
       return Array.from(seen).sort();
     }
-    _countSelectedInData() {
-      let n = 0;
-      this._data.forEach((row, i) => {
-        if (this._selection.has(this._getRowId(row, i))) {
-          n++;
+    /**
+     * Selection stats over the VISIBLE (client-side-filtered) rows —
+     * the same set `selectAll()` operates on. The header select-all
+     * tri-state derives from these so "checked" always means "every
+     * row the user can see is selected", even while ids of currently
+     * hidden rows linger in the selection set.
+     */
+    _visibleSelectionStats() {
+      let total = 0;
+      let selected = 0;
+      for (const { row, index } of this._filteredRows()) {
+        total++;
+        if (this._selection.has(this._getRowId(row, index))) {
+          selected++;
         }
-      });
-      return n;
+      }
+      return { total, selected };
     }
     // ------------------------------------------------------------------
     // Sticky columns + attribute reads
@@ -2751,7 +2780,7 @@
     document.addEventListener(EVENT_NAME, handler);
     return () => document.removeEventListener(EVENT_NAME, handler);
   }
-  const styles$9 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles$9 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
@@ -2803,6 +2832,10 @@
     parts: [{ name: "button", description: "Underlying <button> element." }],
     cssProps: [
       { name: "--wpd-button-bg", description: "Background color." },
+      {
+        name: "--wpd-button-bg-hover",
+        description: "Hover wash (ghost + secondary variants)."
+      },
       { name: "--wpd-button-fg", description: "Text color." },
       { name: "--wpd-button-border", description: "Border shorthand." },
       { name: "--wpd-button-border-radius", default: "6px" },
@@ -4617,6 +4650,13 @@
         dismiss();
       });
     }
+    if (intent.dismissible) {
+      toast2.setAttribute("dismissible", "");
+      toast2.addEventListener("wpd-toast-dismiss", () => {
+        intent.onDismiss?.();
+        dismiss();
+      });
+    }
     container.appendChild(toast2);
     let dismissed = false;
     let dismissTimer = null;
@@ -4637,10 +4677,12 @@
     requestAnimationFrame(() => {
       toast2.setAttribute("state", "in");
     });
-    dismissTimer = window.setTimeout(
-      dismiss,
-      intent.duration ?? DEFAULT_DURATION_MS
-    );
+    if (!intent.persistent) {
+      dismissTimer = window.setTimeout(
+        dismiss,
+        intent.duration ?? DEFAULT_DURATION_MS
+      );
+    }
     activity.publish("desktop-mode/toast-shown", { ...intent });
     return dismiss;
   }
@@ -8854,6 +8896,7 @@
     statusFilter.addEventListener("wpd-pick", (ev) => {
       const detail = ev.detail;
       state.statusFilter = detail?.value ?? "";
+      table.clearSelection();
       paintTable();
     });
     const search = document.createElement("wpd-text-field");
@@ -8867,6 +8910,7 @@
       window.clearTimeout(searchDebounce);
       searchDebounce = window.setTimeout(() => {
         state.search = value;
+        table.clearSelection();
         paintTable();
       }, 200);
     });
@@ -9280,6 +9324,9 @@
       }
       table.data = filterRows(state.rows);
       paintUpdateCount();
+      paintBulkBar(
+        Array.from(table.selection ?? []).map(String)
+      );
     }
     function paintUpdateCount() {
       if (!updateCountBadge) {

@@ -32,6 +32,22 @@
     WALLPAPER_MOUNT_FAILED: "desktop-mode.wallpaper.mount-failed",
     /** Action mirroring document.visibilitychange for active canvas wallpapers. */
     WALLPAPER_VISIBILITY: "desktop-mode.wallpaper.visibility",
+    /**
+     * Filter, receives a wallpaper's preview params (seeded from the
+     * def's `previewParams`) before its `renderPreview` runs in the OS
+     * Settings picker. Args: `( params, wallpaperId )`.
+     */
+    WALLPAPER_PREVIEW_PARAMS: "desktop-mode.wallpaper.preview-params",
+    /**
+     * Action, fires after a wallpaper's persisted settings change (the
+     * user edited them through the wallpaper's config dialog in OS
+     * Settings). Payload: `{ id, settings }` — the wallpaper id and the
+     * full post-merge settings object. A mounted wallpaper subscribes to
+     * live-apply changes without a remount.
+     *
+     * @since 0.9.5
+     */
+    WALLPAPER_SETTINGS_CHANGED: "desktop-mode.wallpaper.settings-changed",
     // ------------------------------------------------------------------
     // Observability — iframe errors, iframe network, shell-side errors,
     // monitor entry aggregation. Designed for dashboard / debug widget
@@ -340,6 +356,32 @@
      * @since 0.8.6
      */
     WINDOW_AUTO_EXIT_FULLSCREEN: "desktop-mode.window.auto-exit-fullscreen",
+    /**
+     * Filter, decides whether the window under the cursor is raised
+     * (focused) after a short hover dwell during a drag — any drag,
+     * whatever its source: a shell DragManager session, a
+     * cross-iframe bridge drag, an OS file, or an arbitrary native
+     * HTML5 drag.
+     *
+     * Default is `true`: dragging a payload over a background window
+     * and resting there for ~250 ms brings it forward, so the user
+     * can see the drop target they're aiming at (macOS spring-loading
+     * style). Plugins whose windows must never steal z-order during a
+     * drag — pinned reference panels, HUD/palette windows — can
+     * return `false` for their window id.
+     *
+     * Signature:
+     *
+     *     ( shouldFocus: boolean, ctx: {
+     *         windowId: string,     // the hovered window
+     *         payloadType: string,  // DragManager payload `type`,
+     *                               // bridge payload `kind`,
+     *                               // 'os-file', or 'external'
+     *     } ) => boolean
+     *
+     * @since 0.9.4
+     */
+    WINDOW_FOCUS_ON_DRAG_HOVER: "desktop-mode.window.focus-on-drag-hover",
     /**
      * Action, fires at most once per animation frame during an
      * active drag or resize with the live geometry. Payload: `{
@@ -971,6 +1013,87 @@
      * @since 0.5.2
      */
     IFRAME_CONNECTION_REQUEST: "desktop-mode.iframe.connection-request",
+    // ------------------------------------------------------------------
+    // Window content relations & link renderers (since 0.9.4). A window
+    // may carry a content identity ("I am comment 45 of post 123");
+    // windows resolving to the same root form a relation group, and a
+    // pluggable renderer draws the ties on the desktop. Engine:
+    // `src/window-links/engine.ts`; registry:
+    // `src/window-links/renderer-registry.ts`. See
+    // `docs/examples/window-links.md`.
+    // ------------------------------------------------------------------
+    /**
+     * Action — fires when a window's content identity is set, replaced,
+     * or cleared. Payload: `{ windowId: string, content:
+     * WindowContentRef | null, previous: WindowContentRef | null,
+     * source: 'config' | 'bridge' | 'api' }`. The matching
+     * `desktop-mode-window-content-changed` CustomEvent dispatches on
+     * `document` with the same payload.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_CONTENT_CHANGED: "desktop-mode.window-links.content-changed",
+    /**
+     * Action — fires when relation-group MEMBERSHIP changes (a window
+     * gained/lost an identity, or a member window opened/closed).
+     * Payload: `{ groups: WindowLinkGroup[] }`. Deliberately NOT fired
+     * on move/resize (renderers get live geometry through their frame
+     * subscription) nor on focus-recency reordering. The matching
+     * `desktop-mode-window-link-groups-changed` CustomEvent dispatches
+     * on `document` with the same payload.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_GROUPS_CHANGED: "desktop-mode.window-links.groups-changed",
+    /**
+     * Filter — applied to every content identity as it is set, before
+     * storage. Signature: `( ref: WindowContentRef | null, ctx: {
+     * windowId: string, source: 'config' | 'bridge' | 'api' } ) =>
+     * WindowContentRef | null`. Return `null` to suppress the identity,
+     * or a rewritten ref to remap it (e.g. point a custom object type
+     * at your own root scheme).
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINKS_CONTENT: "desktop-mode.window-links.content",
+    /**
+     * Filter — applied to the computed relation-group list on every
+     * read (`wp.desktop.relations.groups()`). Signature:
+     * `( groups: WindowLinkGroup[] ) => WindowLinkGroup[]`. Merge,
+     * split, or inject groups here.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_GROUPS: "desktop-mode.window-links.groups",
+    /**
+     * Filter — applied to the derived directed-edge list on every read
+     * (`wp.desktop.relations.edges()`). Signature: `( edges:
+     * WindowLinkEdge[] ) => WindowLinkEdge[]` where each edge is
+     * `{ fromWindowId, toWindowId, kind: 'child-root' | 'reference',
+     * bidirectional }`. Add, drop, or redirect ties here — this is
+     * what the render host feeds to the active renderer.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_EDGES: "desktop-mode.window-links.edges",
+    /**
+     * Filter — applied to the registered window-link renderer list on
+     * every read (`wp.desktop.listWindowLinkRenderers()`). Signature:
+     * `( defs: WindowLinkRendererDef[] ) => WindowLinkRendererDef[]`.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_RENDERERS: "desktop-mode.window-links.renderers",
+    /**
+     * Filter — applied to the resolved ACTIVE renderer id after the OS
+     * Settings selection is read, before the registry lookup.
+     * Signature: `( id: string ) => string`. Return a different
+     * registered id (or `'none'`) to force-swap the renderer without
+     * touching the user's setting.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_RENDERER: "desktop-mode.window-links.renderer",
     // ------------------------------------------------------------------
     // OS-file drop manager (since 0.30.0). Catches files dragged from
     // the user's host OS (Finder / Explorer / Nautilus) onto any
@@ -1852,17 +1975,17 @@
       return shell ?? null;
     }
     /**
-     * Open OS Settings on the AI tab so the user can enable AI in one
-     * click from the "AI features are not enabled" error state. Closes
-     * the assistant first so the settings window isn't hidden behind
+     * Open OS Settings on the Features tab so the user can turn the
+     * assistant on in one click from the "assistant is off" error state.
+     * Closes the assistant first so the settings window isn't hidden behind
      * it, and drops the stored focus target so closing doesn't bounce
      * focus back to the launcher away from the settings window.
      */
-    _openAiSettings() {
+    _openAssistantSettings() {
       const shell = this._getDesktopShell();
       this._previousFocus = null;
       this.close();
-      shell?.openOsSettings?.({ tabId: "ai" });
+      shell?.openOsSettings?.({ tabId: "features" });
     }
     _openInLegacyWindow(url, title, icon) {
       const shell = this._getDesktopShell();
@@ -2143,14 +2266,14 @@
       if (code === "desktop_mode_ai_disabled") {
         const escaped = this._esc(message);
         const linkify = (text) => `<button type="button" class="desktop-mode-ai__settings-link">${text}</button>`;
-        const phrase = /OS Settings.*?AI Settings/;
-        const withLink = phrase.test(escaped) ? escaped.replace(phrase, (match) => linkify(match)) : `${escaped} ${linkify("AI Settings")}`;
+        const phrase = /OS Settings.*?Features/;
+        const withLink = phrase.test(escaped) ? escaped.replace(phrase, (match) => linkify(match)) : `${escaped} ${linkify("Features")}`;
         this._resultsEl.innerHTML = `
 				<div class="desktop-mode-ai__state desktop-mode-ai__state--error">
 					<span>${withLink}</span>
 				</div>
 			`;
-        this._resultsEl.querySelector(".desktop-mode-ai__settings-link")?.addEventListener("click", () => this._openAiSettings());
+        this._resultsEl.querySelector(".desktop-mode-ai__settings-link")?.addEventListener("click", () => this._openAssistantSettings());
         return;
       }
       this._resultsEl.innerHTML = `
@@ -2311,7 +2434,7 @@
 				<div class="desktop-mode-ai__results" hidden></div>
 				<div class="desktop-mode-ai__footer">
 					<span class="desktop-mode-ai__footer-hint">
-						Your assistant for finding content and navigating wp-admin
+						Your assistant for finding content, getting around wp-admin, and more
 					</span>
 					<span class="desktop-mode-ai__footer-keys" aria-hidden="true">
 						<kbd>&#8629;</kbd> ask

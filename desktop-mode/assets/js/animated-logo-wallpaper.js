@@ -14,6 +14,15 @@
     /** Fraction of the smaller shell dimension the logo is allowed to occupy. */
     logoShellFraction: 0.72,
     /**
+     * Logo width (CSS px) at which particle sprites render at their
+     * authored `spriteScale*` size. Below it, sprite scale shrinks
+     * proportionally — in a small container (an OS Settings preview
+     * tile) desktop-sized additive sprites pile into a single blown-out
+     * white blob instead of a legible particle logo. Never scales UP
+     * past 1× so full-desktop mounts look exactly as before.
+     */
+    spriteReferenceWidth: 700,
+    /**
      * Spring stiffness — how hard a particle pulls back to its home.
      * Lower = slower, floatier return. At 0.015 the natural-frequency
      * period is ~50 frames (~0.85 s at 60 fps), so particles visibly
@@ -137,12 +146,14 @@
     const vx = new Float32Array(n);
     const vy = new Float32Array(n);
     const sprites = new Array(n);
+    const baseScale = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const sprite = new pixi.Sprite(brushTexture);
       sprite.anchor.set(0.5);
       sprite.blendMode = "add";
       sprite.tint = PARTICLE_PALETTE[Math.floor(Math.random() * PARTICLE_PALETTE.length)];
       const scale = CONFIG.spriteScaleMin + Math.random() * (CONFIG.spriteScaleMax - CONFIG.spriteScaleMin);
+      baseScale[i] = scale;
       sprite.scale.set(scale);
       sprite.alpha = CONFIG.spriteAlphaMin + Math.random() * (CONFIG.spriteAlphaMax - CONFIG.spriteAlphaMin);
       particleLayer.addChild(sprite);
@@ -161,7 +172,12 @@
       logoScale = target;
       logoOffsetX = (w - target) / 2;
       logoOffsetY = (h - target) / 2;
+      const spriteFactor = Math.min(
+        1,
+        target / CONFIG.spriteReferenceWidth
+      );
       for (let i = 0; i < n; i++) {
+        sprites[i].scale.set(baseScale[i] * spriteFactor);
         homeX[i] = logoOffsetX + homes[i][0] * logoScale;
         homeY[i] = logoOffsetY + homes[i][1] * logoScale;
         if (x[i] === 0 && y[i] === 0) {
@@ -240,7 +256,7 @@
         resizeObserver.disconnect();
         window.removeEventListener("pointermove", onPointerMove);
         window.removeEventListener("pointerleave", onPointerLeave);
-        app.destroy(true, {
+        app.destroy({ removeView: true }, {
           children: true,
           texture: true,
           textureSource: true,
@@ -391,6 +407,20 @@
     label: "Animated WordPress Logo",
     type: "canvas",
     preview: PREVIEW,
+    /**
+     * Live tile preview for the OS Settings picker — the real particle
+     * scene at tile scale. The scene sizes itself to its container, so
+     * no dedicated preview path is needed; the swatch just gets a small
+     * swarm.
+     */
+    renderPreview: async (container, ctx) => {
+      const scene = await mountScene({
+        container,
+        logoUrl: `${ctx.pluginUrl}/assets/images/wp-logo.png`,
+        prefersReducedMotion: ctx.prefersReducedMotion
+      });
+      return () => scene.destroy();
+    },
     needs: ["pixijs"],
     mount: async (container, ctx) => {
       const logoUrl = `${ctx.pluginUrl}/assets/images/wp-logo.png`;

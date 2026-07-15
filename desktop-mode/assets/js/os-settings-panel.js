@@ -13,7 +13,10 @@
       return impl(format, ...args);
     }
     let i = 0;
-    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+    return format.replace(/%(?:(\d+)\$)?[sd]/g, (_match, pos) => {
+      const idx = pos ? Number.parseInt(pos, 10) - 1 : i++;
+      return String(args[idx] ?? "");
+    });
   }
   function html(strings, ...values) {
     return { __wpdHtml: true, strings, values };
@@ -681,7 +684,7 @@
     element.id = id;
     return id;
   }
-  const styles$9 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:rgba( 0,0,0,0.04 )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles$a = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
@@ -694,7 +697,7 @@
     }
   };
   _WpdButton.props = ["variant", "disabled", "type", "busy", "fill-cell"];
-  _WpdButton.styles = [styles$9];
+  _WpdButton.styles = [styles$a];
   _WpdButton.help = {
     title: "Button",
     summary: "Thin wrapper around <button> with consistent variant styling and a slot for the label.",
@@ -733,6 +736,10 @@
     parts: [{ name: "button", description: "Underlying <button> element." }],
     cssProps: [
       { name: "--wpd-button-bg", description: "Background color." },
+      {
+        name: "--wpd-button-bg-hover",
+        description: "Hover wash (ghost + secondary variants)."
+      },
       { name: "--wpd-button-fg", description: "Text color." },
       { name: "--wpd-button-border", description: "Border shorthand." },
       { name: "--wpd-button-border-radius", default: "6px" },
@@ -754,16 +761,18 @@
   };
   let WpdButton = _WpdButton;
   defineComponent("wpd-button", WpdButton);
-  const styles$8 = css`:host{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var( --desktop-mode-text,#1d2327 );cursor:pointer}label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}input[ type='checkbox' ]{accent-color:var( --wp-admin-theme-color,#2271b1 );cursor:pointer}`;
+  const styles$9 = css`:host{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var( --desktop-mode-text,#1d2327 );cursor:pointer}label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}input[ type='checkbox' ]{accent-color:var( --wp-admin-theme-color,#2271b1 );cursor:pointer}:host( [ disabled ] ){opacity:0.5;cursor:not-allowed}:host( [ disabled ] ) label,:host( [ disabled ] ) input[ type='checkbox' ]{cursor:not-allowed}`;
   const _WpdCheckboxLabel = class _WpdCheckboxLabel extends Component {
     render() {
       const label = this.label || "";
       const checked = this.checked !== null;
+      const disabled = this.disabled !== null;
       return html`
 			<label>
 				<input
 					type="checkbox"
 					?checked=${checked}
+					?disabled=${disabled}
 					@change=${(e) => this._onChange(e)}
 				/>
 				<span class="wpd-checkbox-label__text">${label}</span>
@@ -771,6 +780,9 @@
 		`;
     }
     _onChange(e) {
+      if (this.disabled !== null) {
+        return;
+      }
       const next = e.target.checked;
       if (next) {
         this.setAttribute("checked", "");
@@ -780,8 +792,8 @@
       this.emit("wpd-checkbox-change", { checked: next });
     }
   };
-  _WpdCheckboxLabel.props = ["label", "checked"];
-  _WpdCheckboxLabel.styles = [styles$8];
+  _WpdCheckboxLabel.props = ["label", "checked", "disabled"];
+  _WpdCheckboxLabel.styles = [styles$9];
   _WpdCheckboxLabel.help = {
     title: "Checkbox label",
     summary: "Opinionated label-row variant of <wpd-checkbox>: label text + checkbox in a single aligned row. Use when you want the shipped layout without any layout work.",
@@ -797,6 +809,11 @@
         name: "checked",
         type: "boolean attribute",
         description: "Reflects and controls the checked state."
+      },
+      {
+        name: "disabled",
+        type: "boolean attribute",
+        description: "When present, the checkbox is not interactive and dimmed."
       }
     ],
     events: [
@@ -815,7 +832,7 @@
   };
   let WpdCheckboxLabel = _WpdCheckboxLabel;
   defineComponent("wpd-checkbox-label", WpdCheckboxLabel);
-  const styles$7 = css`:host{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var( --desktop-mode-muted,#646970 )}label{display:inline-flex;align-items:center;gap:8px}input[ type='color' ]{width:28px;height:28px;padding:0;border:1px solid var( --desktop-mode-border,#c3c4c7 );border-radius:6px;background:transparent;cursor:pointer}:host( [ variant='block' ] ){display:flex;width:100%}:host( [ variant='block' ] ) label{display:flex;flex:1;align-items:center}:host( [ variant='block' ] ) input[ type='color' ]{flex:1;width:auto;height:32px}:host( [ variant='block' ] ) input[ type='color' ]::-webkit-color-swatch-wrapper{padding:2px}:host( [ variant='block' ] ) input[ type='color' ]::-webkit-color-swatch{border:none;border-radius:2px}`;
+  const styles$8 = css`:host{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var( --desktop-mode-muted,#646970 )}label{display:inline-flex;align-items:center;gap:8px}input[ type='color' ]{width:28px;height:28px;padding:0;border:1px solid var( --desktop-mode-border,#c3c4c7 );border-radius:6px;background:transparent;cursor:pointer}:host( [ variant='block' ] ){display:flex;width:100%}:host( [ variant='block' ] ) label{display:flex;flex:1;align-items:center}:host( [ variant='block' ] ) input[ type='color' ]{flex:1;width:auto;height:32px}input[ type='color' ]::-webkit-color-swatch-wrapper{padding:2px}input[ type='color' ]::-webkit-color-swatch{border:none;border-radius:2px}`;
   const _WpdColorField = class _WpdColorField extends Component {
     render() {
       const label = this.label || "";
@@ -838,7 +855,7 @@
     }
   };
   _WpdColorField.props = ["label", "value", "variant"];
-  _WpdColorField.styles = [styles$7];
+  _WpdColorField.styles = [styles$8];
   _WpdColorField.help = {
     title: "Color field",
     summary: "Label + native color input. Reflects the value attribute both ways and emits wpd-color-change live on every edit (no debounce — callers debounce upstream).",
@@ -879,7 +896,7 @@
   };
   let WpdColorField = _WpdColorField;
   defineComponent("wpd-color-field", WpdColorField);
-  const styles$6 = css`:host{display:inline-flex;align-items:center;justify-content:center;width:var( --wpd-icon-size,16px );height:var( --wpd-icon-size,16px );color:inherit;line-height:1}:host( [ hidden ] ){display:none}.wpd-icon__glyph{font-size:var( --wpd-icon-size,16px );width:var( --wpd-icon-size,16px );height:var( --wpd-icon-size,16px );line-height:1;color:inherit;display:inline-flex;align-items:center;justify-content:center}.wpd-icon__glyph--char{font-family:dashicons;font-style:normal;font-weight:normal;font-variant:normal;text-transform:none;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;speak:none}.wpd-icon__glyph.dashicons{font-family:dashicons}`;
+  const styles$7 = css`:host{display:inline-flex;align-items:center;justify-content:center;width:var( --wpd-icon-size,16px );height:var( --wpd-icon-size,16px );color:inherit;line-height:1}:host( [ hidden ] ){display:none}.wpd-icon__glyph{font-size:var( --wpd-icon-size,16px );width:var( --wpd-icon-size,16px );height:var( --wpd-icon-size,16px );line-height:1;color:inherit;display:inline-flex;align-items:center;justify-content:center}.wpd-icon__glyph--char{font-family:dashicons;font-style:normal;font-weight:normal;font-variant:normal;text-transform:none;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;speak:none}.wpd-icon__glyph.dashicons{font-family:dashicons}`;
   let _cache = null;
   function parseCssContentToChar(raw) {
     let value = raw.trim();
@@ -981,7 +998,7 @@
     }
   };
   _WpdIcon.props = ["name", "size"];
-  _WpdIcon.styles = [styles$6];
+  _WpdIcon.styles = [styles$7];
   _WpdIcon.help = {
     title: "Icon",
     summary: 'Dashicon wrapper that inherits theme colour + sizing from its context. Accepts either the dashicon suffix ("calculator") or the full class ("dashicons-calculator"). Marked aria-hidden; wrap in a button/link with its own label for accessible use.',
@@ -1013,7 +1030,7 @@
   };
   let WpdIcon = _WpdIcon;
   defineComponent("wpd-icon", WpdIcon);
-  const styles$5 = css`:host{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:32px 24px;text-align:center;color:var( --wpd-empty-state-fg,var( --desktop-mode-muted,#646970 ) )}:host( [ hidden ] ){display:none}.wpd-empty-state__icon{margin-bottom:4px;color:var( --wpd-empty-state-icon-color,currentColor );opacity:0.75}.wpd-empty-state__heading{margin:0;font-size:14px;font-weight:600;color:var( --desktop-mode-text,#1d2327 )}.wpd-empty-state__description{margin:0;font-size:12px;line-height:1.4;max-width:48ch}.wpd-empty-state__description:empty{display:none}.wpd-empty-state__cta{margin-top:8px}.wpd-empty-state__cta:empty{display:none}`;
+  const styles$6 = css`:host{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:32px 24px;text-align:center;color:var( --wpd-empty-state-fg,var( --desktop-mode-muted,#646970 ) )}:host( [ hidden ] ){display:none}.wpd-empty-state__icon{margin-bottom:4px;color:var( --wpd-empty-state-icon-color,currentColor );opacity:0.75}.wpd-empty-state__heading{margin:0;font-size:14px;font-weight:600;color:var( --desktop-mode-text,#1d2327 )}.wpd-empty-state__description{margin:0;font-size:12px;line-height:1.4;max-width:48ch}.wpd-empty-state__description:empty{display:none}.wpd-empty-state__cta{margin-top:8px}.wpd-empty-state__cta:empty{display:none}`;
   const _WpdEmptyState = class _WpdEmptyState extends Component {
     render() {
       const icon = this.icon || "";
@@ -1035,7 +1052,7 @@
     }
   };
   _WpdEmptyState.props = ["icon", "heading", "description"];
-  _WpdEmptyState.styles = [styles$5];
+  _WpdEmptyState.styles = [styles$6];
   _WpdEmptyState.help = {
     title: "Empty state",
     summary: 'Centered placeholder for "nothing here yet" UI: icon + heading + description + optional CTA. A canonical shape so empty states look consistent across the shell.',
@@ -1080,6 +1097,193 @@
   };
   let WpdEmptyState = _WpdEmptyState;
   defineComponent("wpd-empty-state", WpdEmptyState);
+  const styles$5 = css`:host{display:flex;align-items:flex-start;gap:10px;width:100%;box-sizing:border-box;padding:10px 14px;font:var( --wpd-notice-font,13px/1.5 var( --desktop-mode-font,system-ui ) );color:var( --wpd-notice-color,var( --desktop-mode-text,#1d2327 ) );background:var( --wpd-notice-bg,rgba( 0,0,0,0.04 ) );border-block-end:1px solid var( --wpd-notice-border,rgba( 0,0,0,0.08 ) );border-inline-start:4px solid var( --wpd-notice-accent,#646970 )}:host( [ hidden ] ){display:none}.wpd-notice__icon{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:var( --wpd-notice-accent,#646970 )}.wpd-notice__icon[ hidden ]{display:none}.wpd-notice__label{flex:1;min-width:0;word-wrap:break-word}::slotted( a ){color:var( --wpd-notice-link,var( --wp-admin-theme-color,#2271b1 ) )}::slotted( p:first-child ){margin-block-start:0}::slotted( p:last-child ){margin-block-end:0}.wpd-notice__close{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;background:transparent;color:inherit;opacity:0.6;cursor:pointer;border-radius:4px;transition:opacity 0.12s ease,background-color 0.12s ease}.wpd-notice__close:hover{opacity:1;background:rgba( 0,0,0,0.06 )}.wpd-notice__close:focus-visible{opacity:1;outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:1px}.wpd-notice__close[ hidden ]{display:none}.wpd-notice__close svg{width:14px;height:14px}:host( [ tone='info' ] ){--wpd-notice-accent:var( --wpd-notice-info,#0969da );--wpd-notice-bg:var( --wpd-notice-info-bg,rgba( 9,105,218,0.08 ) );--wpd-notice-border:var( --wpd-notice-info-border,rgba( 9,105,218,0.16 ) )}:host( [ tone='success' ] ){--wpd-notice-accent:var( --wpd-notice-success,#1a7f37 );--wpd-notice-bg:var( --wpd-notice-success-bg,rgba( 26,127,55,0.08 ) );--wpd-notice-border:var( --wpd-notice-success-border,rgba( 26,127,55,0.16 ) )}:host( [ tone='warning' ] ){--wpd-notice-accent:var( --wpd-notice-warning,#9a6700 );--wpd-notice-bg:var( --wpd-notice-warning-bg,rgba( 154,103,0,0.08 ) );--wpd-notice-border:var( --wpd-notice-warning-border,rgba( 154,103,0,0.16 ) )}:host( [ tone='error' ] ),:host( [ tone='danger' ] ){--wpd-notice-accent:var( --wpd-notice-error,#cf222e );--wpd-notice-bg:var( --wpd-notice-error-bg,rgba( 207,34,46,0.08 ) );--wpd-notice-border:var( --wpd-notice-error-border,rgba( 207,34,46,0.16 ) )}:host( [ tone='neutral' ] ){--wpd-notice-accent:var( --wpd-notice-neutral,#57606a );--wpd-notice-bg:var( --wpd-notice-neutral-bg,rgba( 87,96,106,0.08 ) );--wpd-notice-border:var( --wpd-notice-neutral-border,rgba( 87,96,106,0.16 ) )}`;
+  const KEY_PREFIX = "desktop-mode-notice-dismissed";
+  function currentUserSuffix() {
+    const w = window.wp;
+    const uid = w?.desktop?.config?.currentUserId;
+    if (typeof uid === "number" && uid > 0) {
+      return String(uid);
+    }
+    return "anon";
+  }
+  function storageKey() {
+    return `${KEY_PREFIX}:${currentUserSuffix()}`;
+  }
+  function readMap() {
+    try {
+      const raw = window.localStorage.getItem(storageKey());
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+    }
+    return {};
+  }
+  function writeMap(map) {
+    try {
+      window.localStorage.setItem(storageKey(), JSON.stringify(map));
+    } catch {
+    }
+  }
+  function isNoticeDismissed(id) {
+    if (!id) {
+      return false;
+    }
+    return readMap()[id] === true;
+  }
+  function markNoticeDismissed(id) {
+    if (!id) {
+      return;
+    }
+    const map = readMap();
+    map[id] = true;
+    writeMap(map);
+  }
+  function clearNoticeDismissed(id) {
+    if (!id) {
+      return;
+    }
+    const map = readMap();
+    if (map[id]) {
+      delete map[id];
+      writeMap(map);
+    }
+  }
+  const _WpdNotice = class _WpdNotice extends Component {
+    connectedCallback() {
+      super.connectedCallback();
+      if (!this.hasAttribute("role")) {
+        this.setAttribute("role", "status");
+      }
+      if (!this.hasAttribute("tone")) {
+        this.setAttribute("tone", "info");
+      }
+      const id = this.getAttribute("notice-id");
+      if (id && isNoticeDismissed(id)) {
+        this.hidden = true;
+      }
+    }
+    /**
+     * Imperatively dismiss the notice — hides the host and records
+     * the dismissal in localStorage when `notice-id` is set.
+     */
+    dismiss() {
+      this.hidden = true;
+      const id = this.getAttribute("notice-id");
+      if (id) {
+        markNoticeDismissed(id);
+      }
+      this.emit("wpd-notice-dismiss", { noticeId: id ?? void 0 });
+    }
+    /**
+     * Clear a previously recorded dismissal and re-show the notice.
+     * Useful in tests and for "Show again" affordances.
+     */
+    undismiss() {
+      const id = this.getAttribute("notice-id");
+      if (id) {
+        clearNoticeDismissed(id);
+      }
+      this.hidden = false;
+    }
+    render() {
+      const icon = this.getAttribute("icon");
+      const dismissible = !this.hasAttribute("not-dismissible");
+      return html`
+			<span
+				class="wpd-notice__icon dashicons ${icon ?? ""}"
+				?hidden=${!icon}
+				aria-hidden="true"
+			></span>
+			<span class="wpd-notice__label"><slot></slot></span>
+			<button
+				type="button"
+				class="wpd-notice__close"
+				?hidden=${!dismissible}
+				aria-label=${__("Dismiss notice")}
+				@click=${(e) => this._onDismiss(e)}
+			>
+				<svg viewBox="0 0 14 14" aria-hidden="true">
+					<path
+						d="M3 3 L11 11 M11 3 L3 11"
+						stroke="currentColor"
+						stroke-width="1.6"
+						stroke-linecap="round"
+						fill="none"
+					></path>
+				</svg>
+			</button>
+		`;
+    }
+    _onDismiss(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.dismiss();
+    }
+  };
+  _WpdNotice.props = ["tone", "notDismissible", "icon", "noticeId"];
+  _WpdNotice.styles = [styles$5];
+  _WpdNotice.help = {
+    title: "Notice",
+    summary: "Full-width banner placed inside a window (typically the after-titlebar slot). Tone-coded background + accent stripe, optional close button, optional dashicons leading glyph. Slotted content is HTML — links and basic formatting are supported.",
+    status: "experimental",
+    since: "0.8.6",
+    props: [
+      {
+        name: "tone",
+        type: '"info" | "success" | "warning" | "error" | "danger" | "neutral"',
+        description: "Color palette. Defaults to `info`. `error` and `danger` are aliases."
+      },
+      {
+        name: "not-dismissible",
+        type: "boolean",
+        description: "Suppress the trailing close button. Defaults to dismissible."
+      },
+      {
+        name: "icon",
+        type: "string",
+        description: "Optional Dashicons class for a leading glyph (e.g. `dashicons-info`)."
+      },
+      {
+        name: "notice-id",
+        type: "string",
+        description: "Persistence key. When set, the notice records its dismissed state in localStorage so it stays closed across reloads for the same user."
+      }
+    ],
+    slots: [
+      {
+        name: "(default)",
+        description: "Message HTML. Links, `<strong>`, `<em>`, and other inline formatting are allowed."
+      }
+    ],
+    events: [
+      {
+        name: "wpd-notice-dismiss",
+        description: "Fires after the user clicks the close button.",
+        detail: "{ noticeId?: string }"
+      }
+    ],
+    cssProps: [
+      { name: "--wpd-notice-bg", description: "Background color." },
+      { name: "--wpd-notice-accent", description: "Left-edge stripe + icon color." },
+      { name: "--wpd-notice-color", description: "Text color." },
+      { name: "--wpd-notice-border", description: "Bottom border color." },
+      { name: "--wpd-notice-link", description: "Color for slotted <a> elements." }
+    ],
+    example: html`
+			<wpd-notice tone="warning" notice-id="docs/example">
+				Heads up — this is a demo notice.
+				<a href="#">Learn more</a>.
+			</wpd-notice>
+		`
+  };
+  let WpdNotice = _WpdNotice;
+  defineComponent("wpd-notice", WpdNotice);
   const styles$4 = css`:host{display:flex;flex-direction:column;gap:var( --wpd-panel-gap,12px );padding:var( --wpd-panel-padding,16px );box-sizing:border-box}:host( [ hidden ] ){display:none}`;
   const _WpdPanel = class _WpdPanel extends Component {
     render() {
@@ -1690,7 +1894,7 @@
   };
   let WpdSelect = _WpdSelect;
   defineComponent("wpd-select", WpdSelect);
-  const styles$1 = css`:host{display:block;width:100%;aspect-ratio:4 / 3}:host( [ size='small' ] ){display:inline-block;width:32px;height:32px;aspect-ratio:1 / 1;flex:0 0 auto}:host( [ variant='wallpaper' ] ){aspect-ratio:16 / 9}:host( [ variant='wallpaper' ] ) button{display:flex;align-items:flex-end;justify-content:flex-start;padding:6px 8px;overflow:hidden}button{appearance:none;width:100%;height:100%;padding:0;border-radius:10px;border:2px solid transparent;cursor:pointer;background-color:#eee;background-size:cover;background-position:center;transition:transform 0.15s ease,border-color 0.15s ease,box-shadow 0.15s ease}:host( [ size='small' ] ) button{border-radius:50%}button:hover{transform:scale( 1.04 )}button[ aria-pressed='true' ]{border-color:var( --wp-admin-theme-color,#2271b1 );box-shadow:0 0 0 2px var( --wp-admin-theme-color,#2271b1 )}:host( [ variant='wallpaper' ] ) button:hover{transform:translateY( -1px )}`;
+  const styles$1 = css`:host{display:block;width:100%;aspect-ratio:4 / 3}:host( [ size='small' ] ){display:inline-block;width:32px;height:32px;aspect-ratio:1 / 1;flex:0 0 auto}:host( [ variant='wallpaper' ] ){aspect-ratio:16 / 9}:host( [ variant='wallpaper' ] ) button{display:flex;align-items:flex-end;justify-content:flex-start;padding:6px 8px;overflow:hidden}button{appearance:none;position:relative;width:100%;height:100%;padding:0;border-radius:10px;border:2px solid transparent;cursor:pointer;background-color:#eee;background-size:cover;background-position:center;transition:transform 0.15s ease,border-color 0.15s ease,box-shadow 0.15s ease}:host( [ size='small' ] ) button{border-radius:50%}button:hover{transform:scale( 1.04 )}button[ aria-pressed='true' ]{border-color:var( --wp-admin-theme-color,#2271b1 );box-shadow:0 0 0 2px var( --wp-admin-theme-color,#2271b1 )}:host( [ variant='wallpaper' ] ) button:hover{transform:translateY( -1px )}`;
   const _WpdSwatch = class _WpdSwatch extends Component {
     render() {
       const selected = this.selected !== null;
@@ -2361,19 +2565,21 @@
     desktopLayout: "classic",
     dockRailRenderer: "default",
     unfocusEffect: "darken",
+    windowLinkRenderer: "svg-splines",
+    windowLinkVisibility: "always",
+    windowLinksEnabled: true,
+    windowLinkRaiseOnFocus: true,
+    windowLinkHighlight: true,
     customGradient: {
       from: "#2271b1",
       to: "#7c3aed",
       angle: 135
     },
     customImage: null,
+    wallpaperSettings: {},
     libraryHdOnly: true,
     ai: {
-      enabled: false,
-      provider: "openai",
-      apiKey: "",
-      apiKeys: {},
-      transport: "off"
+      enabled: false
     },
     // Opt-IN Beta as of 0.9.1. Fresh installs land on the classic
     // chromeless `edit.php` iframe; a user opts in via OS Settings →
@@ -2401,37 +2607,12 @@
     nativeCommentsEnabled: false,
     showDesktopOnWallpaperClick: false,
     showPostStatusRibbons: true,
+    developerModeEnabled: false,
     foldersSharingEnabled: true,
     itemVisibility: {},
     dockOrder: [],
     dockPromotedPositions: {}
   };
-  const AI_TRANSPORTS = [
-    { id: "off", label: "Off" },
-    { id: "sse", label: "Streaming (SSE)" }
-  ];
-  const AI_PROVIDERS = [
-    {
-      id: "openai",
-      label: "OpenAI",
-      apiKeyLabel: "OpenAI API key",
-      apiKeyLink: "https://platform.openai.com/api-keys"
-    }
-  ];
-  function getAiProviders() {
-    const cfg = window.desktopModeConfig;
-    const list2 = cfg?.aiProviders;
-    if (!Array.isArray(list2) || list2.length === 0) {
-      return AI_PROVIDERS;
-    }
-    return list2.map((p) => ({
-      id: p.id,
-      label: p.label,
-      description: p.description,
-      apiKeyLabel: p.api_key_label,
-      apiKeyLink: p.api_key_link
-    }));
-  }
   function isPromise(value) {
     return !!value && typeof value === "object" && typeof value.then === "function";
   }
@@ -2522,6 +2703,7 @@
       ...DEFAULTS,
       customGradient: { ...DEFAULTS.customGradient },
       customImage: null,
+      wallpaperSettings: { ...DEFAULTS.wallpaperSettings },
       ai: { ...DEFAULTS.ai },
       // Clone the collection fields too. A shallow `...DEFAULTS`
       // aliases these nested objects, so a later in-place mutation
@@ -2619,24 +2801,24 @@
     };
     return handle;
   }
-  const store$3 = createSharedStore(
+  const store$5 = createSharedStore(
     "desktop-mode/settings-tab-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const registry$2 = store$3.state.registry;
-  const listeners$3 = store$3.state.listeners;
+  const registry$3 = store$5.state.registry;
+  const listeners$4 = store$5.state.listeners;
   function listSettingsTabs() {
-    return Array.from(registry$2.values()).sort(
+    return Array.from(registry$3.values()).sort(
       (a, b) => (a.order ?? 100) - (b.order ?? 100)
     );
   }
   function subscribeSettingsTabs(cb) {
-    listeners$3.add(cb);
+    listeners$4.add(cb);
     return () => {
-      listeners$3.delete(cb);
+      listeners$4.delete(cb);
     };
   }
   let loadPromise = null;
@@ -2710,7 +2892,7 @@
     const wrapper = document.createElement("div");
     wrapper.classList.add("desktop-mode-os-settings__about");
     const config = window.desktopModeConfig ?? {};
-    const pluginUrl = config.pluginUrl ?? "";
+    const pluginUrl2 = config.pluginUrl ?? "";
     const version = config.pluginVersion ?? "";
     const aboutSceneBundleUrl = config.aboutSceneBundleUrl ?? "";
     const desktopApi = window.wp?.desktop;
@@ -2757,7 +2939,7 @@
         const built = await mountAboutSceneLazy(
           {
             container: host,
-            logoUrl: `${pluginUrl}/assets/images/automattic-logotype-color.png`,
+            logoUrl: `${pluginUrl2}/assets/images/automattic-logotype-color.png`,
             prefersReducedMotion: typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
             labels: {
               eyebrow: __("WordPress Desktop Mode"),
@@ -2891,224 +3073,6 @@
     );
     paint();
     return wrapper;
-  }
-  function buildAiSection(ctx) {
-    const wrapper = document.createElement("div");
-    const onToggle = (e) => {
-      const checked = e.detail?.checked === true;
-      ctx.state.ai = { ...ctx.state.ai, enabled: checked };
-      ctx.save();
-      paint();
-    };
-    const onProvider = (e) => {
-      const id = e.detail?.value ?? "";
-      if (!getAiProviders().some((p) => p.id === id)) {
-        return;
-      }
-      const prev = ctx.state.ai.provider;
-      const apiKeys = { ...ctx.state.ai.apiKeys ?? {} };
-      if (ctx.state.ai.apiKey) {
-        apiKeys[prev] = ctx.state.ai.apiKey;
-      }
-      ctx.state.ai = {
-        ...ctx.state.ai,
-        provider: id,
-        apiKeys,
-        apiKey: apiKeys[id] ?? ""
-      };
-      ctx.save();
-      paint();
-    };
-    const onApiKey = (e) => {
-      const value = e.detail?.value ?? "";
-      const apiKeys = { ...ctx.state.ai.apiKeys ?? {} };
-      apiKeys[ctx.state.ai.provider] = value;
-      ctx.state.ai = { ...ctx.state.ai, apiKey: value, apiKeys };
-      ctx.save();
-    };
-    const onTransport = (e) => {
-      const id = e.detail?.value ?? "";
-      if (!AI_TRANSPORTS.some((t) => t.id === id)) {
-        return;
-      }
-      ctx.state.ai = { ...ctx.state.ai, transport: id };
-      ctx.save();
-    };
-    const paint = () => {
-      const platformEnabled = ctx.config.aiPlatformSettings?.enabled === true && !!ctx.config.aiPlatformSettings?.apiKey;
-      const activeProvider = getAiProviders().find((p) => p.id === ctx.state.ai.provider) ?? getAiProviders()[0];
-      const apiKeyLabel = activeProvider?.apiKeyLabel ?? __("API key");
-      render(
-        html`
-				<wpd-section
-					heading=${__("AI integration")}
-					description=${platformEnabled ? __("A platform-wide AI key is configured. You can optionally set a personal key below to override it.") : __("Connect an AI provider to power assistive features across the desktop.")}
-				>
-					<wpd-checkbox-label
-						label=${__("Enable AI features")}
-						?checked=${ctx.state.ai.enabled}
-						@wpd-checkbox-change=${onToggle}
-					></wpd-checkbox-label>
-
-					<wpd-select
-						label=${__("Provider")}
-						value=${ctx.state.ai.provider}
-						?disabled=${!ctx.state.ai.enabled}
-						@wpd-pick=${onProvider}
-					>
-						${getAiProviders().map(
-          (p) => html`<wpd-option value=${p.id}>${p.label}</wpd-option>`
-        )}
-					</wpd-select>
-
-					<wpd-text-field
-						label=${apiKeyLabel}
-						type="password"
-						reveal
-						autocomplete="off"
-						placeholder=${platformEnabled ? __("Using platform key — enter to override") : __("sk-…")}
-						value=${ctx.state.ai.apiKey}
-						?disabled=${!ctx.state.ai.enabled}
-						@wpd-input-change=${onApiKey}
-					></wpd-text-field>
-
-					<wpd-select
-						label=${__("Live progress updates")}
-						value=${ctx.state.ai.transport}
-						?disabled=${!ctx.state.ai.enabled}
-						@wpd-pick=${onTransport}
-					>
-						${AI_TRANSPORTS.map(
-          (t) => html`<wpd-option value=${t.id}>${t.label}</wpd-option>`
-        )}
-					</wpd-select>
-					<p class="desktop-mode-ext__hint">
-						${__('How the assistant streams progress while it works. Pick Off if your host blocks long-lived connections (e.g. you see "Lost connection to the assistant" errors).')}
-					</p>
-				</wpd-section>
-
-				${ctx.config.isAdmin ? _buildGlobalSection(ctx) : html``}
-			`,
-        wrapper
-      );
-    };
-    paint();
-    return wrapper;
-  }
-  function _buildGlobalSection(ctx) {
-    const { aiPlatformSettingsUrl: url, restNonce: nonce, aiPlatformSettings: initial } = ctx.config;
-    const state = {
-      enabled: initial?.enabled ?? false,
-      provider: initial?.provider ?? "openai",
-      apiKey: initial?.apiKey ?? "",
-      saving: false,
-      error: ""
-    };
-    const el = document.createElement("div");
-    const save = async () => {
-      if (!url || !nonce || state.saving) {
-        return;
-      }
-      state.saving = true;
-      state.error = "";
-      paint();
-      try {
-        const res = await trackedFetch(
-          url,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-WP-Nonce": nonce
-            },
-            body: JSON.stringify({
-              settings: {
-                enabled: state.enabled,
-                provider: state.provider,
-                apiKey: state.apiKey
-              }
-            })
-          },
-          { source: "desktop-mode/settings/ai" }
-        );
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          state.error = err.message ?? `Error ${res.status}`;
-        } else {
-          const saved = await res.json().catch(() => null);
-          if (saved && typeof saved === "object") {
-            ctx.config.aiPlatformSettings = saved;
-          }
-        }
-      } catch {
-        state.error = __("Network error — check your connection.");
-      } finally {
-        state.saving = false;
-        paint();
-      }
-    };
-    const onToggle = (e) => {
-      state.enabled = e.detail?.checked === true;
-      save();
-    };
-    const onProvider = (e) => {
-      const id = e.detail?.value ?? "";
-      if (!getAiProviders().some((p) => p.id === id)) {
-        return;
-      }
-      state.provider = id;
-      save();
-    };
-    const onApiKey = (e) => {
-      state.apiKey = e.detail?.value ?? "";
-    };
-    const onApiKeyCommit = () => {
-      save();
-    };
-    const paint = () => render(
-      html`
-				<wpd-section
-					heading=${__("Global settings")}
-					description=${__("Platform-wide AI configuration. Applies to all users and to background jobs (cron, WP-CLI, anonymous comments). Individual users can override with their own key above.")}
-				>
-					<wpd-checkbox-label
-						label=${__("Enable AI for all users")}
-						?checked=${state.enabled}
-						@wpd-checkbox-change=${onToggle}
-					></wpd-checkbox-label>
-
-					<wpd-select
-						label=${__("Provider")}
-						value=${state.provider}
-						?disabled=${!state.enabled || state.saving}
-						@wpd-pick=${onProvider}
-					>
-						${getAiProviders().map(
-        (p) => html`<wpd-option value=${p.id}>${p.label}</wpd-option>`
-      )}
-					</wpd-select>
-
-					<wpd-text-field
-						label=${__("Platform API key")}
-						type="password"
-						reveal
-						autocomplete="off"
-						placeholder=${__("sk-…")}
-						value=${state.apiKey}
-						?disabled=${!state.enabled || state.saving}
-						@wpd-input-change=${onApiKey}
-						@wpd-input-commit=${onApiKeyCommit}
-						@wpd-submit=${onApiKeyCommit}
-					></wpd-text-field>
-
-					${state.error ? html`<p class="desktop-mode-ai-settings__error">${state.error}</p>` : html``}
-					${state.saving ? html`<p class="desktop-mode-ai-settings__saving">${__("Saving…")}</p>` : html``}
-				</wpd-section>
-			`,
-      el
-    );
-    paint();
-    return el;
   }
   function hashTitleToHue(input) {
     if (!input) {
@@ -3421,7 +3385,7 @@
     paint();
     return wrapper;
   }
-  const store$2 = createSharedStore(
+  const store$4 = createSharedStore(
     "desktop-mode/dock-rail-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
@@ -3429,15 +3393,15 @@
       activeId: "default"
     })
   );
-  const registry$1 = store$2.state.registry;
-  const listeners$2 = store$2.state.listeners;
+  const registry$2 = store$4.state.registry;
+  const listeners$3 = store$4.state.listeners;
   function list() {
-    return Array.from(registry$1.values());
+    return Array.from(registry$2.values());
   }
   function subscribe$1(cb) {
-    listeners$2.add(cb);
+    listeners$3.add(cb);
     return () => {
-      listeners$2.delete(cb);
+      listeners$3.delete(cb);
     };
   }
   function getWpHooks() {
@@ -3470,7 +3434,31 @@
     /** Filter, receives the wallpaper registry array. */
     WALLPAPERS: "desktop-mode.wallpapers",
     /** Filter, receives the unfocused-window effect registry array. */
-    UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects"
+    UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects",
+    /**
+     * Filter, receives a wallpaper's preview params (seeded from the
+     * def's `previewParams`) before its `renderPreview` runs in the OS
+     * Settings picker. Args: `( params, wallpaperId )`.
+     */
+    WALLPAPER_PREVIEW_PARAMS: "desktop-mode.wallpaper.preview-params",
+    /**
+     * Action, fires after a wallpaper's persisted settings change (the
+     * user edited them through the wallpaper's config dialog in OS
+     * Settings). Payload: `{ id, settings }` — the wallpaper id and the
+     * full post-merge settings object. A mounted wallpaper subscribes to
+     * live-apply changes without a remount.
+     *
+     * @since 0.9.5
+     */
+    WALLPAPER_SETTINGS_CHANGED: "desktop-mode.wallpaper.settings-changed",
+    /**
+     * Filter — applied to the registered window-link renderer list on
+     * every read (`wp.desktop.listWindowLinkRenderers()`). Signature:
+     * `( defs: WindowLinkRendererDef[] ) => WindowLinkRendererDef[]`.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_RENDERERS: "desktop-mode.window-links.renderers"
   };
   const HOOK_PREFIX = "desktop-mode.activity.";
   function hookName(channel) {
@@ -3771,6 +3759,13 @@
         dismiss();
       });
     }
+    if (intent.dismissible) {
+      toast.setAttribute("dismissible", "");
+      toast.addEventListener("wpd-toast-dismiss", () => {
+        intent.onDismiss?.();
+        dismiss();
+      });
+    }
     container.appendChild(toast);
     let dismissed = false;
     let dismissTimer = null;
@@ -3791,10 +3786,12 @@
     requestAnimationFrame(() => {
       toast.setAttribute("state", "in");
     });
-    dismissTimer = window.setTimeout(
-      dismiss,
-      intent.duration ?? DEFAULT_DURATION_MS
-    );
+    if (!intent.persistent) {
+      dismissTimer = window.setTimeout(
+        dismiss,
+        intent.duration ?? DEFAULT_DURATION_MS
+      );
+    }
     activity.publish("desktop-mode/toast-shown", { ...intent });
     return dismiss;
   }
@@ -3907,12 +3904,12 @@
     throw new RegistrationError(kind, errors, def);
   }
   const UNFOCUS_EFFECT_NONE = "none";
-  const store$1 = createSharedStore(
+  const store$3 = createSharedStore(
     "desktop-mode/unfocus-effect-registry",
     () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
   );
-  const registry = store$1.state.registry;
-  const listeners$1 = store$1.state.listeners;
+  const registry$1 = store$3.state.registry;
+  const listeners$2 = store$3.state.listeners;
   const UNFOCUS_EFFECT_ID = /^[a-z0-9_/-]+$/;
   function registerUnfocusEffect(def) {
     const errors = [];
@@ -3939,11 +3936,11 @@
     }
     throwOnRegistrationErrors("UnfocusEffect", errors, def);
     const id = def.id.trim().toLowerCase();
-    registry.set(id, { ...def, id });
+    registry$1.set(id, { ...def, id });
     notify$1();
   }
   function listUnfocusEffects() {
-    const copy = Array.from(registry.values());
+    const copy = Array.from(registry$1.values());
     const filtered = applyFilters(
       HOOKS.UNFOCUS_EFFECTS,
       copy
@@ -3959,13 +3956,13 @@
     return filtered;
   }
   function subscribeUnfocusEffects(cb) {
-    listeners$1.add(cb);
+    listeners$2.add(cb);
     return () => {
-      listeners$1.delete(cb);
+      listeners$2.delete(cb);
     };
   }
   function notify$1() {
-    const snapshot = Array.from(listeners$1);
+    const snapshot = Array.from(listeners$2);
     for (const cb of snapshot) {
       try {
         cb();
@@ -4001,6 +3998,40 @@
     ),
     className: "desktop-mode-window--fx-grayscale"
   });
+  const WINDOW_LINK_RENDERER_NONE = "none";
+  const store$2 = createSharedStore(
+    "desktop-mode/window-link-renderer-registry",
+    () => ({ registry: /* @__PURE__ */ new Map(), listeners: /* @__PURE__ */ new Set() })
+  );
+  const registry = store$2.state.registry;
+  const listeners$1 = store$2.state.listeners;
+  function listWindowLinkRenderers() {
+    const copy = Array.from(registry.values());
+    const filtered = applyFilters(
+      HOOKS.WINDOW_LINK_RENDERERS,
+      copy
+    );
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.window-links.renderers` filter returned a non-array; falling back to registry list."
+        );
+      }
+      return copy;
+    }
+    return filtered;
+  }
+  function subscribeWindowLinkRenderers(cb) {
+    listeners$1.add(cb);
+    return () => {
+      listeners$1.delete(cb);
+    };
+  }
+  const LINK_VISIBILITIES = [
+    { id: "focus", label: () => __("When a related window is focused") },
+    { id: "always", label: () => __("Always") },
+    { id: "off", label: () => __("Off") }
+  ];
   function buildEffectsSection(ctx) {
     const wrapper = document.createElement("div");
     const onPick = (e) => {
@@ -4016,7 +4047,31 @@
       ctx.apply();
       paint();
     };
+    const onPickLinkRenderer = (e) => {
+      const id = e.detail?.value ?? "";
+      if (id === "") {
+        return;
+      }
+      if (id !== WINDOW_LINK_RENDERER_NONE && !linkRenderers.some((r) => r.id === id)) {
+        return;
+      }
+      ctx.state.windowLinkRenderer = id;
+      ctx.save();
+      ctx.apply();
+      paint();
+    };
+    const onPickLinkVisibility = (e) => {
+      const id = e.detail?.value ?? "";
+      if (id !== "focus" && id !== "always" && id !== "off") {
+        return;
+      }
+      ctx.state.windowLinkVisibility = id;
+      ctx.save();
+      ctx.apply();
+      paint();
+    };
     let effects = listUnfocusEffects();
+    let linkRenderers = listWindowLinkRenderers();
     const paint = () => {
       const active = effects.find(
         (fx) => fx.id === ctx.state.unfocusEffect
@@ -4025,6 +4080,13 @@
         "Apply a visual treatment to every window except the one you are working in."
       );
       const description = ctx.state.unfocusEffect !== UNFOCUS_EFFECT_NONE && active?.description ? active.description : fallbackDescription;
+      const activeLinkRenderer = linkRenderers.find(
+        (r) => r.id === ctx.state.windowLinkRenderer
+      );
+      const linksFallbackDescription = __(
+        "Draw a visual tie between windows showing related content — a post and its comments or media."
+      );
+      const linksDescription = ctx.state.windowLinkRenderer !== WINDOW_LINK_RENDERER_NONE && activeLinkRenderer?.description ? activeLinkRenderer.description : linksFallbackDescription;
       render(
         html`
 				<wpd-section
@@ -4046,6 +4108,36 @@
         )}
 					</wpd-select>
 				</wpd-section>
+				<wpd-section
+					heading=${__("Window links")}
+					description=${linksDescription}
+				>
+					<wpd-select
+						value=${ctx.state.windowLinkRenderer}
+						label=${__("Link style")}
+						@wpd-pick=${onPickLinkRenderer}
+					>
+						<wpd-option value=${WINDOW_LINK_RENDERER_NONE}>
+							${__("None")}
+						</wpd-option>
+						${linkRenderers.map(
+          (r) => html`<wpd-option value=${r.id}
+									>${r.label}</wpd-option
+								>`
+        )}
+					</wpd-select>
+					<wpd-select
+						value=${ctx.state.windowLinkVisibility}
+						label=${__("Show links")}
+						@wpd-pick=${onPickLinkVisibility}
+					>
+						${LINK_VISIBILITIES.map(
+          (v) => html`<wpd-option value=${v.id}
+									>${v.label()}</wpd-option
+								>`
+        )}
+					</wpd-select>
+				</wpd-section>
 			`,
         wrapper
       );
@@ -4054,9 +4146,14 @@
       effects = listUnfocusEffects();
       paint();
     });
+    const unsubscribeLinks = subscribeWindowLinkRenderers(() => {
+      linkRenderers = listWindowLinkRenderers();
+      paint();
+    });
     const observer = new MutationObserver(() => {
       if (!wrapper.isConnected) {
         unsubscribe();
+        unsubscribeLinks();
         observer.disconnect();
       }
     });
@@ -4206,9 +4303,36 @@
       ctx.save();
       paint();
     };
+    const onWindowLinksToggle = (e) => {
+      const checked = e.detail?.checked === true;
+      ctx.state.windowLinksEnabled = checked;
+      ctx.save();
+      ctx.apply();
+      paint();
+    };
+    const onWindowLinkRaiseToggle = (e) => {
+      const checked = e.detail?.checked === true;
+      ctx.state.windowLinkRaiseOnFocus = checked;
+      ctx.save();
+      ctx.apply();
+      paint();
+    };
+    const onWindowLinkHighlightToggle = (e) => {
+      const checked = e.detail?.checked === true;
+      ctx.state.windowLinkHighlight = checked;
+      ctx.save();
+      ctx.apply();
+      paint();
+    };
     const onShowPostStatusRibbonsToggle = (e) => {
       const checked = e.detail?.checked === true;
       ctx.state.showPostStatusRibbons = checked;
+      ctx.save();
+      paint();
+    };
+    const onDeveloperModeToggle = (e) => {
+      const checked = e.detail?.checked === true;
+      ctx.state.developerModeEnabled = checked;
       ctx.save();
       paint();
     };
@@ -4315,6 +4439,86 @@
       aiState.saving = false;
       paint();
     };
+    const onAiAssistantToggle = (e) => {
+      const checked = e.detail?.checked === true;
+      ctx.state.ai = { ...ctx.state.ai, enabled: checked };
+      ctx.save();
+      paint();
+    };
+    const refreshAiStatus = async () => {
+      const ai = shellCfg?.aiAssistant;
+      if (!ai || !shellCfg?.aiStatusUrl) {
+        return;
+      }
+      try {
+        const res = await trackedFetch(
+          shellCfg.aiStatusUrl,
+          {
+            credentials: "same-origin",
+            headers: { "X-WP-Nonce": shellCfg.restNonce ?? "" }
+          },
+          { source: "os-settings/ai-status", silent: true }
+        );
+        if (!res.ok) {
+          return;
+        }
+        const json = await res.json();
+        const changed = ai.available !== (json.available === true) || ai.assistantProviderConfigured !== (json.assistantProviderConfigured === true);
+        ai.available = json.available === true;
+        ai.providerConfigured = json.providerConfigured === true;
+        ai.assistantProviderConfigured = json.assistantProviderConfigured === true;
+        aiState.providerConfigured = ai.providerConfigured;
+        paint();
+        if (changed) {
+          document.dispatchEvent(
+            new CustomEvent("desktop-mode-ai-status-changed")
+          );
+        }
+      } catch {
+      }
+    };
+    let statusInFlight = false;
+    const onOsSettingsFocus = (e) => {
+      if (e.detail?.windowId !== "desktop-mode-os-settings") {
+        return;
+      }
+      if (statusInFlight) {
+        return;
+      }
+      statusInFlight = true;
+      void refreshAiStatus().finally(() => {
+        statusInFlight = false;
+      });
+    };
+    document.addEventListener("desktop-mode-window-focused", onOsSettingsFocus);
+    const statusCleanup = new MutationObserver(() => {
+      if (!wrapper.isConnected) {
+        document.removeEventListener(
+          "desktop-mode-window-focused",
+          onOsSettingsFocus
+        );
+        statusCleanup.disconnect();
+      }
+    });
+    statusCleanup.observe(document.body, { childList: true, subtree: true });
+    const onOpenConnectors = () => {
+      const url = shellCfg?.aiAssistant?.connectorsUrl ?? "";
+      if (!url) {
+        return;
+      }
+      const desktop = window.wp?.desktop;
+      if (desktop?.windowManager?.open) {
+        const id = desktop.deriveWindowId ? desktop.deriveWindowId(url) : url;
+        desktop.windowManager.open({
+          id,
+          url,
+          title: __("Connectors"),
+          icon: "dashicons-admin-settings"
+        });
+      } else {
+        window.open(url, "_blank", "noopener");
+      }
+    };
     let resetting = false;
     const onResetIntros = async () => {
       if (resetting) {
@@ -4357,78 +4561,43 @@
     const paint = () => render(
       html`
 				<wpd-section
-					heading=${__("Beta features")}
-					description=${__(
-        "Experimental redesigns of core admin screens. Off by default — opt in to try them. Each toggle affects only your account and takes effect immediately, no reload required."
-      )}
-				>
-					<div class="desktop-mode-features__item">
-						<wpd-checkbox-label
-							label=${__("Use the native Posts window")}
-							?checked=${ctx.state.nativePostsEnabled}
-							@wpd-checkbox-change=${onNativePostsToggle}
-						></wpd-checkbox-label>
-						<p class="desktop-mode-features__hint">
-							${__(
-        "Beta — off by default. Turn on to replace the classic Posts list iframe with a native, table-driven window: sticky header, server-paginated rows, multi-select bulk actions, and a sub-row preview. Toggle off any time to return to the classic screen."
-      )}
-						</p>
-					</div>
-					<div class="desktop-mode-features__item">
-						<wpd-checkbox-label
-							label=${__("Use the native Pages window")}
-							?checked=${ctx.state.nativePagesEnabled}
-							@wpd-checkbox-change=${onNativePagesToggle}
-						></wpd-checkbox-label>
-						<p class="desktop-mode-features__hint">
-							${__(
-        "Beta — off by default. Turn on for the same table-driven experience as the Posts window, tailored for Pages: a Parent column, hierarchical sort, and a lock indicator when another user is editing a page. Toggle off any time to return to the classic screen."
-      )}
-						</p>
-					</div>
-					<div class="desktop-mode-features__item">
-						<wpd-checkbox-label
-							label=${__("Use the native Users window")}
-							?checked=${ctx.state.nativeUsersEnabled}
-							@wpd-checkbox-change=${onNativeUsersToggle}
-						></wpd-checkbox-label>
-						<p class="desktop-mode-features__hint">
-							${__(
-        "Beta — off by default. Turn on for a native Users list with bulk role change, last-login tracking, live online indicators, click-to-copy email, and one-click password resets. Capability-gated — readers see a read-only view, role assignment respects WordPress role permissions."
-      )}
-						</p>
-					</div>
-					<div class="desktop-mode-features__item">
-						<wpd-checkbox-label
-							label=${__("Use the native Plugins window")}
-							?checked=${ctx.state.nativePluginsEnabled}
-							@wpd-checkbox-change=${onNativePluginsToggle}
-						></wpd-checkbox-label>
-						<p class="desktop-mode-features__hint">
-							${__(
-        "Beta — off by default. Turn on for a native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it."
-      )}
-						</p>
-					</div>
-					<div class="desktop-mode-features__item">
-						<wpd-checkbox-label
-							label=${__("Use the native Comments window")}
-							?checked=${ctx.state.nativeCommentsEnabled}
-							@wpd-checkbox-change=${onNativeCommentsToggle}
-						></wpd-checkbox-label>
-						<p class="desktop-mode-features__hint">
-							${__(
-        "Beta — off by default. Turn on for a redesigned moderation queue with Pending / All / Spam / Trash / Mine tabs, bulk approve/spam/trash plus an 8-second undo, inline reply right in the row, an author insights drawer, a per-row spam confidence score (Akismet + heuristics), and full keyboard moderation (j/k navigate, a approve, s spam, d trash, r reply, e edit, u undo)."
-      )}
-						</p>
-					</div>
-				</wpd-section>
-				<wpd-section
 					heading=${__("Features")}
 					description=${__(
         "Tune individual Desktop Mode behaviors. Each toggle affects only your account and takes effect immediately — no reload required. Watch the dot in the OS Settings title bar to see when a change has been saved."
       )}
 				>
+					${shellCfg?.aiAssistant?.available ? html`
+								<div class="desktop-mode-features__item">
+									<wpd-checkbox-label
+										label=${__("AI assistant")}
+										?checked=${ctx.state.ai.enabled}
+										?disabled=${!shellCfg.aiAssistant.assistantProviderConfigured}
+										@wpd-checkbox-change=${onAiAssistantToggle}
+									></wpd-checkbox-label>
+									<p class="desktop-mode-features__hint">
+										${__(
+        "Adds an assistant powered by AI that finds your content, gets around wp-admin, and answers questions about your site — all in plain language. Off by default."
+      )}
+									</p>
+									${!shellCfg.aiAssistant.assistantProviderConfigured ? html`
+												<wpd-notice tone="warning" not-dismissible>
+													${__(
+        "This feature requires an AI provider configured in"
+      )}
+													<a
+														href=${shellCfg.aiAssistant.connectorsUrl}
+														@click=${(e) => {
+        e.preventDefault();
+        onOpenConnectors();
+      }}
+														>${__(
+        "Settings → Connectors"
+      )}</a
+													>.
+												</wpd-notice>
+											` : ""}
+								</div>
+							` : ""}
 					${shellCfg?.commentsAi ? html`
 							<div class="desktop-mode-features__item">
 								<wpd-checkbox-label
@@ -4438,14 +4607,63 @@
 									@wpd-checkbox-change=${onCommentsAiToggle}
 								></wpd-checkbox-label>
 								<p class="desktop-mode-features__hint">
-									${aiState.providerConfigured ? __(
-        "When a new comment lands, your configured AI provider scores it for spam and hostility. The verdict appears in the per-row chip and is folded into the spam confidence score. Token usage applies — admin-only site setting."
-      ) : __(
-        "Configure an AI provider in OS Settings → AI first. Once a provider is set up, this toggle becomes available and every new comment is scored on arrival."
+									${__(
+        "Scores every new comment for spam and hostility, folding the result into the spam confidence shown in the Comments window. Site-wide, off by default."
       )}
 								</p>
+								${!aiState.providerConfigured ? html`
+											<wpd-notice tone="warning" not-dismissible>
+												${__("This feature requires an AI provider configured in")}
+												<a
+													href=${shellCfg?.aiAssistant?.connectorsUrl ?? ""}
+													@click=${(e) => {
+        e.preventDefault();
+        onOpenConnectors();
+      }}
+													>${__("Settings → Connectors")}</a
+												>.
+											</wpd-notice>
+										` : ""}
 							</div>
 						` : ""}
+					<div class="desktop-mode-features__item">
+						<wpd-checkbox-label
+							label=${__("Window links")}
+							?checked=${ctx.state.windowLinksEnabled}
+							@wpd-checkbox-change=${onWindowLinksToggle}
+						></wpd-checkbox-label>
+						<p class="desktop-mode-features__hint">
+							${__(
+        "Draws arrowed connector lines between windows showing related content — a post and its comments or media, or two posts that link to each other. The line style and when the lines show live in Effects → Window links. On by default."
+      )}
+						</p>
+						<div class="desktop-mode-features__item">
+							<wpd-checkbox-label
+								label=${__("Bring related windows to front")}
+								?checked=${ctx.state.windowLinkRaiseOnFocus}
+								?disabled=${!ctx.state.windowLinksEnabled}
+								@wpd-checkbox-change=${onWindowLinkRaiseToggle}
+							></wpd-checkbox-label>
+							<p class="desktop-mode-features__hint">
+								${__(
+        "Clicking a window surfaces the windows directly tied to it — a parent brings up all of its children, a child brings up its parent — rising to just below the one you clicked, without stealing focus."
+      )}
+							</p>
+						</div>
+						<div class="desktop-mode-features__item">
+							<wpd-checkbox-label
+								label=${__("Highlight related windows")}
+								?checked=${ctx.state.windowLinkHighlight}
+								?disabled=${!ctx.state.windowLinksEnabled}
+								@wpd-checkbox-change=${onWindowLinkHighlightToggle}
+							></wpd-checkbox-label>
+							<p class="desktop-mode-features__hint">
+								${__(
+        "While a group member is focused, its related windows get an accent outline and a soft glow so the family is recognizable at a glance."
+      )}
+							</p>
+						</div>
+					</div>
 					<div class="desktop-mode-features__item">
 						<wpd-checkbox-label
 							label=${__(
@@ -4471,6 +4689,18 @@
 						<p class="desktop-mode-features__hint">
 							${__(
         "Paints a diagonal corner ribbon — Draft, Pending, Private, or Scheduled — on My WordPress tiles whose post status isn’t published. Off hides every ribbon; tiles still respect their dimmed-icon treatment so unpublished items remain visible at a glance. On by default."
+      )}
+						</p>
+					</div>
+					<div class="desktop-mode-features__item">
+						<wpd-checkbox-label
+							label=${__("Enable developer mode")}
+							?checked=${ctx.state.developerModeEnabled}
+							@wpd-checkbox-change=${onDeveloperModeToggle}
+						></wpd-checkbox-label>
+						<p class="desktop-mode-features__hint">
+							${__(
+        "Unlocks developer-facing surfaces meant for plugin authors: the Starter Widget appears in the add-widget picker, and the OS Settings → Components tab runs its intentional missing-import-warner demo (a console banner plus three deliberate console.error entries). Off by default so regular users don’t see developer noise."
       )}
 						</p>
 					</div>
@@ -4534,6 +4764,73 @@
 						<p class="desktop-mode-features__hint">
 							${__(
         "Re-shows the one-time introduction dialog the next time you open each redesigned native window."
+      )}
+						</p>
+					</div>
+				</wpd-section>
+				<wpd-section
+					heading=${__("Beta features")}
+					description=${__(
+        "Experimental redesigns of core admin screens. Off by default — opt in to try them. Each toggle affects only your account and takes effect immediately, no reload required."
+      )}
+				>
+					<div class="desktop-mode-features__item">
+						<wpd-checkbox-label
+							label=${__("Use the native Posts window")}
+							?checked=${ctx.state.nativePostsEnabled}
+							@wpd-checkbox-change=${onNativePostsToggle}
+						></wpd-checkbox-label>
+						<p class="desktop-mode-features__hint">
+							${__(
+        "Beta — off by default. Turn on to replace the classic Posts list iframe with a native, table-driven window: sticky header, server-paginated rows, multi-select bulk actions, and a sub-row preview. Toggle off any time to return to the classic screen."
+      )}
+						</p>
+					</div>
+					<div class="desktop-mode-features__item">
+						<wpd-checkbox-label
+							label=${__("Use the native Pages window")}
+							?checked=${ctx.state.nativePagesEnabled}
+							@wpd-checkbox-change=${onNativePagesToggle}
+						></wpd-checkbox-label>
+						<p class="desktop-mode-features__hint">
+							${__(
+        "Beta — off by default. Turn on for the same table-driven experience as the Posts window, tailored for Pages: a Parent column, hierarchical sort, and a lock indicator when another user is editing a page. Toggle off any time to return to the classic screen."
+      )}
+						</p>
+					</div>
+					<div class="desktop-mode-features__item">
+						<wpd-checkbox-label
+							label=${__("Use the native Users window")}
+							?checked=${ctx.state.nativeUsersEnabled}
+							@wpd-checkbox-change=${onNativeUsersToggle}
+						></wpd-checkbox-label>
+						<p class="desktop-mode-features__hint">
+							${__(
+        "Beta — off by default. Turn on for a native Users list with bulk role change, last-login tracking, live online indicators, click-to-copy email, and one-click password resets. Capability-gated — readers see a read-only view, role assignment respects WordPress role permissions."
+      )}
+						</p>
+					</div>
+					<div class="desktop-mode-features__item">
+						<wpd-checkbox-label
+							label=${__("Use the native Plugins window")}
+							?checked=${ctx.state.nativePluginsEnabled}
+							@wpd-checkbox-change=${onNativePluginsToggle}
+						></wpd-checkbox-label>
+						<p class="desktop-mode-features__hint">
+							${__(
+        "Beta — off by default. Turn on for a native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it."
+      )}
+						</p>
+					</div>
+					<div class="desktop-mode-features__item">
+						<wpd-checkbox-label
+							label=${__("Use the native Comments window")}
+							?checked=${ctx.state.nativeCommentsEnabled}
+							@wpd-checkbox-change=${onNativeCommentsToggle}
+						></wpd-checkbox-label>
+						<p class="desktop-mode-features__hint">
+							${__(
+        "Beta — off by default. Turn on for a redesigned moderation queue with Pending / All / Spam / Trash / Mine tabs, bulk approve/spam/trash plus an 8-second undo, inline reply right in the row, an author insights drawer, a per-row spam confidence score (Akismet + heuristics), and full keyboard moderation (j/k navigate, a approve, s spam, d trash, r reply, e edit, u undo)."
       )}
 						</p>
 					</div>
@@ -4633,13 +4930,15 @@
       bodyStyle
     );
   }
-  function buildHelpSection() {
+  function buildHelpSection(ctx) {
     const entries = collectEntries();
     const el = document.createElement("div");
     el.classList.add("desktop-mode-os-settings__help");
-    logDemoBanner();
     let activeTag = entries[0]?.tag ?? "";
     const paint = () => {
+      if (ctx.state.developerModeEnabled) {
+        logDemoBanner();
+      }
       const active = entries.find((e) => e.tag === activeTag) ?? entries[0];
       render(
         html`
@@ -4654,36 +4953,38 @@
 					</p>
 				</wpd-section>
 
-				<wpd-section
-					heading=${__("Missing-import warner — live demo")}
-					description=${__(
+				${ctx.state.developerModeEnabled ? html`
+						<wpd-section
+							heading=${__("Missing-import warner — live demo")}
+							description=${__(
           'The three <wpd-*> tags below are intentionally bogus. Open the browser console: within ~2 seconds you should see three console.error entries from the framework, each pointing the developer at the fix (typo with "did you mean", and unknown tags). The tags are kept off-screen so they do not affect layout. Remove this section in your fork if you want a quieter Components tab.'
         )}
-				>
-					<div
-						class="desktop-mode-os-settings__help-warner-demo"
-						aria-hidden="true"
-						style="position:absolute;width:0;height:0;overflow:hidden;clip:rect(0 0 0 0);"
-					>
-						<!--
-							Case 1 — invented name, nothing close in the registry.
-							Triggers the "no component by that name exists" branch.
-						-->
-						<wpd-example-console-fail-due-to-unregistered-component></wpd-example-console-fail-due-to-unregistered-component>
+						>
+							<div
+								class="desktop-mode-os-settings__help-warner-demo"
+								aria-hidden="true"
+								style="position:absolute;width:0;height:0;overflow:hidden;clip:rect(0 0 0 0);"
+							>
+								<!--
+									Case 1 — invented name, nothing close in the registry.
+									Triggers the "no component by that name exists" branch.
+								-->
+								<wpd-example-console-fail-due-to-unregistered-component></wpd-example-console-fail-due-to-unregistered-component>
 
-						<!--
-							Case 2 — typo within Levenshtein distance of a real tag.
-							Triggers the "Did you mean <wpd-button>?" branch.
-						-->
-						<wpd-buton></wpd-buton>
+								<!--
+									Case 2 — typo within Levenshtein distance of a real tag.
+									Triggers the "Did you mean <wpd-button>?" branch.
+								-->
+								<wpd-buton></wpd-buton>
 
-						<!--
-							Case 3 — looks plausible but is not in the registry.
-							Triggers the unknown-tag branch with no suggestion.
-						-->
-						<wpd-totally-made-up-thing></wpd-totally-made-up-thing>
-					</div>
-				</wpd-section>
+								<!--
+									Case 3 — looks plausible but is not in the registry.
+									Triggers the unknown-tag branch with no suggestion.
+								-->
+								<wpd-totally-made-up-thing></wpd-totally-made-up-thing>
+							</div>
+						</wpd-section>
+					` : ""}
 
 				<div class="desktop-mode-os-settings__help-layout">
 					<nav
@@ -4723,6 +5024,16 @@
       );
     };
     paint();
+    const wpDesktop = window.wp?.desktop;
+    if (wpDesktop?.subscribeOsSettings) {
+      const unsubscribe = wpDesktop.subscribeOsSettings(() => {
+        if (!el.isConnected) {
+          unsubscribe();
+          return;
+        }
+        paint();
+      });
+    }
     return el;
   }
   function renderDetail(entry) {
@@ -4941,15 +5252,15 @@
   function classNames(...parts) {
     return parts.filter(Boolean).join(" ");
   }
-  const store = createSharedStore(
+  const store$1 = createSharedStore(
     "desktop-mode/wallpaper-registry",
     () => ({
       seed: [],
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const seed = store.state.seed;
-  const listeners = store.state.listeners;
+  const seed = store$1.state.seed;
+  const listeners = store$1.state.listeners;
   function register(def) {
     throwOnRegistrationErrors(
       "Wallpaper",
@@ -5046,6 +5357,184 @@
   function isValidDef(def) {
     return collectRegistrationErrors(def, WALLPAPER_CHECKS).length === 0;
   }
+  const store = createSharedStore(
+    "desktop-mode/wallpaper-settings",
+    () => ({ values: {} })
+  );
+  function getWallpaperSettings(id) {
+    return { ...store.state.values[id] ?? {} };
+  }
+  function publishWallpaperSettings(id, settings) {
+    store.state.values[id] = { ...settings };
+    doAction(HOOKS.WALLPAPER_SETTINGS_CHANGED, {
+      id,
+      settings: { ...settings }
+    });
+  }
+  const modalStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000;--desktop-mode-text:#f0f0f1;--desktop-mode-text-muted:#bbc1c7;--desktop-mode-muted:#a7aaad;--desktop-mode-muted-fg:#a7aaad;--desktop-mode-border:rgba( 255,255,255,0.25 );--wpd-button-bg-hover:rgba( 255,255,255,0.08 )}:host( [ open ] ){display:flex}.dialog{max-width:92vw;max-height:90vh;background:var( --wpd-modal-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-modal-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );display:flex;flex-direction:column;overflow:hidden}:host( [ size='sm' ] ) .dialog{width:min( 360px,92vw )}:host(:not( [ size ] ) ) .dialog,:host( [ size='md' ] ) .dialog{width:min( 540px,92vw )}:host( [ size='lg' ] ) .dialog{width:min( 760px,94vw )}.header{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;border-bottom:1px solid rgba( 255,255,255,0.06 )}.title{margin:0;flex:1;font-size:15px;font-weight:600}.header-actions{display:flex;gap:6px}.header-actions::slotted( * ){margin-inline-start:6px}.close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;cursor:pointer;opacity:0.7}.close:hover{opacity:1;background:rgba( 255,255,255,0.08 )}.body{padding:16px 20px;overflow:auto;flex:1 1 auto;font-size:13px;line-height:1.5}.footer{padding:12px 20px 16px;border-top:1px solid rgba( 255,255,255,0.06 )}.footer slot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}:host( [ mandatory ] ) .close{display:none}`;
+  const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const _WpdModal = class _WpdModal extends Component {
+    constructor() {
+      super(...arguments);
+      this._prevFocus = null;
+      this._onKey = (e) => {
+        if (e.key === "Escape" && !this.hasAttribute("mandatory")) {
+          e.preventDefault();
+          this._cancel();
+          return;
+        }
+        if (e.key === "Tab") {
+          const f = this._focusables();
+          if (f.length === 0) {
+            return;
+          }
+          const first = f[0];
+          const last = f[f.length - 1];
+          const doc = this.ownerDocument;
+          const fallback = doc ? doc.activeElement : null;
+          const active = e.composedPath()[0] || fallback;
+          if (e.shiftKey && active === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && active === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      };
+      this._onBackdrop = (e) => {
+        if (this.hasAttribute("mandatory")) {
+          return;
+        }
+        const path = e.composedPath();
+        const original = path.length > 0 ? path[0] : e.target;
+        if (original === this) {
+          this._cancel();
+        }
+      };
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      this.setAttribute("role", "dialog");
+      this.setAttribute("aria-modal", "true");
+      this.addEventListener("keydown", this._onKey);
+      this.addEventListener("click", this._onBackdrop);
+    }
+    disconnectedCallback() {
+      this.removeEventListener("keydown", this._onKey);
+      this.removeEventListener("click", this._onBackdrop);
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+      super.attributeChangedCallback?.(name, oldValue, newValue);
+      if (name === "open") {
+        if (newValue !== null) {
+          const doc = this.ownerDocument;
+          this._prevFocus = doc ? doc.activeElement : null;
+          queueMicrotask(() => this._focusFirst());
+        } else if (this._prevFocus) {
+          try {
+            this._prevFocus.focus();
+          } catch (e) {
+          }
+          this._prevFocus = null;
+        }
+      }
+    }
+    showModal() {
+      this.setAttribute("open", "");
+    }
+    hideModal() {
+      this.removeAttribute("open");
+    }
+    _focusables() {
+      const root = this.shadowRoot;
+      if (!root) {
+        return [];
+      }
+      const slotted = Array.from(this.querySelectorAll(FOCUSABLE));
+      const inShadow = Array.from(root.querySelectorAll(FOCUSABLE));
+      return [...slotted, ...inShadow].filter((el) => el.offsetParent !== null || el.tagName === "BUTTON");
+    }
+    _focusFirst() {
+      const f = this._focusables();
+      if (f.length > 0) {
+        f[0].focus();
+      } else {
+        const inner = this.shadowRoot?.querySelector(".dialog");
+        inner?.focus?.();
+      }
+    }
+    _cancel() {
+      const ev = new CustomEvent("wpd-modal-cancel", {
+        bubbles: true,
+        cancelable: true,
+        composed: true
+      });
+      const allowed = this.dispatchEvent(ev);
+      if (allowed) {
+        this.hideModal();
+      }
+    }
+    render() {
+      const title = this.getAttribute("title") ?? "";
+      const mandatory = this.hasAttribute("mandatory");
+      return html`
+			<div class="dialog" tabindex="-1">
+				${title ? html`
+						<div class="header">
+							<h2 class="title">${title}</h2>
+							<div class="header-actions">
+								<slot name="header-actions"></slot>
+								${mandatory ? html`` : html`<button
+										type="button"
+										class="close"
+										aria-label="Close"
+										@click=${() => this._cancel()}
+									>×</button>`}
+							</div>
+						</div>
+					` : html``}
+				<div class="body">
+					<slot></slot>
+				</div>
+				<div class="footer">
+					<slot name="footer"></slot>
+				</div>
+			</div>
+		`;
+    }
+  };
+  _WpdModal.props = ["open", "title", "size", "mandatory"];
+  _WpdModal.styles = [modalStyles];
+  _WpdModal.help = {
+    title: "Modal overlay",
+    summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm. The dialog surface is dark and re-points the shared surface tokens (--desktop-mode-text/-muted/-border, --wpd-button-bg-hover) so wpd-* controls slotted into it resolve readable dark-surface colors automatically.",
+    status: "experimental",
+    since: "0.8.5",
+    props: [
+      { name: "open", type: "boolean attribute", description: "Mounts the dialog visible." },
+      { name: "title", type: "string", description: "Heading shown at the top of the dialog." },
+      { name: "size", type: "'sm' | 'md' | 'lg'", default: "md", description: "Width preset." },
+      {
+        name: "mandatory",
+        type: "boolean attribute",
+        description: "Disables ESC, click-outside and the close button."
+      }
+    ],
+    slots: [
+      { name: "(default)", description: "Body content." },
+      { name: "footer", description: "Footer button row, right-aligned." },
+      { name: "header-actions", description: "Extra actions next to the close button." }
+    ],
+    events: [
+      {
+        name: "wpd-modal-cancel",
+        description: "Fires when the user dismisses the modal (ESC, click-outside, close button). Cancelable; calling `preventDefault()` keeps the modal open."
+      }
+    ]
+  };
+  let WpdModal = _WpdModal;
+  defineComponent("wpd-modal", WpdModal);
   async function fetchMediaPage(config, page, search, hdOnly) {
     const url = new URL(config.mediaUrl);
     url.searchParams.set("media_type", "image");
@@ -5523,16 +6012,286 @@
     );
     return wrapper.firstElementChild;
   }
+  const MAX_LIVE_PREVIEWS = 4;
+  const MIN_MOUNT_SIZE = 24;
+  const REMOUNT_EPSILON = 4;
+  const REMOUNT_DEBOUNCE_MS = 250;
+  const PREVIEW_OVERLAY_CLASS = "desktop-mode-os-settings__wallpaper-live-preview";
+  function loadNeeds(def) {
+    const needs = def.type === "canvas" ? def.needs : void 0;
+    if (!needs || needs.length === 0) {
+      return Promise.resolve();
+    }
+    const api = window.wp?.desktop;
+    if (!api?.loadModules) {
+      return Promise.reject(
+        new Error(
+          `[desktop-mode] Wallpaper "${def.id}" declares needs but wp.desktop.loadModules is unavailable.`
+        )
+      );
+    }
+    return api.loadModules(needs);
+  }
+  function pluginUrl() {
+    const config = window.desktopModeConfig;
+    return config?.pluginUrl ?? "";
+  }
+  function prefersReducedMotion() {
+    return typeof window.matchMedia === "function" && window.matchMedia("( prefers-reduced-motion: reduce )").matches;
+  }
+  function previewParams(def) {
+    const seed2 = { ...def.previewParams ?? {} };
+    const filtered = applyFilters(
+      HOOKS.WALLPAPER_PREVIEW_PARAMS,
+      seed2,
+      def.id
+    );
+    if (!filtered || typeof filtered !== "object") {
+      return seed2;
+    }
+    return filtered;
+  }
+  function createWallpaperPreviewManager(root) {
+    const previews = /* @__PURE__ */ new Map();
+    let disposed = false;
+    const liveCount = () => {
+      let n = 0;
+      previews.forEach((p) => {
+        if (p.teardown || p.mounting) {
+          n++;
+        }
+      });
+      return n;
+    };
+    const clearRemountTimer = (p) => {
+      if (p.remountTimer !== null) {
+        clearTimeout(p.remountTimer);
+        p.remountTimer = null;
+      }
+    };
+    const unmount = (p) => {
+      p.generation++;
+      p.mounting = false;
+      clearRemountTimer(p);
+      if (p.teardown) {
+        const teardown = p.teardown;
+        p.teardown = null;
+        try {
+          teardown();
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              `[desktop-mode] Wallpaper "${p.defId}" preview teardown threw:`,
+              err
+            );
+          }
+        }
+      }
+      p.overlay.innerHTML = "";
+    };
+    const maybeMount = (p) => {
+      if (disposed || !p.visible || p.teardown || p.mounting) {
+        return;
+      }
+      if (resizeObserver && (p.tile.clientWidth < MIN_MOUNT_SIZE || p.tile.clientHeight < MIN_MOUNT_SIZE)) {
+        return;
+      }
+      mount(p);
+    };
+    const mount = (p) => {
+      const def = get(p.defId);
+      if (!def?.renderPreview) {
+        return;
+      }
+      if (liveCount() >= MAX_LIVE_PREVIEWS) {
+        return;
+      }
+      const gen = ++p.generation;
+      p.mounting = true;
+      p.mountWidth = p.tile.clientWidth;
+      p.mountHeight = p.tile.clientHeight;
+      const ctx = {
+        id: def.id,
+        pluginUrl: pluginUrl(),
+        prefersReducedMotion: prefersReducedMotion(),
+        visible: !document.hidden,
+        settings: getWallpaperSettings(def.id),
+        params: previewParams(def),
+        width: p.mountWidth,
+        height: p.mountHeight
+      };
+      const onResolve = (teardown) => {
+        if (gen !== p.generation || disposed) {
+          try {
+            teardown();
+          } catch {
+          }
+          return;
+        }
+        p.mounting = false;
+        p.teardown = teardown;
+        if (sizeDrifted(p)) {
+          scheduleRemount(p);
+        }
+      };
+      const onError = (err) => {
+        if (gen !== p.generation) {
+          return;
+        }
+        p.mounting = false;
+        p.overlay.innerHTML = "";
+        if (typeof console !== "undefined") {
+          console.error(
+            `[desktop-mode] Wallpaper "${def.id}" renderPreview failed:`,
+            err
+          );
+        }
+      };
+      loadNeeds(def).then(() => {
+        if (gen !== p.generation || disposed) {
+          return;
+        }
+        let result;
+        try {
+          result = def.renderPreview(p.overlay, ctx);
+        } catch (err) {
+          onError(err);
+          return;
+        }
+        if (isPromise(result)) {
+          result.then(onResolve, onError);
+          return;
+        }
+        onResolve(result);
+      }, onError);
+    };
+    const sizeDrifted = (p) => Math.abs(p.tile.clientWidth - p.mountWidth) > REMOUNT_EPSILON || Math.abs(p.tile.clientHeight - p.mountHeight) > REMOUNT_EPSILON;
+    const scheduleRemount = (p) => {
+      clearRemountTimer(p);
+      p.remountTimer = setTimeout(() => {
+        p.remountTimer = null;
+        if (disposed || !p.teardown || !sizeDrifted(p)) {
+          return;
+        }
+        unmount(p);
+        maybeMount(p);
+      }, REMOUNT_DEBOUNCE_MS);
+    };
+    const onIntersect = (entries) => {
+      for (const entry of entries) {
+        const p = previews.get(entry.target);
+        if (!p) {
+          continue;
+        }
+        p.visible = entry.isIntersecting;
+        if (entry.isIntersecting) {
+          maybeMount(p);
+        } else {
+          unmount(p);
+        }
+      }
+    };
+    const observer = typeof IntersectionObserver === "function" ? new IntersectionObserver(onIntersect, { threshold: 0.1 }) : null;
+    const onTileResize = (entries) => {
+      for (const entry of entries) {
+        const p = previews.get(entry.target);
+        if (!p || disposed) {
+          continue;
+        }
+        if (!p.teardown && !p.mounting) {
+          maybeMount(p);
+        } else if (p.teardown && sizeDrifted(p)) {
+          scheduleRemount(p);
+        }
+      }
+    };
+    const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(onTileResize) : null;
+    const remove = (p) => {
+      unmount(p);
+      observer?.unobserve(p.tile);
+      resizeObserver?.unobserve(p.tile);
+      p.overlay.remove();
+      previews.delete(p.tile);
+    };
+    const sync = () => {
+      if (disposed) {
+        return;
+      }
+      const tiles = root.querySelectorAll(
+        "wpd-swatch[data-wallpaper-id]"
+      );
+      const seen = /* @__PURE__ */ new Set();
+      tiles.forEach((tile) => {
+        seen.add(tile);
+        const defId = tile.dataset.wallpaperId ?? "";
+        const def = get(defId);
+        const wants = !!def?.renderPreview && !!observer;
+        const existing = previews.get(tile);
+        if (existing && (existing.defId !== defId || !wants)) {
+          remove(existing);
+        }
+        if (!wants || previews.has(tile)) {
+          return;
+        }
+        const overlay = document.createElement("div");
+        overlay.className = PREVIEW_OVERLAY_CLASS;
+        overlay.setAttribute("aria-hidden", "true");
+        tile.appendChild(overlay);
+        previews.set(tile, {
+          tile,
+          overlay,
+          defId,
+          generation: 0,
+          teardown: null,
+          mounting: false,
+          visible: false,
+          mountWidth: 0,
+          mountHeight: 0,
+          remountTimer: null
+        });
+        observer.observe(tile);
+        resizeObserver?.observe(tile);
+      });
+      previews.forEach((p, tile) => {
+        if (!seen.has(tile)) {
+          remove(p);
+        }
+      });
+    };
+    const dispose = () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      previews.forEach((p) => unmount(p));
+      previews.clear();
+      observer?.disconnect();
+      resizeObserver?.disconnect();
+      document.removeEventListener(
+        "desktop-mode-window-closed",
+        onWindowClosed
+      );
+    };
+    const onWindowClosed = () => {
+      if (!root.isConnected) {
+        dispose();
+      }
+    };
+    document.addEventListener("desktop-mode-window-closed", onWindowClosed);
+    return { sync, dispose };
+  }
   function customGradientCss(state) {
     const { from, to, angle } = state.customGradient;
     return `linear-gradient(${angle}deg, ${from}, ${to})`;
   }
+  const CUSTOM_GRADIENT_DESCRIPTION = () => __("Mix your own two-colour gradient and set the angle — your desk, your palette.");
   function attachCustomGradientEditor(ctx) {
     register({
       id: CUSTOM_GRADIENT_ID,
       label: __("Custom gradient"),
       type: "css",
       preview: customGradientCss(ctx.state),
+      description: CUSTOM_GRADIENT_DESCRIPTION(),
       resolveValue: () => customGradientCss(ctx.state),
       renderEditor: (container) => renderCustomGradientEditor(ctx, container)
     });
@@ -5549,7 +6308,10 @@
       label: __("Custom image"),
       type: "css",
       value,
-      preview: value
+      preview: value,
+      description: __(
+        "Any image from your media library or an upload, sized to cover the whole desk."
+      )
     });
   }
   function selectWallpaper(ctx, id, body) {
@@ -5557,6 +6319,167 @@
     ctx.save();
     ctx.apply();
     refreshWallpaperPressedState(ctx, body);
+    const slot = body.querySelector(
+      ".desktop-mode-os-settings__wallpaper-description-slot"
+    );
+    if (slot) {
+      syncWallpaperDescription(ctx, slot);
+    }
+    const configSlot = body.querySelector(
+      ".desktop-mode-os-settings__wallpaper-config-slot"
+    );
+    if (configSlot) {
+      syncWallpaperConfigButton(ctx, configSlot);
+    }
+  }
+  function syncWallpaperConfigButton(ctx, slot) {
+    const inner = slot.firstElementChild;
+    if (!inner) {
+      return;
+    }
+    const def = get(ctx.state.wallpaper);
+    if (!def || typeof def.renderConfig !== "function") {
+      slot.dataset.expanded = "false";
+      slot.style.marginTop = "";
+      return;
+    }
+    slot.style.marginTop = "12px";
+    render(
+      html`
+			<div class="desktop-mode-os-settings__wallpaper-config">
+				<wpd-button
+					variant="secondary"
+					@click=${() => openWallpaperConfigDialog(ctx, def)}
+				>
+					<wpd-icon name="admin-generic"></wpd-icon>
+					${__("Wallpaper settings")}
+				</wpd-button>
+			</div>
+		`,
+      inner
+    );
+    slot.dataset.expanded = "true";
+  }
+  function openWallpaperConfigDialog(ctx, def) {
+    if (typeof def.renderConfig !== "function") {
+      return;
+    }
+    const modal = document.createElement("wpd-modal");
+    modal.setAttribute("size", "sm");
+    modal.setAttribute(
+      "title",
+      sprintf(
+        /* translators: %s: wallpaper name. */
+        __("%s settings"),
+        def.label
+      )
+    );
+    const body = document.createElement("div");
+    body.className = "desktop-mode-os-settings__wallpaper-config-form";
+    body.style.display = "flex";
+    body.style.flexDirection = "column";
+    body.style.gap = "14px";
+    modal.appendChild(body);
+    const done = document.createElement("wpd-button");
+    done.setAttribute("slot", "footer");
+    done.setAttribute("variant", "primary");
+    done.textContent = __("Done");
+    modal.appendChild(done);
+    let configTeardown = null;
+    let closed = false;
+    const close = () => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      if (configTeardown) {
+        try {
+          configTeardown();
+        } catch (err) {
+          if (typeof console !== "undefined") {
+            console.error(
+              `[desktop-mode] Wallpaper "${def.id}" config teardown threw:`,
+              err
+            );
+          }
+        }
+        configTeardown = null;
+      }
+      modal.remove();
+    };
+    done.addEventListener("click", close);
+    modal.addEventListener("wpd-modal-cancel", close);
+    const configCtx = {
+      id: def.id,
+      pluginUrl: "",
+      prefersReducedMotion: typeof window.matchMedia === "function" && window.matchMedia("( prefers-reduced-motion: reduce )").matches,
+      visible: !document.hidden,
+      settings: getWallpaperSettings(def.id),
+      setSettings: (partial) => {
+        const merged = {
+          ...ctx.state.wallpaperSettings[def.id] ?? {},
+          ...partial
+        };
+        ctx.state.wallpaperSettings[def.id] = merged;
+        ctx.save();
+        publishWallpaperSettings(def.id, merged);
+      }
+    };
+    document.body.appendChild(modal);
+    modal.setAttribute("open", "");
+    try {
+      const result = def.renderConfig(body, configCtx);
+      if (isPromise(result)) {
+        result.then((teardown) => {
+          if (closed) {
+            try {
+              teardown();
+            } catch {
+            }
+            return;
+          }
+          configTeardown = teardown;
+        });
+      } else {
+        configTeardown = result;
+      }
+    } catch (err) {
+      if (typeof console !== "undefined") {
+        console.error(
+          `[desktop-mode] Wallpaper "${def.id}" renderConfig threw:`,
+          err
+        );
+      }
+      close();
+    }
+  }
+  function syncWallpaperDescription(ctx, slot) {
+    const inner = slot.firstElementChild;
+    if (!inner) {
+      return;
+    }
+    const def = get(ctx.state.wallpaper);
+    const text = (def?.description ?? "").trim();
+    if (!def || !text) {
+      slot.dataset.expanded = "false";
+      return;
+    }
+    render(
+      html`
+			<div class="desktop-mode-os-settings__wallpaper-description">
+				<div class="desktop-mode-os-settings__wallpaper-description-header">
+					<wpd-icon
+						class="desktop-mode-os-settings__wallpaper-description-icon"
+						name=${def.type === "canvas" ? "star-filled" : "art"}
+					></wpd-icon>
+					<strong>${def.label}</strong>
+				</div>
+				<p>${text}</p>
+			</div>
+		`,
+      inner
+    );
+    slot.dataset.expanded = "true";
   }
   function refreshWallpaperPressedState(ctx, body) {
     body.querySelectorAll("[data-wallpaper-id]").forEach((el) => {
@@ -5580,7 +6503,8 @@
       id: def.id,
       pluginUrl: "",
       prefersReducedMotion: typeof window.matchMedia === "function" && window.matchMedia("( prefers-reduced-motion: reduce )").matches,
-      visible: !document.hidden
+      visible: !document.hidden,
+      settings: getWallpaperSettings(def.id)
     };
     try {
       const result = def.renderEditor(inner, editorCtx);
@@ -5677,6 +6601,7 @@
       preview.style.background = customGradientCss(ctx.state);
     }
   }
+  let activePreviewManager = null;
   function buildWallpaperSection(ctx, body) {
     const editorSlot = document.createElement("div");
     editorSlot.className = "desktop-mode-os-settings__editor-slot";
@@ -5684,6 +6609,18 @@
     const editorInner = document.createElement("div");
     editorInner.className = "desktop-mode-os-settings__editor-slot-inner";
     editorSlot.appendChild(editorInner);
+    const descriptionSlot = document.createElement("div");
+    descriptionSlot.className = "desktop-mode-os-settings__wallpaper-description-slot";
+    descriptionSlot.dataset.expanded = "false";
+    const descriptionInner = document.createElement("div");
+    descriptionInner.className = "desktop-mode-os-settings__wallpaper-description-slot-inner";
+    descriptionSlot.appendChild(descriptionInner);
+    const configSlot = document.createElement("div");
+    configSlot.className = "desktop-mode-os-settings__wallpaper-config-slot";
+    configSlot.dataset.expanded = "false";
+    const configInner = document.createElement("div");
+    configInner.className = "desktop-mode-os-settings__wallpaper-config-slot-inner";
+    configSlot.appendChild(configInner);
     const onPick = (e) => {
       const id = e.detail?.value ?? "";
       const def = get(id);
@@ -5696,6 +6633,9 @@
     };
     const customImageSection = buildCustomImageSection(ctx, body);
     const wrapper = document.createElement("div");
+    activePreviewManager?.dispose();
+    const previewManager = createWallpaperPreviewManager(wrapper);
+    activePreviewManager = previewManager;
     const paint = () => render(
       html`
 				<wpd-section
@@ -5723,26 +6663,34 @@
 								</wpd-swatch>`
       )}
 					</div>
-					${editorSlot} ${customImageSection}
+					${descriptionSlot} ${configSlot} ${editorSlot}
+					${customImageSection}
 				</wpd-section>
 			`,
       wrapper
     );
     paint();
+    previewManager.sync();
     const active = get(ctx.state.wallpaper);
     if (active) {
       syncEditorSlot(ctx, editorSlot, editorInner, active);
     }
+    syncWallpaperDescription(ctx, descriptionSlot);
+    syncWallpaperConfigButton(ctx, configSlot);
     const unsubscribe = subscribe(() => {
       if (!wrapper.isConnected) {
         unsubscribe();
+        previewManager.dispose();
         return;
       }
       paint();
+      previewManager.sync();
       const now = get(ctx.state.wallpaper);
       if (now) {
         syncEditorSlot(ctx, editorSlot, editorInner, now);
       }
+      syncWallpaperDescription(ctx, descriptionSlot);
+      syncWallpaperConfigButton(ctx, configSlot);
     });
     return wrapper;
   }
@@ -5794,21 +6742,16 @@
 			</wpd-tabpanel>`
       },
       {
-        id: "ai",
-        order: 20,
-        tab: html`<wpd-tab value="ai">${__("AI Settings")}</wpd-tab>`,
-        panel: html`<wpd-tabpanel for="ai">
-				<wpd-panel>${buildAiSection(ctx)}</wpd-panel>
-			</wpd-tabpanel>`
-      },
-      {
         id: "features",
         order: 25,
         tab: html`<wpd-tab value="features"
 				>${__("Features")}</wpd-tab
 			>`,
         panel: html`<wpd-tabpanel for="features">
-				<wpd-panel>${buildFeaturesSection(ctx)}</wpd-panel>
+				<wpd-panel>
+					${buildFeaturesSection(ctx)}
+					${isAdmin ? buildExtendedSection(ctx) : ""}
+				</wpd-panel>
 			</wpd-tabpanel>`
       },
       {
@@ -5834,21 +6777,11 @@
     ];
     if (isAdmin) {
       rows.push({
-        id: "extended",
-        order: 30,
-        tab: html`<wpd-tab value="extended"
-				>${__("Extended Options")}</wpd-tab
-			>`,
-        panel: html`<wpd-tabpanel for="extended">
-				<wpd-panel>${buildExtendedSection(ctx)}</wpd-panel>
-			</wpd-tabpanel>`
-      });
-      rows.push({
         id: "help",
         order: 40,
         tab: html`<wpd-tab value="help">${__("Components")}</wpd-tab>`,
         panel: html`<wpd-tabpanel for="help">
-				<wpd-panel>${buildHelpSection()}</wpd-panel>
+				<wpd-panel>${buildHelpSection(ctx)}</wpd-panel>
 			</wpd-tabpanel>`
       });
     }

@@ -378,7 +378,7 @@
         app.canvas.removeEventListener("pointerleave", onPointerLeave);
         app.canvas.removeEventListener("pointerdown", onPointerDown);
         try {
-          app.destroy(true, {
+          app.destroy({ removeView: true }, {
             children: true,
             texture: true,
             textureSource: true,

@@ -43,6 +43,22 @@
     WALLPAPER_MOUNT_FAILED: "desktop-mode.wallpaper.mount-failed",
     /** Action mirroring document.visibilitychange for active canvas wallpapers. */
     WALLPAPER_VISIBILITY: "desktop-mode.wallpaper.visibility",
+    /**
+     * Filter, receives a wallpaper's preview params (seeded from the
+     * def's `previewParams`) before its `renderPreview` runs in the OS
+     * Settings picker. Args: `( params, wallpaperId )`.
+     */
+    WALLPAPER_PREVIEW_PARAMS: "desktop-mode.wallpaper.preview-params",
+    /**
+     * Action, fires after a wallpaper's persisted settings change (the
+     * user edited them through the wallpaper's config dialog in OS
+     * Settings). Payload: `{ id, settings }` — the wallpaper id and the
+     * full post-merge settings object. A mounted wallpaper subscribes to
+     * live-apply changes without a remount.
+     *
+     * @since 0.9.5
+     */
+    WALLPAPER_SETTINGS_CHANGED: "desktop-mode.wallpaper.settings-changed",
     // ------------------------------------------------------------------
     // Observability — iframe errors, iframe network, shell-side errors,
     // monitor entry aggregation. Designed for dashboard / debug widget
@@ -351,6 +367,32 @@
      * @since 0.8.6
      */
     WINDOW_AUTO_EXIT_FULLSCREEN: "desktop-mode.window.auto-exit-fullscreen",
+    /**
+     * Filter, decides whether the window under the cursor is raised
+     * (focused) after a short hover dwell during a drag — any drag,
+     * whatever its source: a shell DragManager session, a
+     * cross-iframe bridge drag, an OS file, or an arbitrary native
+     * HTML5 drag.
+     *
+     * Default is `true`: dragging a payload over a background window
+     * and resting there for ~250 ms brings it forward, so the user
+     * can see the drop target they're aiming at (macOS spring-loading
+     * style). Plugins whose windows must never steal z-order during a
+     * drag — pinned reference panels, HUD/palette windows — can
+     * return `false` for their window id.
+     *
+     * Signature:
+     *
+     *     ( shouldFocus: boolean, ctx: {
+     *         windowId: string,     // the hovered window
+     *         payloadType: string,  // DragManager payload `type`,
+     *                               // bridge payload `kind`,
+     *                               // 'os-file', or 'external'
+     *     } ) => boolean
+     *
+     * @since 0.9.4
+     */
+    WINDOW_FOCUS_ON_DRAG_HOVER: "desktop-mode.window.focus-on-drag-hover",
     /**
      * Action, fires at most once per animation frame during an
      * active drag or resize with the live geometry. Payload: `{
@@ -983,6 +1025,87 @@
      */
     IFRAME_CONNECTION_REQUEST: "desktop-mode.iframe.connection-request",
     // ------------------------------------------------------------------
+    // Window content relations & link renderers (since 0.9.4). A window
+    // may carry a content identity ("I am comment 45 of post 123");
+    // windows resolving to the same root form a relation group, and a
+    // pluggable renderer draws the ties on the desktop. Engine:
+    // `src/window-links/engine.ts`; registry:
+    // `src/window-links/renderer-registry.ts`. See
+    // `docs/examples/window-links.md`.
+    // ------------------------------------------------------------------
+    /**
+     * Action — fires when a window's content identity is set, replaced,
+     * or cleared. Payload: `{ windowId: string, content:
+     * WindowContentRef | null, previous: WindowContentRef | null,
+     * source: 'config' | 'bridge' | 'api' }`. The matching
+     * `desktop-mode-window-content-changed` CustomEvent dispatches on
+     * `document` with the same payload.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_CONTENT_CHANGED: "desktop-mode.window-links.content-changed",
+    /**
+     * Action — fires when relation-group MEMBERSHIP changes (a window
+     * gained/lost an identity, or a member window opened/closed).
+     * Payload: `{ groups: WindowLinkGroup[] }`. Deliberately NOT fired
+     * on move/resize (renderers get live geometry through their frame
+     * subscription) nor on focus-recency reordering. The matching
+     * `desktop-mode-window-link-groups-changed` CustomEvent dispatches
+     * on `document` with the same payload.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_GROUPS_CHANGED: "desktop-mode.window-links.groups-changed",
+    /**
+     * Filter — applied to every content identity as it is set, before
+     * storage. Signature: `( ref: WindowContentRef | null, ctx: {
+     * windowId: string, source: 'config' | 'bridge' | 'api' } ) =>
+     * WindowContentRef | null`. Return `null` to suppress the identity,
+     * or a rewritten ref to remap it (e.g. point a custom object type
+     * at your own root scheme).
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINKS_CONTENT: "desktop-mode.window-links.content",
+    /**
+     * Filter — applied to the computed relation-group list on every
+     * read (`wp.desktop.relations.groups()`). Signature:
+     * `( groups: WindowLinkGroup[] ) => WindowLinkGroup[]`. Merge,
+     * split, or inject groups here.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_GROUPS: "desktop-mode.window-links.groups",
+    /**
+     * Filter — applied to the derived directed-edge list on every read
+     * (`wp.desktop.relations.edges()`). Signature: `( edges:
+     * WindowLinkEdge[] ) => WindowLinkEdge[]` where each edge is
+     * `{ fromWindowId, toWindowId, kind: 'child-root' | 'reference',
+     * bidirectional }`. Add, drop, or redirect ties here — this is
+     * what the render host feeds to the active renderer.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_EDGES: "desktop-mode.window-links.edges",
+    /**
+     * Filter — applied to the registered window-link renderer list on
+     * every read (`wp.desktop.listWindowLinkRenderers()`). Signature:
+     * `( defs: WindowLinkRendererDef[] ) => WindowLinkRendererDef[]`.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_RENDERERS: "desktop-mode.window-links.renderers",
+    /**
+     * Filter — applied to the resolved ACTIVE renderer id after the OS
+     * Settings selection is read, before the registry lookup.
+     * Signature: `( id: string ) => string`. Return a different
+     * registered id (or `'none'`) to force-swap the renderer without
+     * touching the user's setting.
+     *
+     * @since 0.9.4
+     */
+    WINDOW_LINK_RENDERER: "desktop-mode.window-links.renderer",
+    // ------------------------------------------------------------------
     // OS-file drop manager (since 0.30.0). Catches files dragged from
     // the user's host OS (Finder / Explorer / Nautilus) onto any
     // desktop-mode surface and routes them through a confirmation
@@ -1205,7 +1328,10 @@
       return impl(format, ...args);
     }
     let i = 0;
-    return format.replace(/%[sd]/g, () => String(args[i++] ?? ""));
+    return format.replace(/%(?:(\d+)\$)?[sd]/g, (_match, pos) => {
+      const idx = pos ? Number.parseInt(pos, 10) - 1 : i++;
+      return String(args[idx] ?? "");
+    });
   }
   let _ctxInstance = 0;
   function buildNativeRenderContext(windowId) {
@@ -1738,6 +1864,13 @@
         dismiss();
       });
     }
+    if (intent.dismissible) {
+      toast.setAttribute("dismissible", "");
+      toast.addEventListener("wpd-toast-dismiss", () => {
+        intent.onDismiss?.();
+        dismiss();
+      });
+    }
     container.appendChild(toast);
     let dismissed = false;
     let dismissTimer = null;
@@ -1758,10 +1891,12 @@
     requestAnimationFrame(() => {
       toast.setAttribute("state", "in");
     });
-    dismissTimer = window.setTimeout(
-      dismiss,
-      intent.duration ?? DEFAULT_DURATION_MS
-    );
+    if (!intent.persistent) {
+      dismissTimer = window.setTimeout(
+        dismiss,
+        intent.duration ?? DEFAULT_DURATION_MS
+      );
+    }
     activity.publish("desktop-mode/toast-shown", { ...intent });
     return dismiss;
   }
@@ -2158,12 +2293,12 @@
     }
     return false;
   }
-  const store$5 = createSharedStore(
+  const store$6 = createSharedStore(
     "desktop-mode/destructive-admin-actions",
     () => ({ entries: [] })
   );
   function matchDestructiveAdminAction(url, parsed) {
-    for (const entry of store$5.state.entries) {
+    for (const entry of store$6.state.entries) {
       try {
         if (entry.matches(url, parsed)) {
           return entry.id;
@@ -2176,6 +2311,264 @@
       }
     }
     return null;
+  }
+  function collectRegistrationErrors(def, checks) {
+    if (!def || typeof def !== "object") {
+      return ["def (not an object)"];
+    }
+    const d = def;
+    const errors = [];
+    for (const check of checks) {
+      if (!check.valid(d)) {
+        errors.push(`${check.field} (${check.message})`);
+      }
+    }
+    return errors;
+  }
+  class RegistrationError extends Error {
+    constructor(kind, errors, def) {
+      super(
+        `[desktop-mode] ${kind} registration rejected — fields: ` + errors.join(", ") + "."
+      );
+      this.name = "RegistrationError";
+      this.kind = kind;
+      this.errors = errors;
+      this.def = def;
+    }
+  }
+  function throwOnRegistrationErrors(kind, errors, def) {
+    if (errors.length === 0) {
+      return;
+    }
+    throw new RegistrationError(kind, errors, def);
+  }
+  function logRegistrationErrors(kind, errors, def) {
+    if (typeof console === "undefined") {
+      return;
+    }
+    console.warn(
+      `[desktop-mode] ${kind} registration rejected — fields: ` + errors.join(", ") + ".",
+      def
+    );
+  }
+  const MAX_LINKS = 32;
+  const CONTENT_TYPE_ID = /^[a-z0-9_/-]+$/;
+  const store$5 = createSharedStore(
+    "desktop-mode/window-links",
+    () => ({
+      contentByWindow: /* @__PURE__ */ new Map(),
+      focusSeq: /* @__PURE__ */ new Map(),
+      seq: 0,
+      listeners: /* @__PURE__ */ new Set(),
+      lastGroupsSignature: "",
+      manager: null,
+      started: false
+    })
+  );
+  function keyOf(ref) {
+    return `${ref.type}:${ref.id}`;
+  }
+  function rootKeyOf(ref) {
+    return ref.root ? keyOf(ref.root) : keyOf(ref);
+  }
+  function validateRef(ref) {
+    const isValidId = (v) => typeof v === "number" && Number.isFinite(v) || typeof v === "string" && v.trim() !== "";
+    const isValidType = (v) => typeof v === "string" && CONTENT_TYPE_ID.test(v.trim().toLowerCase());
+    return collectRegistrationErrors(ref, [
+      {
+        field: "type",
+        valid: (r) => isValidType(r.type),
+        message: "must match /^[a-z0-9_/-]+$/ — lowercase alphanum, hyphens, underscores, slashes for vendor/sub-type"
+      },
+      {
+        field: "id",
+        valid: (r) => isValidId(r.id),
+        message: "must be a finite number or non-empty string"
+      },
+      {
+        field: "root",
+        valid: (r) => r.root === void 0 || !!r.root && typeof r.root === "object" && isValidType(r.root.type) && isValidId(r.root.id),
+        message: "when present, must be { type, id } with the same shapes as the ref itself"
+      },
+      {
+        field: "links",
+        valid: (r) => r.links === void 0 || Array.isArray(r.links) && r.links.every(
+          (l) => !!l && typeof l === "object" && isValidType(l.type) && isValidId(l.id) && (l.rel === void 0 || l.rel === "references" || l.rel === "child")
+        ),
+        message: "when present, must be an array of { type, id, rel?: 'references'|'child' } entries"
+      }
+    ]);
+  }
+  function normalizeRef(ref, source) {
+    const next = {
+      type: ref.type.trim().toLowerCase(),
+      id: ref.id,
+      source
+    };
+    if (ref.root) {
+      next.root = {
+        type: ref.root.type.trim().toLowerCase(),
+        id: ref.root.id
+      };
+    }
+    if (Array.isArray(ref.links) && ref.links.length > 0) {
+      next.links = ref.links.slice(0, MAX_LINKS).map((l) => {
+        const entry = {
+          type: l.type.trim().toLowerCase(),
+          id: l.id
+        };
+        if (l.rel === "child") {
+          entry.rel = "child";
+        }
+        return entry;
+      });
+    }
+    if (typeof ref.label === "string" && ref.label !== "") {
+      next.label = ref.label;
+    }
+    return next;
+  }
+  function refSignature(ref) {
+    if (!ref) {
+      return "";
+    }
+    return [
+      keyOf(ref),
+      rootKeyOf(ref),
+      ...(ref.links ?? []).map(
+        (l) => keyOf(l) + (l.rel === "child" ? "!child" : "")
+      )
+    ].join("|");
+  }
+  function setWindowContent(windowId, ref, opts = {}) {
+    const source = opts.source ?? "api";
+    if (typeof windowId !== "string" || windowId === "") {
+      throwOnRegistrationErrors(
+        "WindowContentRef",
+        ["windowId (must be a non-empty string)"],
+        ref
+      );
+      return;
+    }
+    let next = null;
+    if (ref !== null && ref !== void 0) {
+      const errors = validateRef(ref);
+      if (errors.length > 0) {
+        if (source === "api") {
+          throwOnRegistrationErrors("WindowContentRef", errors, ref);
+        }
+        logRegistrationErrors("WindowContentRef", errors, ref);
+        return;
+      }
+      next = normalizeRef(ref, source);
+    }
+    next = applyFilters(
+      HOOKS.WINDOW_LINKS_CONTENT,
+      next,
+      { windowId, source }
+    );
+    if (next !== null && (!next || validateRef(next).length > 0)) {
+      logRegistrationErrors(
+        "WindowContentRef",
+        ["filter (desktop-mode.window-links.content returned an invalid ref)"],
+        next
+      );
+      return;
+    }
+    const previous = store$5.state.contentByWindow.get(windowId) ?? null;
+    if (next === null && previous === null) {
+      return;
+    }
+    if (next !== null && previous !== null && refSignature(next) === refSignature(previous) && next.label === previous.label) {
+      return;
+    }
+    if (next === null) {
+      store$5.state.contentByWindow.delete(windowId);
+    } else {
+      store$5.state.contentByWindow.set(windowId, next);
+    }
+    const changedDetail = { windowId, content: next, previous, source };
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-window-content-changed", {
+        detail: changedDetail
+      })
+    );
+    doAction(HOOKS.WINDOW_CONTENT_CHANGED, changedDetail);
+    broadcastGroupsIfChanged();
+    notify();
+  }
+  function listWindowLinkGroups() {
+    const byKey = /* @__PURE__ */ new Map();
+    for (const [windowId, ref] of store$5.state.contentByWindow) {
+      const groupKey = rootKeyOf(ref);
+      let group = byKey.get(groupKey);
+      if (!group) {
+        group = {
+          key: groupKey,
+          root: ref.root ? { ...ref.root } : { type: ref.type, id: ref.id },
+          rootWindowIds: [],
+          children: []
+        };
+        byKey.set(groupKey, group);
+      }
+      if (ref.root) {
+        group.children.push({ windowId, content: ref });
+      } else {
+        group.rootWindowIds.push(windowId);
+      }
+    }
+    const seq = store$5.state.focusSeq;
+    for (const group of byKey.values()) {
+      group.rootWindowIds.sort(
+        (a, b) => (seq.get(b) ?? 0) - (seq.get(a) ?? 0)
+      );
+    }
+    const copy = Array.from(byKey.values());
+    const filtered = applyFilters(
+      HOOKS.WINDOW_LINK_GROUPS,
+      copy
+    );
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.window-links.groups` filter returned a non-array; falling back to computed groups."
+        );
+      }
+      return copy;
+    }
+    return filtered;
+  }
+  function notify() {
+    for (const cb of Array.from(store$5.state.listeners)) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] window-links listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function relationsSignature() {
+    return Array.from(store$5.state.contentByWindow).map(([id, ref]) => `${id}=${refSignature(ref)}`).sort().join(";");
+  }
+  function broadcastGroupsIfChanged() {
+    const signature = relationsSignature();
+    if (signature === store$5.state.lastGroupsSignature) {
+      return;
+    }
+    store$5.state.lastGroupsSignature = signature;
+    const groups = listWindowLinkGroups();
+    const detail = { groups };
+    document.dispatchEvent(
+      new CustomEvent("desktop-mode-window-link-groups-changed", {
+        detail
+      })
+    );
+    doAction(HOOKS.WINDOW_LINK_GROUPS_CHANGED, detail);
   }
   const WINDOW_ID = "desktop-mode-my-wordpress";
   const _initial = Object.freeze({
@@ -2245,6 +2638,11 @@
     if (data.type === "desktop-mode-title-change" && typeof data.title === "string") {
       win.setTitle(data.title);
     }
+    if (data.type === "desktop-mode-content-identity") {
+      setWindowContent(win.id, data.identity ?? null, {
+        source: "bridge"
+      });
+    }
     if (data.type === "desktop-mode-window-publish" && typeof data.channel === "string" && data.channel !== "") {
       dispatchFromWindow(win.id, data.channel, data.payload);
     }
@@ -2253,8 +2651,37 @@
       bridge?.routeIncomingFromIframe(data, win.id);
     }
     if (data.type === "desktop-mode-ready") {
+      win._iframeBridgeReady = true;
       markWindowContentReady(win.id);
       doAction(HOOKS.IFRAME_READY, { windowId: win.id });
+    }
+    if (data.type === "desktop-mode-bridge-beforeunload-response") {
+      if (win._isDestroyed) {
+        return;
+      }
+      win._closePending = false;
+      if (win._iframeCloseTimeout) {
+        clearTimeout(win._iframeCloseTimeout);
+        win._iframeCloseTimeout = null;
+      }
+      if (data.prevent) {
+        Promise.resolve().then(() => wpdConfirmDialog).then(
+          ({ wpdConfirm: wpdConfirm2 }) => wpdConfirm2({
+            title: typeof data.message === "string" && data.message ? data.message : __("Unsaved changes"),
+            message: __("You have unsaved changes. Are you sure you want to close this window?"),
+            confirmLabel: __("Close window"),
+            danger: true
+          })
+        ).then((confirmed) => {
+          if (confirmed) {
+            win.destroy();
+          }
+        }).catch(() => {
+          win.destroy();
+        });
+      } else {
+        win.destroy();
+      }
     }
     if (data.type === "desktop-mode-navigate" && typeof data.url === "string" && data.url !== "") {
       handleDesktopNavigate(
@@ -3491,11 +3918,15 @@
     );
     win.element.style.width = `${params.targetW}px`;
     win.element.style.height = `${params.targetH}px`;
-    const left = Math.round(
-      cursorX - params.areaLeft - params.targetW * params.cursorRatioX
+    const left = Math.max(
+      EDGE_MARGIN,
+      Math.round(
+        cursorX - params.areaLeft - params.targetW * params.cursorRatioX
+      )
     );
-    const top = Math.round(
-      cursorY - params.areaTop - params.titleBarHeight / 2
+    const top = Math.max(
+      EDGE_MARGIN,
+      Math.round(cursorY - params.areaTop - params.titleBarHeight / 2)
     );
     win.element.style.left = `${left}px`;
     win.element.style.top = `${top}px`;
@@ -3664,6 +4095,9 @@
       this._closeSafetyNetTimer = null;
       this._onCloseTransitionEnd = null;
       this._isFinalized = false;
+      this._iframeBridgeReady = false;
+      this._iframeCloseTimeout = null;
+      this._closePending = false;
       this._activeTabId = "primary";
       this.onFocusRequest = null;
       this.onClose = null;
@@ -4711,6 +5145,45 @@
       });
     }
     /**
+     * Navigate the window's primary iframe to a new admin URL.
+     *
+     * Used by `WindowManager.open()` when a caller re-opens an
+     * existing window with a URL it isn't already showing — e.g. the
+     * post-install "Activate" link
+     * (`plugins.php?action=activate&plugin=…&_wpnonce=…`) clicked
+     * while a Plugins window is already open. The URL gets the
+     * chromeless flag appended via `withChromelessParam()`, which
+     * doubles as the same-origin gate. Navigation prefers
+     * `location.assign()` so the iframe keeps a real session-history
+     * entry (Back still works), falling back to `iframe.src` when the
+     * content window is torn down or inaccessible.
+     *
+     * Returns `true` when a navigation was started, `false` for
+     * native windows, missing iframes, or cross-origin URLs.
+     *
+     * @since 0.9.4
+     */
+    navigateTo(url) {
+      if (this.config.native || !this.iframe) {
+        return false;
+      }
+      const target = withChromelessParam(url);
+      if (!target) {
+        return false;
+      }
+      this.markContentLoading();
+      const inner = this.iframe.contentWindow;
+      if (inner) {
+        try {
+          inner.location.assign(target);
+          return true;
+        } catch {
+        }
+      }
+      this.iframe.src = target;
+      return true;
+    }
+    /**
      * Trigger the one-shot 360° rotation on the title-bar reload
      * button. Force-restart the animation by removing the class,
      * flushing a reflow, then re-adding it; otherwise a click during
@@ -5321,6 +5794,28 @@
         );
         if (proceed === false) {
           return;
+        }
+      } else if (!this.config.native && !this._suppressCloseFilter && this._iframeBridgeReady && this.iframe) {
+        if (this._closePending) {
+          return;
+        }
+        this._closePending = true;
+        try {
+          this.iframe.contentWindow?.postMessage(
+            { type: "desktop-mode-bridge-beforeunload-query" },
+            location.origin
+          );
+          this._iframeCloseTimeout = setTimeout(() => {
+            if (this._isDestroyed) {
+              return;
+            }
+            this._suppressCloseFilter = true;
+            this._closePending = false;
+            this.close();
+          }, 500);
+          return;
+        } catch {
+          this._closePending = false;
         }
       }
       this._isDestroyed = true;
@@ -7143,4 +7638,161 @@
     }
   };
   window.desktopModeWindowSystem = factory;
+  const dialogStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000}:host( [ open ] ){display:flex}.dialog{width:min( 420px,92vw );background:var( --wpd-confirm-dialog-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-confirm-dialog-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );padding:20px 22px 18px;display:flex;flex-direction:column;gap:10px;position:relative}.close{position:absolute;top:8px;right:10px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:6px;color:var( --wpd-confirm-dialog-fg-muted,rgba( 255,255,255,0.7 ) );cursor:pointer;font-size:22px;line-height:1;padding:0}.close:hover{background:rgba( 255,255,255,0.08 );color:inherit}.title{margin:0 0 4px;font-size:16px;font-weight:600}.message{margin:0;color:var( --wpd-confirm-dialog-fg-muted,rgba( 255,255,255,0.7 ) );line-height:1.45;white-space:pre-line}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}.btn{border:0;border-radius:6px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:500}.btn--secondary{background:rgba( 255,255,255,0.08 );color:inherit}.btn--secondary:hover{background:rgba( 255,255,255,0.14 )}.btn--primary{background:var( --wp-admin-theme-color,#2271b1 );color:#fff}.btn--primary:hover{filter:brightness( 1.08 )}.btn--danger{background:#d63638;color:#fff}.btn--danger:hover{filter:brightness( 1.08 )}`;
+  const _WpdConfirmDialog = class _WpdConfirmDialog extends Component {
+    constructor() {
+      super(...arguments);
+      this._onKey = (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          this._cancel();
+        }
+        if (e.key === "Enter" && !e.isComposing) {
+          e.preventDefault();
+          this._confirm();
+        }
+      };
+      this._onBackdrop = (e) => {
+        const path = e.composedPath();
+        const original = path.length > 0 ? path[0] : e.target;
+        if (original === this) {
+          this._cancel();
+        }
+      };
+      this._confirm = () => {
+        this.emit("wpd-confirm", { confirmed: true });
+        this.removeAttribute("open");
+      };
+      this._cancel = () => {
+        this.emit("wpd-cancel", { confirmed: false });
+        this.removeAttribute("open");
+      };
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      this.setAttribute("role", "dialog");
+      this.setAttribute("aria-modal", "true");
+      this.addEventListener("keydown", this._onKey);
+      this.addEventListener("click", this._onBackdrop);
+    }
+    disconnectedCallback() {
+      this.removeEventListener("keydown", this._onKey);
+      this.removeEventListener("click", this._onBackdrop);
+    }
+    render() {
+      const title = this.title ?? "";
+      const message = this.message ?? "";
+      const confirmLabel = this["confirm-label"] || "Confirm";
+      const cancelLabel = this["cancel-label"] || "Cancel";
+      const isDanger = this.hasAttribute("danger");
+      const hideCancel = this.hasAttribute("hide-cancel");
+      const isDismissable = this.hasAttribute("dismissable");
+      return html`
+			<div class="dialog" tabindex="-1">
+				${isDismissable ? html`<button
+						type="button"
+						class="close"
+						aria-label="Close"
+						@click=${() => this._cancel()}
+					>&times;</button>` : html``}
+				${title ? html`<h2 class="title">${title}</h2>` : html``}
+				${message ? html`<p class="message">${message}</p>` : html``}
+				<div class="actions">
+					${hideCancel ? html`` : html`<button
+							type="button"
+							class="btn btn--secondary"
+							@click=${() => this._cancel()}
+						>
+							${cancelLabel}
+						</button>`}
+					<button
+						type="button"
+						class="btn ${isDanger ? "btn--danger" : "btn--primary"}"
+						@click=${() => this._confirm()}
+					>
+						${confirmLabel}
+					</button>
+				</div>
+			</div>
+		`;
+    }
+  };
+  _WpdConfirmDialog.props = [
+    "open",
+    "title",
+    "message",
+    "confirm-label",
+    "cancel-label",
+    "danger",
+    "hide-cancel",
+    "dismissable"
+  ];
+  _WpdConfirmDialog.styles = [dialogStyles];
+  _WpdConfirmDialog.help = {
+    title: "Confirm dialog",
+    summary: "Modal Yes/No replacement for window.confirm(). Two consumption paths: declarative element with `open` + `wpd-confirm` event, or the imperative Promise-returning `wpdConfirm()` helper.",
+    status: "experimental",
+    since: "0.9.0",
+    props: [
+      { name: "open", type: "boolean attribute", description: "Mounts the dialog visible." },
+      { name: "title", type: "string", description: "Heading shown at the top." },
+      { name: "message", type: "string", description: "Body copy. Newlines preserved." },
+      { name: "confirm-label", type: "string", default: "Confirm", description: "Confirm-button label." },
+      { name: "cancel-label", type: "string", default: "Cancel", description: "Cancel-button label." },
+      { name: "danger", type: "boolean attribute", description: "Renders the confirm button red." },
+      { name: "hide-cancel", type: "boolean attribute", description: "Hides the cancel button entirely. Useful when there is no alternative action — pair with `dismissable` so the user still has an explicit way to close." },
+      { name: "dismissable", type: "boolean attribute", description: "Renders an X close button in the top-right corner. Click emits `wpd-cancel`." }
+    ],
+    events: [
+      {
+        name: "wpd-confirm",
+        description: "Fires on confirm. Detail: `{ confirmed: true }`."
+      },
+      {
+        name: "wpd-cancel",
+        description: "Fires on cancel (Cancel button, Escape, backdrop click). Detail: `{ confirmed: false }`."
+      }
+    ]
+  };
+  let WpdConfirmDialog = _WpdConfirmDialog;
+  defineComponent("wpd-confirm-dialog", WpdConfirmDialog);
+  function wpdConfirm(options) {
+    return new Promise((resolve) => {
+      const dialog = document.createElement("wpd-confirm-dialog");
+      dialog.setAttribute("open", "");
+      if (options.title) {
+        dialog.setAttribute("title", options.title);
+      }
+      dialog.setAttribute("message", options.message);
+      if (options.confirmLabel) {
+        dialog.setAttribute("confirm-label", options.confirmLabel);
+      }
+      if (options.cancelLabel) {
+        dialog.setAttribute("cancel-label", options.cancelLabel);
+      }
+      if (options.danger) {
+        dialog.setAttribute("danger", "");
+      }
+      if (options.hideCancel) {
+        dialog.setAttribute("hide-cancel", "");
+      }
+      if (options.dismissable) {
+        dialog.setAttribute("dismissable", "");
+      }
+      const cleanup = (ok) => {
+        dialog.remove();
+        resolve(ok);
+      };
+      dialog.addEventListener("wpd-confirm", () => cleanup(true));
+      dialog.addEventListener("wpd-cancel", () => cleanup(false));
+      document.body.appendChild(dialog);
+      const inner = dialog.shadowRoot?.querySelector(".dialog");
+      (inner ?? dialog).focus?.();
+    });
+  }
+  const wpdConfirmDialog = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    WpdConfirmDialog,
+    wpdConfirm
+  }, Symbol.toStringTag, { value: "Module" }));
 })();
