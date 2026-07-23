@@ -187,21 +187,30 @@
     return entry;
   }
   const mountState = /* @__PURE__ */ new WeakMap();
+  function mountIntact(state, container) {
+    for (const node of state.nodes) {
+      if (node.parentNode !== container) {
+        return false;
+      }
+    }
+    return true;
+  }
   function render(result, container) {
     const existing = mountState.get(container);
-    if (existing && existing.strings === result.strings) {
+    if (existing && existing.strings === result.strings && mountIntact(existing, container)) {
       applyValues(existing.parts, result.values);
       return;
     }
     const compiled = compile(result.strings);
     const fragment = compiled.template.content.cloneNode(true);
     const parts = compiled.buildParts(fragment);
+    const nodes = Array.from(fragment.childNodes);
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
     container.appendChild(fragment);
     applyValues(parts, result.values);
-    mountState.set(container, { strings: result.strings, parts });
+    mountState.set(container, { strings: result.strings, parts, nodes });
   }
   function applyValues(parts, values) {
     for (const part of parts) {
@@ -674,7 +683,7 @@
     return i18n()?.__(text, domain) ?? text;
   }
   const containerStyles = css`:host{position:fixed;top:calc( var( --wp-admin--admin-bar--height,32px ) + 16px );inset-inline-end:16px;display:flex;flex-direction:column;gap:8px;z-index:calc( var( --desktop-mode-z-fullscreen,99999 ) + 10 );pointer-events:none}`;
-  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:10px;border:1px solid rgba( 255,255,255,0.12 );box-shadow:0 10px 30px rgba( 0,0,0,0.4 ),0 2px 6px rgba( 0,0,0,0.18 ),inset 0 0 0 1px rgba( 255,255,255,0.04 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}.wpd-toast__close{display:inline-flex;align-items:center;justify-content:center;padding:4px;border-radius:6px;background:transparent;color:rgba( 255,255,255,0.7 )}.wpd-toast__close:hover{background:rgba( 255,255,255,0.14 );color:#fff}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
+  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:10px;border:1px solid rgba( 255,255,255,0.12 );box-shadow:0 10px 30px rgba( 0,0,0,0.4 ),0 2px 6px rgba( 0,0,0,0.18 ),inset 0 0 0 1px rgba( 255,255,255,0.04 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button[ hidden ]{display:none}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}.wpd-toast__close{display:inline-flex;align-items:center;justify-content:center;padding:4px;border-radius:6px;background:transparent;color:rgba( 255,255,255,0.7 )}.wpd-toast__close:hover{background:rgba( 255,255,255,0.14 );color:#fff}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
   const _WpdToastContainer = class _WpdToastContainer extends Component {
     connectedCallback() {
       super.connectedCallback();
@@ -2002,13 +2011,20 @@
     return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
   defineComponent("wpd-spinner", WpdSpinner);
-  const styles = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}.wpd-button__spinner{box-sizing:border-box;display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:wpd-button-spin 0.6s linear infinite;flex-shrink:0}@keyframes wpd-button-spin{to{transform:rotate( 360deg )}}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
+      const busy = this.busy !== null;
       const type = this.type || "button";
       return html`
-			<button part="button" type=${type} ?disabled=${disabled}>
+			<button
+				part="button"
+				type=${type}
+				?disabled=${disabled || busy}
+				aria-busy=${busy ? "true" : "false"}
+			>
+				${busy ? html`<span class="wpd-button__spinner" aria-hidden="true"></span>` : ""}
 				<slot></slot>
 			</button>
 		`;

@@ -20,6 +20,13 @@
     INIT: "desktop-mode.init",
     /** Filter, receives the wallpaper registry array. */
     WALLPAPERS: "desktop-mode.wallpapers",
+    /**
+     * Filter, receives the games registry array (`GameRegistryEntry[]`)
+     * on every read. Mirrors the PHP-side `desktop_mode_games` filter.
+     *
+     * @since 0.9.6
+     */
+    GAMES: "desktop-mode.games",
     /** Filter, receives the unfocused-window effect registry array. */
     UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects",
     /** Action before a canvas wallpaper mounts. */
@@ -32,6 +39,18 @@
     WALLPAPER_MOUNT_FAILED: "desktop-mode.wallpaper.mount-failed",
     /** Action mirroring document.visibilitychange for active canvas wallpapers. */
     WALLPAPER_VISIBILITY: "desktop-mode.wallpaper.visibility",
+    /**
+     * Action, fires when the wallpaper enters or leaves the suspended
+     * state (`wp.desktop.wallpaper.suspend()/resume()` — e.g. while a
+     * game is running). Payload: `{ id, suspended, reasons }` — the
+     * active canvas wallpaper id (or null), whether the layer is now
+     * suspended, and the currently-held reason strings. Suspension also
+     * re-emits `WALLPAPER_VISIBILITY` with the effective state, so
+     * wallpapers that only wire the visibility action pause for free.
+     *
+     * @since 0.9.6
+     */
+    WALLPAPER_SUSPEND: "desktop-mode.wallpaper.suspend",
     /**
      * Filter, receives a wallpaper's preview params (seeded from the
      * def's `previewParams`) before its `renderPreview` runs in the OS
@@ -1077,6 +1096,21 @@
      */
     WINDOW_LINK_EDGES: "desktop-mode.window-links.edges",
     /**
+     * Filter — applied to the related-entity navigation items resolved
+     * for a window, every time the title bar's "Related" button decides
+     * its visibility and every time its menu is built. Signature:
+     * `( items: RelatedEntityItem[], ctx: { windowId: string, content:
+     * WindowContentRef | null } ) => RelatedEntityItem[]` where each
+     * item is `{ id, group, label, url, groupLabel?, icon?, count? }`.
+     * The unfiltered list is whatever the window's content identity
+     * carried in `related` (built server-side; see the
+     * `desktop_mode_window_related_entities` PHP filter). Add, drop, or
+     * relabel items here — return an empty array to hide the button.
+     *
+     * @since 0.9.6
+     */
+    RELATED_ENTITIES_ITEMS: "desktop-mode.related-entities.items",
+    /**
      * Filter — applied to the registered window-link renderer list on
      * every read (`wp.desktop.listWindowLinkRenderers()`). Signature:
      * `( defs: WindowLinkRendererDef[] ) => WindowLinkRendererDef[]`.
@@ -1118,7 +1152,35 @@
     /** Action — `{ file, result, fields, context }` after successful upload. `file` since 0.31.0. */
     FILE_DROP_AFTER_UPLOAD: "desktop-mode.drop.after-upload",
     /** Action — `{ file, error, context }` on upload failure. */
-    FILE_DROP_UPLOAD_FAILED: "desktop-mode.drop.upload-failed"
+    FILE_DROP_UPLOAD_FAILED: "desktop-mode.drop.upload-failed",
+    // ------------------------------------------------------------------
+    // Session / authentication (since 0.9.8). Fired by
+    // `src/auth-recovery/index.ts` when the WordPress login session
+    // expires and when it comes back. Mirrored as document
+    // CustomEvents (`desktop-mode-auth-lost` / `-restored`) for
+    // listeners outside the hook bus.
+    // ------------------------------------------------------------------
+    /**
+     * Action, no payload — the Heartbeat `wp-auth-check` flag
+     * reported the session as expired. Fires once per outage.
+     * Pause pollers / mutations here; requests made while the
+     * session is down will 401.
+     *
+     * @since 0.9.8
+     */
+    AUTH_LOST: "desktop-mode.auth.lost",
+    /**
+     * Action, no payload — the session is authenticated again and
+     * the shell's cached nonces have been (or are about to be, same
+     * tick) refreshed in place. Resume pollers and re-fetch any
+     * state that may have failed during the outage. May fire
+     * without a preceding `AUTH_LOST` when re-auth was detected
+     * from an iframe or another browser tab before the shell's own
+     * heartbeat noticed the expiry.
+     *
+     * @since 0.9.8
+     */
+    AUTH_RESTORED: "desktop-mode.auth.restored"
   };
   const CANARY_TAG = "wpd-confirm-dialog";
   let inflight = null;
@@ -1470,6 +1532,13 @@
   const ICON_ARROW = `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 	<polyline points="6,3 11,8 6,13"/>
 </svg>`;
+  const ICON_SEARCH = `<svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+	<circle cx="9" cy="9" r="6"/>
+	<line x1="13.5" y1="13.5" x2="18" y2="18"/>
+</svg>`;
+  const ICON_SITE_LOGO = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" focusable="false">
+	<path d="M12 4c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8Zm0 1.5c3.4 0 6.2 2.7 6.5 6l-1.2-.6-.8-.4c-.1 0-.2 0-.3-.1H16c-.1-.2-.4-.2-.7 0l-2.9 2.1L9 11.3h-.7L5.5 13v-1.1c0-3.6 2.9-6.5 6.5-6.5Zm0 13c-2.7 0-5-1.7-6-4l2.8-1.7 3.5 1.2h.4s.2 0 .4-.2l2.9-2.1.4.2c.6.3 1.4.7 2.1 1.1-.5 3.1-3.2 5.4-6.4 5.4Z"/>
+</svg>`;
   const SUGGESTED_PROMPTS = [
     "Find my post about…",
     "Where can I see categories?",
@@ -1482,6 +1551,12 @@
       this._isSearching = false;
       this._previousFocus = null;
       this._currentStream = null;
+      this._mode = "commands";
+      this._modeInput = {
+        commands: "",
+        ai: ""
+      };
+      this._lastAiResult = null;
       this._selectedCommand = 0;
       this._keyboardNav = false;
       this._selectedSuggestion = 0;
@@ -1496,6 +1571,8 @@
       this._aiSearchStreamUrl = config.aiSearchStreamUrl;
       this._restNonce = config.restNonce;
       this._getTransport = config.getTransport ?? (() => "off");
+      this._isAiAvailable = config.isAiAvailable ?? (() => false);
+      this._isOverrideEnabled = config.isOverrideEnabled ?? (() => false);
       this._el = this._buildDOM();
       document.body.appendChild(this._el);
       this._input = this._el.querySelector(".desktop-mode-ai__input");
@@ -1508,11 +1585,7 @@
         if (!this._isOpen) {
           return;
         }
-        if (this._input.value.startsWith("/")) {
-          this._renderCommandMode();
-        } else if (this._input.value === "" && listEagerCommands().length > 0) {
-          this._renderCommandMode();
-        }
+        this._renderForMode();
       });
     }
     // ------------------------------------------------------------------
@@ -1527,13 +1600,13 @@
       this._isOpen = true;
       this._previousFocus = this._el.ownerDocument.activeElement;
       this._input.value = "";
+      this._modeInput = { commands: "", ai: "" };
+      this._lastAiResult = null;
       this._selectedCommand = 0;
       this._submitBtn.classList.remove("has-value");
-      if (listEagerCommands().length > 0) {
-        this._renderCommandMode();
-      } else {
-        this._renderSuggestions();
-      }
+      this._mode = this._defaultMode();
+      this._updateModeUI();
+      this._renderForMode();
       this._el.removeAttribute("hidden");
       void this._el.offsetHeight;
       this._el.classList.add("is-open");
@@ -1578,12 +1651,148 @@
       this.ask = fn;
     }
     // ------------------------------------------------------------------
+    // Modes — Commands (always) + AI (when a provider is configured)
+    // ------------------------------------------------------------------
+    /**
+     * Is AI mode available at all? Gated on the "Override…" toggle *and* a
+     * configured provider. When off, the assistant is a plain command
+     * palette — no AI, no mode switch.
+     */
+    _aiModeAllowed() {
+      return this._isAiAvailable() && this._isOverrideEnabled();
+    }
+    /** The mode ⌘K opens in: AI when the override toggle is on, else Commands. */
+    _defaultMode() {
+      return this._aiModeAllowed() ? "ai" : "commands";
+    }
+    /** Switch mode, repaint the toggle + list, and refocus the input. */
+    _setMode(mode) {
+      const next = mode === "ai" && !this._aiModeAllowed() ? "commands" : mode;
+      if (next !== this._mode) {
+        this._modeInput[this._mode] = this._input.value;
+        this._mode = next;
+        this._input.value = this._modeInput[next];
+        this._submitBtn.classList.toggle(
+          "has-value",
+          this._input.value.trim().length > 0
+        );
+      }
+      this._selectedCommand = 0;
+      this._selectedSuggestion = 0;
+      this._updateModeUI();
+      if (this._mode === "ai" && this._lastAiResult && this._lastAiResult.query === this._input.value.trim()) {
+        this._showResult(this._lastAiResult.query, this._lastAiResult.data);
+      } else {
+        this._renderForMode();
+      }
+      this._input.focus();
+    }
+    /** Reflect the active mode on the switch + input placeholder + input icon. */
+    _updateModeUI() {
+      const showSwitch = this._aiModeAllowed();
+      const sw = this._el.querySelector(".desktop-mode-ai__modes");
+      if (sw) {
+        sw.hidden = !showSwitch;
+        sw.querySelectorAll("[data-mode]").forEach((b) => {
+          const active = b.dataset.mode === this._mode;
+          b.classList.toggle("is-active", active);
+          b.setAttribute("aria-pressed", String(active));
+        });
+      }
+      this._input.placeholder = this._mode === "ai" ? "How can I help?" : "Search commands…";
+      const inputIcon = this._el.querySelector(
+        ".desktop-mode-ai__input-icon"
+      );
+      if (inputIcon) {
+        inputIcon.innerHTML = this._mode === "ai" ? ICON_SPARKLE : ICON_SEARCH;
+      }
+    }
+    /**
+     * Are we showing the command list (so keyboard arrows drive it)?
+     * True for `/slug` (any mode), for all plain input in Commands mode,
+     * and for empty input with contextual commands in AI mode.
+     */
+    _isPickMode(parsed) {
+      if (parsed.isCommand && parsed.hasArgsPart) {
+        return false;
+      }
+      if (parsed.isCommand) {
+        return true;
+      }
+      if (this._mode === "commands") {
+        return true;
+      }
+      return this._input.value === "" && listEagerCommands().length > 0;
+    }
+    /** The command list for the current input + mode. */
+    _commandMatches() {
+      const parsed = parseCommandInput(this._input.value);
+      if (parsed.isCommand) {
+        return this._sortCommands(
+          filterCommands(parsed.slug).filter((c) => c.eager !== true)
+        );
+      }
+      if (this._mode === "ai") {
+        return this._sortCommands(listEagerCommands());
+      }
+      const q = this._input.value.trim();
+      return this._sortCommands(q === "" ? listCommands() : filterCommands(q));
+    }
+    /** Run a picked command, or lock it in for args when it takes them. */
+    _pickCommand(cmd) {
+      if (typeof cmd.suggest === "function") {
+        this._input.value = `/${cmd.slug} `;
+        this._submitBtn.classList.add("has-value");
+        this._input.focus();
+        this._renderCommandMode();
+        return;
+      }
+      void this._runCommand(cmd, "");
+    }
+    /** Paint the right surface for the current mode + input state. */
+    _renderForMode() {
+      const parsed = parseCommandInput(this._input.value);
+      if (parsed.isCommand || this._mode === "commands") {
+        this._renderCommandMode();
+        return;
+      }
+      const hasEager = listEagerCommands().length > 0;
+      if (this._input.value.trim() === "") {
+        if (hasEager) {
+          this._renderCommandMode();
+        } else {
+          this._renderSuggestions();
+        }
+        return;
+      }
+      if (this._resultsEl.querySelector(".desktop-mode-ai__bubble")) {
+        return;
+      }
+      if (hasEager) {
+        this._renderCommandMode();
+      } else {
+        const showingSuggestions = this._resultsEl.querySelector(
+          ".desktop-mode-ai__suggestions"
+        );
+        if (showingSuggestions) {
+          this._resultsEl.innerHTML = "";
+          this._resultsEl.hidden = true;
+        }
+      }
+    }
+    // ------------------------------------------------------------------
     // Events
     // ------------------------------------------------------------------
     _bindEvents() {
       this._el.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
+          this.close();
+        }
+      });
+      this._el.addEventListener("mousedown", (e) => {
+        const target = e.target;
+        if (!(target instanceof Element) || !target.closest(".desktop-mode-ai__panel")) {
           this.close();
         }
       });
@@ -1605,14 +1814,19 @@
       });
       document.addEventListener("desktop-mode-open-ai", () => this.open());
       this._closeBtn.addEventListener("click", () => this.close());
+      this._el.querySelectorAll(".desktop-mode-ai__mode").forEach((b) => {
+        b.addEventListener(
+          "click",
+          () => this._setMode(
+            b.dataset.mode === "ai" ? "ai" : "commands"
+          )
+        );
+      });
       this._submitBtn.addEventListener("click", () => this._onSubmit());
       this._input.addEventListener("keydown", (e) => {
         const parsed = parseCommandInput(this._input.value);
-        const eagerPicking = parsed.isCommand === false && this._input.value === "" && listEagerCommands().length > 0;
-        if (parsed.isCommand && !parsed.hasArgsPart || eagerPicking) {
-          const matches = this._sortCommands(
-            eagerPicking ? listEagerCommands() : filterCommands(parsed.slug).filter((c) => c.eager !== true)
-          );
+        if (this._isPickMode(parsed)) {
+          const matches = this._commandMatches();
           if (e.key === "ArrowDown") {
             e.preventDefault();
             this._selectedCommand = Math.min(
@@ -1630,7 +1844,7 @@
             this._paintCommandSelection();
             return;
           }
-          if (e.key === "Tab" && matches.length > 0 && !eagerPicking) {
+          if (e.key === "Tab" && matches.length > 0 && parsed.isCommand) {
             e.preventDefault();
             const pick = matches[this._selectedCommand] ?? matches[0];
             this._input.value = `/${pick.slug} `;
@@ -1642,11 +1856,13 @@
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if (matches.length === 0) {
-              this._showError(`Unknown command: /${parsed.slug}`);
+              if (parsed.isCommand) {
+                this._showError(`Unknown command: /${parsed.slug}`);
+              }
               return;
             }
             const pick = matches[this._selectedCommand] ?? matches[0];
-            this._runCommand(pick, "");
+            this._pickCommand(pick);
             return;
           }
         }
@@ -1696,15 +1912,7 @@
         this._submitBtn.classList.toggle("has-value", hasValue);
         this._selectedCommand = 0;
         this._selectedSuggestion = 0;
-        if (this._input.value.startsWith("/")) {
-          this._renderCommandMode();
-        } else if (!hasValue) {
-          if (listEagerCommands().length > 0) {
-            this._renderCommandMode();
-          } else {
-            this._renderSuggestions();
-          }
-        } else ;
+        this._renderForMode();
       });
       this._resultsEl.addEventListener("mousemove", () => {
         if (this._keyboardNav) {
@@ -1720,11 +1928,22 @@
     // Flow
     // ------------------------------------------------------------------
     async _onSubmit() {
-      const raw = this._input.value.trim();
-      if (!raw || this._isSearching) {
+      if (this._isSearching) {
         return;
       }
       const parsed = parseCommandInput(this._input.value);
+      if (this._isPickMode(parsed)) {
+        const matches = this._commandMatches();
+        const pick = matches[this._selectedCommand] ?? matches[0];
+        if (pick) {
+          this._pickCommand(pick);
+        }
+        return;
+      }
+      const raw = this._input.value.trim();
+      if (!raw) {
+        return;
+      }
       if (parsed.isCommand) {
         const cmd = findCommand(parsed.slug);
         if (!cmd) {
@@ -1825,8 +2044,12 @@
      */
     _renderCommandResult(_cmd, result) {
       if (result === void 0 || result === null) {
-        this._resultsEl.innerHTML = "";
-        this._resultsEl.hidden = true;
+        if (this._isOpen) {
+          this._renderForMode();
+        } else {
+          this._resultsEl.innerHTML = "";
+          this._resultsEl.hidden = true;
+        }
         return;
       }
       const answer = typeof result === "string" ? {
@@ -2021,13 +2244,12 @@
           return;
         }
       }
-      const eagerPicking = parsed.isCommand === false && this._input.value === "";
-      const filtered = eagerPicking ? listEagerCommands() : filterCommands(parsed.slug).filter((c) => c.eager !== true);
-      const matches = this._sortCommands(filtered);
+      const matches = this._commandMatches();
       if (matches.length === 0) {
+        const q = parsed.isCommand ? `/${parsed.slug}` : this._input.value.trim();
         this._resultsEl.innerHTML = `
 				<div class="desktop-mode-ai__state desktop-mode-ai__state--empty">
-					<span>No commands matching <strong>/${this._esc(parsed.slug)}</strong>.</span>
+					<span>No commands matching <strong>${this._esc(q)}</strong>.</span>
 				</div>
 			`;
         return;
@@ -2035,8 +2257,9 @@
       if (this._selectedCommand >= matches.length) {
         this._selectedCommand = 0;
       }
+      const pickable = this._isPickMode(parsed);
       const items = matches.map((c, i) => {
-        const selected = i === this._selectedCommand ? " is-selected" : "";
+        const selected = pickable && i === this._selectedCommand ? " is-selected" : "";
         return `
 					<button
 						type="button"
@@ -2055,19 +2278,20 @@
 					</button>
 				`;
       }).join("");
+      const heading = this._mode === "ai" ? '<p class="desktop-mode-ai__suggestions-label">Suggested commands</p>' : "";
       this._resultsEl.innerHTML = `
 			<div class="desktop-mode-ai__cmd-list">
-				<p class="desktop-mode-ai__suggestions-label">Commands</p>
+				${heading}
 				${items}
 			</div>
 		`;
       this._resultsEl.querySelectorAll(".desktop-mode-ai__cmd-item").forEach((btn) => {
         btn.addEventListener("click", () => {
           const slug = btn.dataset.slug ?? "";
-          this._input.value = `/${slug} `;
-          this._submitBtn.classList.add("has-value");
-          this._input.focus();
-          this._renderCommandMode();
+          const cmd = findCommand(slug);
+          if (cmd) {
+            this._pickCommand(cmd);
+          }
         });
         btn.addEventListener("mouseenter", () => {
           if (this._keyboardNav) {
@@ -2283,6 +2507,9 @@
 		`;
     }
     _showResult(query, data) {
+      if (query !== "") {
+        this._lastAiResult = { query, data };
+      }
       this._resultsEl.hidden = false;
       const messageHtml = `
 			<div class="desktop-mode-ai__bubble">
@@ -2404,15 +2631,19 @@
       el.className = "desktop-mode-ai";
       el.setAttribute("role", "dialog");
       el.setAttribute("aria-modal", "true");
-      el.setAttribute("aria-label", "AI Assistant");
+      el.setAttribute("aria-label", "Site Assistant");
       el.setAttribute("aria-hidden", "true");
       el.setAttribute("hidden", "");
       el.innerHTML = `
 			<div class="desktop-mode-ai__backdrop" aria-hidden="true"></div>
 			<div class="desktop-mode-ai__panel">
 				<div class="desktop-mode-ai__header">
-					<span class="desktop-mode-ai__header-icon">${ICON_SPARKLE}</span>
-					<span class="desktop-mode-ai__header-label">AI Assistant</span>
+					<span class="desktop-mode-ai__header-icon">${ICON_SITE_LOGO}</span>
+					<span class="desktop-mode-ai__header-label">Site Assistant</span>
+					<div class="desktop-mode-ai__modes" role="group" aria-label="Assistant mode" hidden>
+						<button type="button" class="desktop-mode-ai__mode" data-mode="ai" aria-pressed="false">Ask AI</button>
+						<button type="button" class="desktop-mode-ai__mode" data-mode="commands" aria-pressed="false">Commands</button>
+					</div>
 					<button type="button" class="desktop-mode-ai__close" aria-label="Close">
 						${ICON_CLOSE}
 					</button>
@@ -2425,7 +2656,7 @@
 						placeholder="How can I help?"
 						autocomplete="off"
 						spellcheck="false"
-						aria-label="Ask the AI assistant"
+						aria-label="Ask the assistant"
 					/>
 					<button type="button" class="desktop-mode-ai__submit" aria-label="Send">
 						${ICON_RETURN}
@@ -2434,10 +2665,7 @@
 				<div class="desktop-mode-ai__results" hidden></div>
 				<div class="desktop-mode-ai__footer">
 					<span class="desktop-mode-ai__footer-hint">
-						Your assistant for finding content, getting around wp-admin, and more
-					</span>
-					<span class="desktop-mode-ai__footer-keys" aria-hidden="true">
-						<kbd>&#8629;</kbd> ask
+						Your assistant to quickly navigate and manage your entire site.
 					</span>
 				</div>
 			</div>

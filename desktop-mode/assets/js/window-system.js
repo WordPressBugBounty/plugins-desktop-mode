@@ -31,6 +31,13 @@
     INIT: "desktop-mode.init",
     /** Filter, receives the wallpaper registry array. */
     WALLPAPERS: "desktop-mode.wallpapers",
+    /**
+     * Filter, receives the games registry array (`GameRegistryEntry[]`)
+     * on every read. Mirrors the PHP-side `desktop_mode_games` filter.
+     *
+     * @since 0.9.6
+     */
+    GAMES: "desktop-mode.games",
     /** Filter, receives the unfocused-window effect registry array. */
     UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects",
     /** Action before a canvas wallpaper mounts. */
@@ -43,6 +50,18 @@
     WALLPAPER_MOUNT_FAILED: "desktop-mode.wallpaper.mount-failed",
     /** Action mirroring document.visibilitychange for active canvas wallpapers. */
     WALLPAPER_VISIBILITY: "desktop-mode.wallpaper.visibility",
+    /**
+     * Action, fires when the wallpaper enters or leaves the suspended
+     * state (`wp.desktop.wallpaper.suspend()/resume()` — e.g. while a
+     * game is running). Payload: `{ id, suspended, reasons }` — the
+     * active canvas wallpaper id (or null), whether the layer is now
+     * suspended, and the currently-held reason strings. Suspension also
+     * re-emits `WALLPAPER_VISIBILITY` with the effective state, so
+     * wallpapers that only wire the visibility action pause for free.
+     *
+     * @since 0.9.6
+     */
+    WALLPAPER_SUSPEND: "desktop-mode.wallpaper.suspend",
     /**
      * Filter, receives a wallpaper's preview params (seeded from the
      * def's `previewParams`) before its `renderPreview` runs in the OS
@@ -1088,6 +1107,21 @@
      */
     WINDOW_LINK_EDGES: "desktop-mode.window-links.edges",
     /**
+     * Filter — applied to the related-entity navigation items resolved
+     * for a window, every time the title bar's "Related" button decides
+     * its visibility and every time its menu is built. Signature:
+     * `( items: RelatedEntityItem[], ctx: { windowId: string, content:
+     * WindowContentRef | null } ) => RelatedEntityItem[]` where each
+     * item is `{ id, group, label, url, groupLabel?, icon?, count? }`.
+     * The unfiltered list is whatever the window's content identity
+     * carried in `related` (built server-side; see the
+     * `desktop_mode_window_related_entities` PHP filter). Add, drop, or
+     * relabel items here — return an empty array to hide the button.
+     *
+     * @since 0.9.6
+     */
+    RELATED_ENTITIES_ITEMS: "desktop-mode.related-entities.items",
+    /**
      * Filter — applied to the registered window-link renderer list on
      * every read (`wp.desktop.listWindowLinkRenderers()`). Signature:
      * `( defs: WindowLinkRendererDef[] ) => WindowLinkRendererDef[]`.
@@ -1129,7 +1163,35 @@
     /** Action — `{ file, result, fields, context }` after successful upload. `file` since 0.31.0. */
     FILE_DROP_AFTER_UPLOAD: "desktop-mode.drop.after-upload",
     /** Action — `{ file, error, context }` on upload failure. */
-    FILE_DROP_UPLOAD_FAILED: "desktop-mode.drop.upload-failed"
+    FILE_DROP_UPLOAD_FAILED: "desktop-mode.drop.upload-failed",
+    // ------------------------------------------------------------------
+    // Session / authentication (since 0.9.8). Fired by
+    // `src/auth-recovery/index.ts` when the WordPress login session
+    // expires and when it comes back. Mirrored as document
+    // CustomEvents (`desktop-mode-auth-lost` / `-restored`) for
+    // listeners outside the hook bus.
+    // ------------------------------------------------------------------
+    /**
+     * Action, no payload — the Heartbeat `wp-auth-check` flag
+     * reported the session as expired. Fires once per outage.
+     * Pause pollers / mutations here; requests made while the
+     * session is down will 401.
+     *
+     * @since 0.9.8
+     */
+    AUTH_LOST: "desktop-mode.auth.lost",
+    /**
+     * Action, no payload — the session is authenticated again and
+     * the shell's cached nonces have been (or are about to be, same
+     * tick) refreshed in place. Resume pollers and re-fetch any
+     * state that may have failed during the outage. May fire
+     * without a preceding `AUTH_LOST` when re-auth was detected
+     * from an iframe or another browser tab before the shell's own
+     * heartbeat noticed the expiry.
+     *
+     * @since 0.9.8
+     */
+    AUTH_RESTORED: "desktop-mode.auth.restored"
   };
   const HOOK_PREFIX = "desktop-mode.activity.";
   function hookName(channel) {
@@ -1465,9 +1527,6 @@
     };
     return { ctx, dispose };
   }
-  function sanitizeClassName(value) {
-    return value.replace(/[^a-zA-Z0-9_-]/g, "");
-  }
   function urlMatchKey(url) {
     try {
       const parsed = new URL(url, window.location.origin);
@@ -1477,6 +1536,88 @@
     } catch {
       return url;
     }
+  }
+  function hashTitleToHue(input) {
+    if (!input) {
+      return 214;
+    }
+    let hash = 5381;
+    for (let i = 0; i < input.length; i++) {
+      hash = Math.imul(hash, 33) + input.charCodeAt(i);
+    }
+    return (hash % 360 + 360) % 360;
+  }
+  function renderIcon(icon, opts) {
+    const className = opts.className ?? "";
+    const title = opts.title ?? "";
+    if (typeof icon === "string" && icon.startsWith("dashicons-")) {
+      const el = document.createElement("span");
+      el.className = `dashicons ${icon} ${className}`.trim();
+      el.setAttribute("aria-hidden", "true");
+      return el;
+    }
+    if (typeof icon === "string" && icon.startsWith("data:image/svg+xml;base64,")) {
+      const base64Part = icon.slice("data:image/svg+xml;base64,".length);
+      if (/^[A-Za-z0-9+/=]+$/.test(base64Part)) {
+        const el = document.createElement("span");
+        el.className = className;
+        el.setAttribute("aria-hidden", "true");
+        el.style.backgroundImage = `url("${icon}")`;
+        el.style.backgroundRepeat = "no-repeat";
+        el.style.backgroundPosition = "center";
+        el.style.backgroundSize = "contain";
+        el.style.display = "inline-block";
+        return el;
+      }
+    }
+    if (typeof icon === "string" && /^data:image\/(png|jpeg|jpg|gif|webp|x-icon|vnd\.microsoft\.icon);base64,/i.test(icon)) {
+      const commaIdx = icon.indexOf(",");
+      const payload = commaIdx >= 0 ? icon.slice(commaIdx + 1) : "";
+      if (/^[A-Za-z0-9+/=]+$/.test(payload)) {
+        return makeImgIcon(icon, className);
+      }
+    }
+    if (typeof icon === "string" && (icon.startsWith("http://") || icon.startsWith("https://"))) {
+      return makeImgIcon(icon, className);
+    }
+    const span = document.createElement("span");
+    span.className = `${className} desktop-mode-icon-letter`.trim();
+    span.setAttribute("aria-hidden", "true");
+    const letters = letterFromTitle(title);
+    span.textContent = letters;
+    const hue = hashTitleToHue(title);
+    span.style.backgroundColor = `hsl( ${hue}, 60%, 45% )`;
+    span.style.color = "#fff";
+    span.style.display = "inline-flex";
+    span.style.alignItems = "center";
+    span.style.justifyContent = "center";
+    span.style.fontWeight = "600";
+    span.style.borderRadius = "4px";
+    return span;
+  }
+  function makeImgIcon(src, className) {
+    const img = document.createElement("img");
+    img.className = className;
+    img.src = src;
+    img.alt = "";
+    img.setAttribute("aria-hidden", "true");
+    img.draggable = false;
+    return img;
+  }
+  function letterFromTitle(title) {
+    const trimmed = (title ?? "").trim();
+    if (trimmed === "") {
+      return "?";
+    }
+    const words = trimmed.split(/\s+/);
+    if (words.length >= 2) {
+      return (words[0][0] + words[1][0]).toUpperCase();
+    }
+    const first = words[0];
+    if (first.length >= 2) {
+      return first.slice(0, 2).toUpperCase();
+    }
+    return first.toUpperCase();
   }
   const WINDOW_CONFIG_KEY = Symbol.for("desktop-mode/window-config");
   function setWindowConfigOnElement(el, config) {
@@ -1492,7 +1633,7 @@
     return parsed.toString();
   }
   function updateFullscreenBodyClass() {
-    const hasFullscreen = document.querySelectorAll(".desktop-mode-window--fullscreen").length > 0;
+    const hasFullscreen = document.querySelectorAll(".desktop-mode-window--fullscreen:not(.desktop-mode-window--minimized)").length > 0;
     document.body.classList.toggle("desktop-mode-has-fullscreen-window", hasFullscreen);
   }
   function buildDefaultLoadingOverlay() {
@@ -1626,9 +1767,10 @@
       menuPanel.appendChild(openExternal);
     }
     const slotIcon = createSlotHost("icon");
-    const iconEl = document.createElement("span");
-    iconEl.className = `desktop-mode-window__icon dashicons ${sanitizeClassName(config.icon)}`;
-    iconEl.setAttribute("aria-hidden", "true");
+    const iconEl = renderIcon(config.icon, {
+      title: config.title,
+      className: "desktop-mode-window__icon"
+    });
     slotIcon.appendChild(iconEl);
     const slotTitle = createSlotHost("title");
     const titleEl = document.createElement("span");
@@ -2352,6 +2494,7 @@
     );
   }
   const MAX_LINKS = 32;
+  const MAX_RELATED = 64;
   const CONTENT_TYPE_ID = /^[a-z0-9_/-]+$/;
   const store$5 = createSharedStore(
     "desktop-mode/window-links",
@@ -2391,6 +2534,13 @@
         message: "when present, must be { type, id } with the same shapes as the ref itself"
       },
       {
+        field: "related",
+        valid: (r) => r.related === void 0 || Array.isArray(r.related) && r.related.every(
+          (item) => !!item && typeof item === "object" && typeof item.id === "string" && item.id.trim() !== "" && typeof item.group === "string" && item.group.trim() !== "" && typeof item.label === "string" && item.label.trim() !== "" && typeof item.url === "string" && item.url.trim() !== "" && (item.groupLabel === void 0 || typeof item.groupLabel === "string") && (item.icon === void 0 || typeof item.icon === "string") && (item.count === void 0 || typeof item.count === "number" && Number.isFinite(item.count))
+        ),
+        message: "when present, must be an array of { id, group, label, url, groupLabel?, icon?, count? } entries with non-empty strings"
+      },
+      {
         field: "links",
         valid: (r) => r.links === void 0 || Array.isArray(r.links) && r.links.every(
           (l) => !!l && typeof l === "object" && isValidType(l.type) && isValidId(l.id) && (l.rel === void 0 || l.rel === "references" || l.rel === "child")
@@ -2426,7 +2576,35 @@
     if (typeof ref.label === "string" && ref.label !== "") {
       next.label = ref.label;
     }
+    if (Array.isArray(ref.related) && ref.related.length > 0) {
+      next.related = ref.related.slice(0, MAX_RELATED).map((item) => {
+        const entry = {
+          id: item.id,
+          group: item.group,
+          label: item.label,
+          url: item.url
+        };
+        if (typeof item.groupLabel === "string" && item.groupLabel !== "") {
+          entry.groupLabel = item.groupLabel;
+        }
+        if (typeof item.icon === "string" && item.icon !== "") {
+          entry.icon = item.icon;
+        }
+        if (typeof item.count === "number") {
+          entry.count = item.count;
+        }
+        return entry;
+      });
+    }
     return next;
+  }
+  function relatedSignature(ref) {
+    if (!ref || !ref.related) {
+      return "";
+    }
+    return ref.related.map(
+      (item) => `${item.id}\0${item.group}\0${item.label}\0${item.url}\0${item.groupLabel ?? ""}\0${item.icon ?? ""}\0${item.count ?? ""}`
+    ).join("|");
   }
   function refSignature(ref) {
     if (!ref) {
@@ -2479,7 +2657,7 @@
     if (next === null && previous === null) {
       return;
     }
-    if (next !== null && previous !== null && refSignature(next) === refSignature(previous) && next.label === previous.label) {
+    if (next !== null && previous !== null && refSignature(next) === refSignature(previous) && next.label === previous.label && relatedSignature(next) === relatedSignature(previous)) {
       return;
     }
     if (next === null) {
@@ -4817,6 +4995,9 @@
         windowId: this.id,
         element: this.element
       });
+      if (this._stateBeforeMinimize === "fullscreen") {
+        updateFullscreenBodyClass();
+      }
     }
     /**
      * Restore the window from minimized state. Returns the window to
@@ -6268,21 +6449,30 @@
     return entry;
   }
   const mountState = /* @__PURE__ */ new WeakMap();
+  function mountIntact(state, container) {
+    for (const node of state.nodes) {
+      if (node.parentNode !== container) {
+        return false;
+      }
+    }
+    return true;
+  }
   function render(result, container) {
     const existing = mountState.get(container);
-    if (existing && existing.strings === result.strings) {
+    if (existing && existing.strings === result.strings && mountIntact(existing, container)) {
       applyValues(existing.parts, result.values);
       return;
     }
     const compiled = compile(result.strings);
     const fragment = compiled.template.content.cloneNode(true);
     const parts = compiled.buildParts(fragment);
+    const nodes = Array.from(fragment.childNodes);
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
     container.appendChild(fragment);
     applyValues(parts, result.values);
-    mountState.set(container, { strings: result.strings, parts });
+    mountState.set(container, { strings: result.strings, parts, nodes });
   }
   function applyValues(parts, values) {
     for (const part of parts) {

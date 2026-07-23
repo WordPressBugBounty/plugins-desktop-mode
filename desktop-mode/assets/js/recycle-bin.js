@@ -205,21 +205,30 @@ var desktopModeRecycleBin = function(exports) {
     return entry;
   }
   const mountState = /* @__PURE__ */ new WeakMap();
+  function mountIntact(state2, container) {
+    for (const node of state2.nodes) {
+      if (node.parentNode !== container) {
+        return false;
+      }
+    }
+    return true;
+  }
   function render(result, container) {
     const existing = mountState.get(container);
-    if (existing && existing.strings === result.strings) {
+    if (existing && existing.strings === result.strings && mountIntact(existing, container)) {
       applyValues(existing.parts, result.values);
       return;
     }
     const compiled = compile(result.strings);
     const fragment = compiled.template.content.cloneNode(true);
     const parts = compiled.buildParts(fragment);
+    const nodes = Array.from(fragment.childNodes);
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
     container.appendChild(fragment);
     applyValues(parts, result.values);
-    mountState.set(container, { strings: result.strings, parts });
+    mountState.set(container, { strings: result.strings, parts, nodes });
   }
   function applyValues(parts, values) {
     for (const part of parts) {

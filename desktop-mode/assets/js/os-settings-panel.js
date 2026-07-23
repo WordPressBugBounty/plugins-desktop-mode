@@ -205,21 +205,30 @@
     return entry;
   }
   const mountState = /* @__PURE__ */ new WeakMap();
+  function mountIntact(state, container) {
+    for (const node of state.nodes) {
+      if (node.parentNode !== container) {
+        return false;
+      }
+    }
+    return true;
+  }
   function render(result, container) {
     const existing = mountState.get(container);
-    if (existing && existing.strings === result.strings) {
+    if (existing && existing.strings === result.strings && mountIntact(existing, container)) {
       applyValues(existing.parts, result.values);
       return;
     }
     const compiled = compile(result.strings);
     const fragment = compiled.template.content.cloneNode(true);
     const parts = compiled.buildParts(fragment);
+    const nodes = Array.from(fragment.childNodes);
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
     container.appendChild(fragment);
     applyValues(parts, result.values);
-    mountState.set(container, { strings: result.strings, parts });
+    mountState.set(container, { strings: result.strings, parts, nodes });
   }
   function applyValues(parts, values) {
     for (const part of parts) {
@@ -684,13 +693,20 @@
     element.id = id;
     return id;
   }
-  const styles$a = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles$a = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}.wpd-button__spinner{box-sizing:border-box;display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:wpd-button-spin 0.6s linear infinite;flex-shrink:0}@keyframes wpd-button-spin{to{transform:rotate( 360deg )}}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
+      const busy = this.busy !== null;
       const type = this.type || "button";
       return html`
-			<button part="button" type=${type} ?disabled=${disabled}>
+			<button
+				part="button"
+				type=${type}
+				?disabled=${disabled || busy}
+				aria-busy=${busy ? "true" : "false"}
+			>
+				${busy ? html`<span class="wpd-button__spinner" aria-hidden="true"></span>` : ""}
 				<slot></slot>
 			</button>
 		`;
@@ -4249,6 +4265,9 @@
     paint();
     return el;
   }
+  const SHORTCUT_KEY = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(
+    navigator.platform || navigator.userAgent || ""
+  ) ? "⌘K" : "Ctrl+K";
   function buildFeaturesSection(ctx) {
     const wrapper = document.createElement("div");
     const onNativePostsToggle = (e) => {
@@ -4575,8 +4594,12 @@
 										@wpd-checkbox-change=${onAiAssistantToggle}
 									></wpd-checkbox-label>
 									<p class="desktop-mode-features__hint">
-										${__(
-        "Adds an assistant powered by AI that finds your content, gets around wp-admin, and answers questions about your site — all in plain language. Off by default."
+										${sprintf(
+        /* translators: %s: keyboard shortcut, e.g. ⌘K or Ctrl+K */
+        __(
+          "Adds an AI mode to the %s site assistant. Ask in plain language to find content, get around wp-admin, and answer questions about your site. Off by default."
+        ),
+        SHORTCUT_KEY
       )}
 									</p>
 									${!shellCfg.aiAssistant.assistantProviderConfigured ? html`
@@ -5371,7 +5394,7 @@
       settings: { ...settings }
     });
   }
-  const modalStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000;--desktop-mode-text:#f0f0f1;--desktop-mode-text-muted:#bbc1c7;--desktop-mode-muted:#a7aaad;--desktop-mode-muted-fg:#a7aaad;--desktop-mode-border:rgba( 255,255,255,0.25 );--wpd-button-bg-hover:rgba( 255,255,255,0.08 )}:host( [ open ] ){display:flex}.dialog{max-width:92vw;max-height:90vh;background:var( --wpd-modal-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-modal-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );display:flex;flex-direction:column;overflow:hidden}:host( [ size='sm' ] ) .dialog{width:min( 360px,92vw )}:host(:not( [ size ] ) ) .dialog,:host( [ size='md' ] ) .dialog{width:min( 540px,92vw )}:host( [ size='lg' ] ) .dialog{width:min( 760px,94vw )}.header{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;border-bottom:1px solid rgba( 255,255,255,0.06 )}.title{margin:0;flex:1;font-size:15px;font-weight:600}.header-actions{display:flex;gap:6px}.header-actions::slotted( * ){margin-inline-start:6px}.close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;cursor:pointer;opacity:0.7}.close:hover{opacity:1;background:rgba( 255,255,255,0.08 )}.body{padding:16px 20px;overflow:auto;flex:1 1 auto;font-size:13px;line-height:1.5}.footer{padding:12px 20px 16px;border-top:1px solid rgba( 255,255,255,0.06 )}.footer slot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}:host( [ mandatory ] ) .close{display:none}`;
+  const modalStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000;--desktop-mode-text:#f0f0f1;--desktop-mode-text-muted:#bbc1c7;--desktop-mode-muted:#a7aaad;--desktop-mode-muted-fg:#a7aaad;--desktop-mode-border:rgba( 255,255,255,0.25 );--desktop-mode-window-bg:#2c3338;--wpd-button-bg-hover:rgba( 255,255,255,0.08 )}:host( [ open ] ){display:flex}.dialog{max-width:92vw;max-height:90vh;background:var( --wpd-modal-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-modal-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );display:flex;flex-direction:column;overflow:hidden}:host( [ size='sm' ] ) .dialog{width:min( 360px,92vw )}:host(:not( [ size ] ) ) .dialog,:host( [ size='md' ] ) .dialog{width:min( 540px,92vw )}:host( [ size='lg' ] ) .dialog{width:min( 760px,94vw )}.header{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;border-bottom:1px solid rgba( 255,255,255,0.06 )}.title{margin:0;flex:1;font-size:15px;font-weight:600}.header-actions{display:flex;gap:6px}.header-actions::slotted( * ){margin-inline-start:6px}.close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;cursor:pointer;opacity:0.7}.close:hover{opacity:1;background:rgba( 255,255,255,0.08 )}.body{padding:16px 20px;overflow:auto;flex:1 1 auto;font-size:13px;line-height:1.5}.footer{padding:12px 20px 16px;border-top:1px solid rgba( 255,255,255,0.06 )}.footer slot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}:host( [ mandatory ] ) .close{display:none}`;
   const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   const _WpdModal = class _WpdModal extends Component {
     constructor() {
@@ -5508,7 +5531,7 @@
   _WpdModal.styles = [modalStyles];
   _WpdModal.help = {
     title: "Modal overlay",
-    summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm. The dialog surface is dark and re-points the shared surface tokens (--desktop-mode-text/-muted/-border, --wpd-button-bg-hover) so wpd-* controls slotted into it resolve readable dark-surface colors automatically.",
+    summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm. The dialog surface is dark and re-points the shared surface tokens (--desktop-mode-text/-muted/-border/-window-bg, --wpd-button-bg-hover) so wpd-* controls slotted into it resolve readable dark-surface colors automatically.",
     status: "experimental",
     since: "0.8.5",
     props: [
@@ -6492,9 +6515,12 @@
       el.setAttribute("aria-pressed", selected ? "true" : "false");
     });
   }
-  function syncEditorSlot(ctx, slot, inner, def) {
+  function syncEditorSlot(ctx, slot, def) {
     teardownEditor(ctx);
-    inner.innerHTML = "";
+    const inner = document.createElement("div");
+    inner.className = "desktop-mode-os-settings__editor-slot-inner";
+    slot.textContent = "";
+    slot.appendChild(inner);
     if (!def.renderEditor) {
       slot.dataset.expanded = "false";
       return;
@@ -6628,7 +6654,7 @@
         return;
       }
       selectWallpaper(ctx, def.id, body);
-      syncEditorSlot(ctx, editorSlot, editorInner, def);
+      syncEditorSlot(ctx, editorSlot, def);
       paint();
     };
     const customImageSection = buildCustomImageSection(ctx, body);
@@ -6673,7 +6699,7 @@
     previewManager.sync();
     const active = get(ctx.state.wallpaper);
     if (active) {
-      syncEditorSlot(ctx, editorSlot, editorInner, active);
+      syncEditorSlot(ctx, editorSlot, active);
     }
     syncWallpaperDescription(ctx, descriptionSlot);
     syncWallpaperConfigButton(ctx, configSlot);
@@ -6687,7 +6713,7 @@
       previewManager.sync();
       const now = get(ctx.state.wallpaper);
       if (now) {
-        syncEditorSlot(ctx, editorSlot, editorInner, now);
+        syncEditorSlot(ctx, editorSlot, now);
       }
       syncWallpaperDescription(ctx, descriptionSlot);
       syncWallpaperConfigButton(ctx, configSlot);

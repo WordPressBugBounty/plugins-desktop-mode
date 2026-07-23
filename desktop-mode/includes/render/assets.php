@@ -91,6 +91,7 @@ function desktop_mode_enqueue_assets() {
 	wp_enqueue_style( 'desktop-mode-ai-assistant' );
 	wp_enqueue_style( 'desktop-mode-bug-report' );
 	wp_enqueue_style( 'desktop-mode-files' );
+	wp_enqueue_style( 'desktop-mode-notes' );
 
 	// JS.
 	wp_enqueue_script( 'desktop-mode' );
@@ -216,6 +217,9 @@ function desktop_mode_enqueue_assets() {
 		: array();
 	$server_window_notices         = isset( $menu_payload['serverWindowNotices'] )
 		? $menu_payload['serverWindowNotices']
+		: array();
+	$server_games                  = isset( $menu_payload['serverGames'] )
+		? $menu_payload['serverGames']
 		: array();
 	$desktop_icons     = isset( $menu_payload['desktopIcons'] )
 		? $menu_payload['desktopIcons']
@@ -411,15 +415,29 @@ function desktop_mode_enqueue_assets() {
 			'serverWindowChromeScripts' => $server_window_chrome_scripts,
 			'serverWindowChromes'       => $server_window_chromes,
 			'serverWindowNotices'       => $server_window_notices,
+			// Boot-time copy of the payload's `serverGames` — the same
+			// list the live-refresh path applies. Without it the games
+			// registry only fills after the first chromeless
+			// full-payload refresh and the Games hub boots empty.
+			'serverGames'               => $server_games,
 			'desktopIcons'     => $desktop_icons,
 			'serverFileTypes'        => $server_file_types,
 			'serverFileOpeners'      => $server_file_openers,
 			'userFileAssociations'   => $user_file_associations,
 			'filesUrl'               => esc_url_raw( rest_url( 'desktop-mode/v1/files' ) ),
+			// Pinned-notes REST base (`includes/notes/rest.php`). The
+			// notes layer boots only when this is present.
+			'notesUrl'               => esc_url_raw( rest_url( 'desktop-mode/v1/notes' ) ),
+			// Gates the "Convert to post" note affordance — the convert
+			// route (and its dock drop target) only make sense for users
+			// who can author posts.
+			'canCreatePosts'         => current_user_can( 'edit_posts' ),
 			'serverWallpaperMenuItems' => $server_wallpaper_menu_items,
 			'accentColors'     => desktop_mode_get_accent_colors(),
 			'toastTypes'       => desktop_mode_get_toast_types(),
 			'coreUpdate'       => desktop_mode_get_core_update(),
+			'coreNotices'      => desktop_mode_get_core_notices(),
+			'pluginNotices'    => desktop_mode_get_plugin_notices(),
 			'defaultWallpaper' => desktop_mode_get_default_wallpaper(),
 			'session'          => desktop_mode_get_session( get_current_user_id() ),
 			'sessionUrl'       => esc_url_raw( rest_url( 'desktop-mode/v1/session' ) ),
@@ -889,8 +907,12 @@ function desktop_mode_build_command_menu_map() {
 		$menu_url   = '';
 		// Registered plugin pages win over the direct-file test: a
 		// legacy file-path slug ('wp-sweep/admin.php') matches the
-		// `.php` regex yet must route through menu_page_url().
-		if ( ! isset( $_parent_pages[ $menu_slug ] ) && ( preg_match( '/\.php($|\?)/', $menu_slug ) || wp_http_validate_url( $menu_slug ) ) ) {
+		// `.php` regex yet must route through menu_page_url(). The
+		// exception is URL-style slugs referencing a real admin file
+		// (ACF's 'edit.php?post_type=acf-field-group' — also a
+		// registered page) — those stay direct links, matching
+		// classic admin's menu-header.php.
+		if ( ( ! isset( $_parent_pages[ $menu_slug ] ) || desktop_mode_is_admin_file_slug( $menu_slug ) ) && ( preg_match( '/\.php($|\?)/', $menu_slug ) || wp_http_validate_url( $menu_slug ) ) ) {
 			$menu_url = $menu_slug;
 		} elseif ( ! empty( menu_page_url( $menu_slug, false ) ) ) {
 			$menu_url = menu_page_url( $menu_slug, false );
@@ -913,8 +935,9 @@ function desktop_mode_build_command_menu_map() {
 				$submenu_label = $extract_root_text( $submenu_item[0] );
 				$submenu_slug  = $submenu_item[2];
 				$submenu_url   = '';
-				// Same registered-page-first rule as the top-level loop.
-				if ( ! isset( $_parent_pages[ $submenu_slug ] ) && ( preg_match( '/\.php($|\?)/', $submenu_slug ) || wp_http_validate_url( $submenu_slug ) ) ) {
+				// Same registered-page vs admin-file rule as the
+				// top-level loop.
+				if ( ( ! isset( $_parent_pages[ $submenu_slug ] ) || desktop_mode_is_admin_file_slug( $submenu_slug ) ) && ( preg_match( '/\.php($|\?)/', $submenu_slug ) || wp_http_validate_url( $submenu_slug ) ) ) {
 					$submenu_url = $submenu_slug;
 				} elseif ( ! empty( menu_page_url( $submenu_slug, false ) ) ) {
 					$submenu_url = menu_page_url( $submenu_slug, false );

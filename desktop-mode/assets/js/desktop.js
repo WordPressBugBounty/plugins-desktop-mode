@@ -80,6 +80,13 @@ var desktopMode = function(exports) {
     INIT: "desktop-mode.init",
     /** Filter, receives the wallpaper registry array. */
     WALLPAPERS: "desktop-mode.wallpapers",
+    /**
+     * Filter, receives the games registry array (`GameRegistryEntry[]`)
+     * on every read. Mirrors the PHP-side `desktop_mode_games` filter.
+     *
+     * @since 0.9.6
+     */
+    GAMES: "desktop-mode.games",
     /** Filter, receives the unfocused-window effect registry array. */
     UNFOCUS_EFFECTS: "desktop-mode.unfocus-effects",
     /** Action before a canvas wallpaper mounts. */
@@ -92,6 +99,18 @@ var desktopMode = function(exports) {
     WALLPAPER_MOUNT_FAILED: "desktop-mode.wallpaper.mount-failed",
     /** Action mirroring document.visibilitychange for active canvas wallpapers. */
     WALLPAPER_VISIBILITY: "desktop-mode.wallpaper.visibility",
+    /**
+     * Action, fires when the wallpaper enters or leaves the suspended
+     * state (`wp.desktop.wallpaper.suspend()/resume()` — e.g. while a
+     * game is running). Payload: `{ id, suspended, reasons }` — the
+     * active canvas wallpaper id (or null), whether the layer is now
+     * suspended, and the currently-held reason strings. Suspension also
+     * re-emits `WALLPAPER_VISIBILITY` with the effective state, so
+     * wallpapers that only wire the visibility action pause for free.
+     *
+     * @since 0.9.6
+     */
+    WALLPAPER_SUSPEND: "desktop-mode.wallpaper.suspend",
     /**
      * Filter, receives a wallpaper's preview params (seeded from the
      * def's `previewParams`) before its `renderPreview` runs in the OS
@@ -1137,6 +1156,21 @@ var desktopMode = function(exports) {
      */
     WINDOW_LINK_EDGES: "desktop-mode.window-links.edges",
     /**
+     * Filter — applied to the related-entity navigation items resolved
+     * for a window, every time the title bar's "Related" button decides
+     * its visibility and every time its menu is built. Signature:
+     * `( items: RelatedEntityItem[], ctx: { windowId: string, content:
+     * WindowContentRef | null } ) => RelatedEntityItem[]` where each
+     * item is `{ id, group, label, url, groupLabel?, icon?, count? }`.
+     * The unfiltered list is whatever the window's content identity
+     * carried in `related` (built server-side; see the
+     * `desktop_mode_window_related_entities` PHP filter). Add, drop, or
+     * relabel items here — return an empty array to hide the button.
+     *
+     * @since 0.9.6
+     */
+    RELATED_ENTITIES_ITEMS: "desktop-mode.related-entities.items",
+    /**
      * Filter — applied to the registered window-link renderer list on
      * every read (`wp.desktop.listWindowLinkRenderers()`). Signature:
      * `( defs: WindowLinkRendererDef[] ) => WindowLinkRendererDef[]`.
@@ -1178,7 +1212,35 @@ var desktopMode = function(exports) {
     /** Action — `{ file, result, fields, context }` after successful upload. `file` since 0.31.0. */
     FILE_DROP_AFTER_UPLOAD: "desktop-mode.drop.after-upload",
     /** Action — `{ file, error, context }` on upload failure. */
-    FILE_DROP_UPLOAD_FAILED: "desktop-mode.drop.upload-failed"
+    FILE_DROP_UPLOAD_FAILED: "desktop-mode.drop.upload-failed",
+    // ------------------------------------------------------------------
+    // Session / authentication (since 0.9.8). Fired by
+    // `src/auth-recovery/index.ts` when the WordPress login session
+    // expires and when it comes back. Mirrored as document
+    // CustomEvents (`desktop-mode-auth-lost` / `-restored`) for
+    // listeners outside the hook bus.
+    // ------------------------------------------------------------------
+    /**
+     * Action, no payload — the Heartbeat `wp-auth-check` flag
+     * reported the session as expired. Fires once per outage.
+     * Pause pollers / mutations here; requests made while the
+     * session is down will 401.
+     *
+     * @since 0.9.8
+     */
+    AUTH_LOST: "desktop-mode.auth.lost",
+    /**
+     * Action, no payload — the session is authenticated again and
+     * the shell's cached nonces have been (or are about to be, same
+     * tick) refreshed in place. Resume pollers and re-fetch any
+     * state that may have failed during the outage. May fire
+     * without a preceding `AUTH_LOST` when re-auth was detected
+     * from an iframe or another browser tab before the shell's own
+     * heartbeat noticed the expiry.
+     *
+     * @since 0.9.8
+     */
+    AUTH_RESTORED: "desktop-mode.auth.restored"
   };
   let _whenReadySeq = 0;
   function whenReady(cb) {
@@ -1217,6 +1279,25 @@ var desktopMode = function(exports) {
     // the first comment's window instead of opening its own (and the
     // window-links ties can only ever point at one comment at a time).
     "c",
+    // NOTE: the generic `id` param is deliberately NOT identity.
+    // Plugin list screens use `admin.php?page=foo&action=…&id=N` for
+    // row actions; treating `id` as identity would open every such
+    // action in a NEW window instead of navigating the list in place.
+    // The cost: two entities of the same `admin.php?page=` screen
+    // (e.g. two WooCommerce HPOS orders) can't be open side by side —
+    // plugins that want that can differentiate via `path` or their own
+    // window ids.
+    // The term ID on `term.php?taxonomy=category&tag_ID=X` — the term
+    // analogue of `post`. Without it every term-edit URL of the same
+    // taxonomy collapses to one window, so opening a second category
+    // from a post's Related menu just refocuses the first term's
+    // window instead of opening its own.
+    "tag_ID",
+    // The attachment ID on `upload.php?item=X` (Media Library grid
+    // with the details modal open). Without it every deep-linked media
+    // item collapses to the plain `upload-php` window, so opening a
+    // second image from a post's Related menu refocuses the first.
+    "item",
     // Site-editor entity path: `site-editor.php?p=/wp_template_part/
     // twentytwentyfive//footer-columns`. Each template / template
     // part / pattern / navigation entity is a distinct "page" from
@@ -1227,7 +1308,13 @@ var desktopMode = function(exports) {
     "p"
   ];
   function slugify$1(path) {
-    return path.replace(/\.php/g, "-php").replace(/[?&=]/g, "-").replace(/[^a-zA-Z0-9_-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "index";
+    let decoded = path;
+    try {
+      decoded = decodeURIComponent(path);
+    } catch {
+      decoded = path;
+    }
+    return decoded.replace(/\.php/g, "-php").replace(/[?&=/]/g, "-").replace(/[^a-zA-Z0-9_-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "index";
   }
   function deriveWindowId(url, adminUrl) {
     let parsed = null;
@@ -1643,6 +1730,13 @@ var desktopMode = function(exports) {
       child.inert = inactive;
     }
   }
+  function inertWindowChildren(mgr, inactive) {
+    for (const w of mgr._stack) {
+      for (const child of Array.from(w.element.children)) {
+        child.inert = inactive;
+      }
+    }
+  }
   function enterOverview(mgr) {
     if (mgr._overviewActive) {
       return;
@@ -1677,9 +1771,7 @@ var desktopMode = function(exports) {
       }
     }
     inertWpBodyContentChildren(true);
-    for (const w of mgr._stack) {
-      w.element.inert = true;
-    }
+    inertWindowChildren(mgr, true);
     mgr._overviewSnapshot.clear();
     for (const w of eligible) {
       mgr._overviewSnapshot.set(w.id, {
@@ -1781,7 +1873,7 @@ var desktopMode = function(exports) {
       }
       const selected = mgr.getById(pressed.id);
       doAction(HOOKS.OVERVIEW_WINDOW_CLICK, { windowId: pressed.id });
-      exitOverview(mgr, selected, true);
+      exitOverview(mgr, selected);
     };
     mgr._overviewKeyHandler = (e) => {
       if (e.key === "Escape") {
@@ -1992,8 +2084,8 @@ var desktopMode = function(exports) {
     mgr._overviewActive = false;
     mgr._overviewAddTileFocused = false;
     doAction(HOOKS.OVERVIEW_EXITING, {
-      windowId: selected && maximize ? selected.id : void 0,
-      reason: selected && maximize ? "select" : "cancel"
+      windowId: selected ? selected.id : void 0,
+      reason: selected ? "select" : "cancel"
     });
     mgr._desktop.classList.remove("desktop-mode-area--overview");
     const shell = document.getElementById("desktop-mode-shell");
@@ -2005,9 +2097,7 @@ var desktopMode = function(exports) {
       }
     }
     inertWpBodyContentChildren(false);
-    for (const w of mgr._stack) {
-      w.element.inert = false;
-    }
+    inertWindowChildren(mgr, false);
     for (const [id, snap] of mgr._overviewSnapshot) {
       const w = mgr.getById(id);
       if (!w) {
@@ -2015,9 +2105,11 @@ var desktopMode = function(exports) {
       }
       w.element.style.transform = snap.transform;
     }
-    if (selected && maximize) {
+    if (selected) {
       mgr.focus(selected);
-      selected.maximize();
+      if (maximize) {
+        selected.maximize();
+      }
     }
     for (const label of mgr._overviewLabels.values()) {
       label.classList.add("desktop-mode-overview-label--out");
@@ -2051,8 +2143,8 @@ var desktopMode = function(exports) {
         mgr._overviewClickBlocker = null;
       }
       doAction(HOOKS.OVERVIEW_EXITED, {
-        windowId: selected && maximize ? selected.id : void 0,
-        reason: selected && maximize ? "select" : "cancel"
+        windowId: selected ? selected.id : void 0,
+        reason: selected ? "select" : "cancel"
       });
     }, ANIMATION_MS);
     if (mgr._overviewPointerDownHandler) {
@@ -4171,6 +4263,88 @@ var desktopMode = function(exports) {
       true
     );
   }
+  function hashTitleToHue(input) {
+    if (!input) {
+      return 214;
+    }
+    let hash2 = 5381;
+    for (let i = 0; i < input.length; i++) {
+      hash2 = Math.imul(hash2, 33) + input.charCodeAt(i);
+    }
+    return (hash2 % 360 + 360) % 360;
+  }
+  function renderIcon(icon, opts) {
+    const className = opts.className ?? "";
+    const title = opts.title ?? "";
+    if (typeof icon === "string" && icon.startsWith("dashicons-")) {
+      const el = document.createElement("span");
+      el.className = `dashicons ${icon} ${className}`.trim();
+      el.setAttribute("aria-hidden", "true");
+      return el;
+    }
+    if (typeof icon === "string" && icon.startsWith("data:image/svg+xml;base64,")) {
+      const base64Part = icon.slice("data:image/svg+xml;base64,".length);
+      if (/^[A-Za-z0-9+/=]+$/.test(base64Part)) {
+        const el = document.createElement("span");
+        el.className = className;
+        el.setAttribute("aria-hidden", "true");
+        el.style.backgroundImage = `url("${icon}")`;
+        el.style.backgroundRepeat = "no-repeat";
+        el.style.backgroundPosition = "center";
+        el.style.backgroundSize = "contain";
+        el.style.display = "inline-block";
+        return el;
+      }
+    }
+    if (typeof icon === "string" && /^data:image\/(png|jpeg|jpg|gif|webp|x-icon|vnd\.microsoft\.icon);base64,/i.test(icon)) {
+      const commaIdx = icon.indexOf(",");
+      const payload = commaIdx >= 0 ? icon.slice(commaIdx + 1) : "";
+      if (/^[A-Za-z0-9+/=]+$/.test(payload)) {
+        return makeImgIcon(icon, className);
+      }
+    }
+    if (typeof icon === "string" && (icon.startsWith("http://") || icon.startsWith("https://"))) {
+      return makeImgIcon(icon, className);
+    }
+    const span = document.createElement("span");
+    span.className = `${className} desktop-mode-icon-letter`.trim();
+    span.setAttribute("aria-hidden", "true");
+    const letters = letterFromTitle(title);
+    span.textContent = letters;
+    const hue = hashTitleToHue(title);
+    span.style.backgroundColor = `hsl( ${hue}, 60%, 45% )`;
+    span.style.color = "#fff";
+    span.style.display = "inline-flex";
+    span.style.alignItems = "center";
+    span.style.justifyContent = "center";
+    span.style.fontWeight = "600";
+    span.style.borderRadius = "4px";
+    return span;
+  }
+  function makeImgIcon(src, className) {
+    const img = document.createElement("img");
+    img.className = className;
+    img.src = src;
+    img.alt = "";
+    img.setAttribute("aria-hidden", "true");
+    img.draggable = false;
+    return img;
+  }
+  function letterFromTitle(title) {
+    const trimmed = (title ?? "").trim();
+    if (trimmed === "") {
+      return "?";
+    }
+    const words = trimmed.split(/\s+/);
+    if (words.length >= 2) {
+      return (words[0][0] + words[1][0]).toUpperCase();
+    }
+    const first = words[0];
+    if (first.length >= 2) {
+      return first.slice(0, 2).toUpperCase();
+    }
+    return first.toUpperCase();
+  }
   const _parentSubs = /* @__PURE__ */ new Map();
   const _nativeSubs = /* @__PURE__ */ new Map();
   function bucket(root, windowId, channel, create) {
@@ -4348,7 +4522,7 @@ var desktopMode = function(exports) {
     body.appendChild(config ? createLoadingOverlay(config) : buildDefaultLoadingOverlay());
   }
   const FADE_OUT_MS$1 = 250;
-  let _installed$4 = false;
+  let _installed$5 = false;
   function findWindowElement(windowId) {
     if (!windowId) {
       return null;
@@ -4356,10 +4530,10 @@ var desktopMode = function(exports) {
     return document.getElementById(`wp-window-${windowId}`);
   }
   function installWindowLoadingTransitions() {
-    if (_installed$4) {
+    if (_installed$5) {
       return;
     }
-    _installed$4 = true;
+    _installed$5 = true;
     _installSubscriptions();
   }
   function _installSubscriptions() {
@@ -4710,7 +4884,7 @@ var desktopMode = function(exports) {
     document.body.appendChild(el);
     return el;
   }
-  const store$h = createSharedStore(
+  const store$j = createSharedStore(
     "desktop-mode/destructive-admin-actions",
     () => ({ entries: [] })
   );
@@ -4723,7 +4897,7 @@ var desktopMode = function(exports) {
       return () => {
       };
     }
-    const entries = store$h.state.entries;
+    const entries = store$j.state.entries;
     const idx = entries.findIndex((e) => e.id === entry.id);
     if (idx >= 0) {
       entries.splice(idx, 1);
@@ -4732,14 +4906,14 @@ var desktopMode = function(exports) {
     return () => unregisterDestructiveAdminAction(entry.id);
   }
   function unregisterDestructiveAdminAction(id) {
-    const entries = store$h.state.entries;
+    const entries = store$j.state.entries;
     const idx = entries.findIndex((e) => e.id === id);
     if (idx >= 0) {
       entries.splice(idx, 1);
     }
   }
   function listDestructiveAdminActions() {
-    return store$h.state.entries.slice();
+    return store$j.state.entries.slice();
   }
   function collectRegistrationErrors(def, checks) {
     if (!def || typeof def !== "object") {
@@ -4781,8 +4955,9 @@ var desktopMode = function(exports) {
     );
   }
   const MAX_LINKS = 32;
+  const MAX_RELATED = 64;
   const CONTENT_TYPE_ID = /^[a-z0-9_/-]+$/;
-  const store$g = createSharedStore(
+  const store$i = createSharedStore(
     "desktop-mode/window-links",
     () => ({
       contentByWindow: /* @__PURE__ */ new Map(),
@@ -4820,6 +4995,13 @@ var desktopMode = function(exports) {
         message: "when present, must be { type, id } with the same shapes as the ref itself"
       },
       {
+        field: "related",
+        valid: (r) => r.related === void 0 || Array.isArray(r.related) && r.related.every(
+          (item) => !!item && typeof item === "object" && typeof item.id === "string" && item.id.trim() !== "" && typeof item.group === "string" && item.group.trim() !== "" && typeof item.label === "string" && item.label.trim() !== "" && typeof item.url === "string" && item.url.trim() !== "" && (item.groupLabel === void 0 || typeof item.groupLabel === "string") && (item.icon === void 0 || typeof item.icon === "string") && (item.count === void 0 || typeof item.count === "number" && Number.isFinite(item.count))
+        ),
+        message: "when present, must be an array of { id, group, label, url, groupLabel?, icon?, count? } entries with non-empty strings"
+      },
+      {
         field: "links",
         valid: (r) => r.links === void 0 || Array.isArray(r.links) && r.links.every(
           (l) => !!l && typeof l === "object" && isValidType(l.type) && isValidId(l.id) && (l.rel === void 0 || l.rel === "references" || l.rel === "child")
@@ -4855,7 +5037,35 @@ var desktopMode = function(exports) {
     if (typeof ref.label === "string" && ref.label !== "") {
       next.label = ref.label;
     }
+    if (Array.isArray(ref.related) && ref.related.length > 0) {
+      next.related = ref.related.slice(0, MAX_RELATED).map((item) => {
+        const entry = {
+          id: item.id,
+          group: item.group,
+          label: item.label,
+          url: item.url
+        };
+        if (typeof item.groupLabel === "string" && item.groupLabel !== "") {
+          entry.groupLabel = item.groupLabel;
+        }
+        if (typeof item.icon === "string" && item.icon !== "") {
+          entry.icon = item.icon;
+        }
+        if (typeof item.count === "number") {
+          entry.count = item.count;
+        }
+        return entry;
+      });
+    }
     return next;
+  }
+  function relatedSignature(ref) {
+    if (!ref || !ref.related) {
+      return "";
+    }
+    return ref.related.map(
+      (item) => `${item.id}\0${item.group}\0${item.label}\0${item.url}\0${item.groupLabel ?? ""}\0${item.icon ?? ""}\0${item.count ?? ""}`
+    ).join("|");
   }
   function refSignature(ref) {
     if (!ref) {
@@ -4904,17 +5114,17 @@ var desktopMode = function(exports) {
       );
       return;
     }
-    const previous = store$g.state.contentByWindow.get(windowId) ?? null;
+    const previous = store$i.state.contentByWindow.get(windowId) ?? null;
     if (next === null && previous === null) {
       return;
     }
-    if (next !== null && previous !== null && refSignature(next) === refSignature(previous) && next.label === previous.label) {
+    if (next !== null && previous !== null && refSignature(next) === refSignature(previous) && next.label === previous.label && relatedSignature(next) === relatedSignature(previous)) {
       return;
     }
     if (next === null) {
-      store$g.state.contentByWindow.delete(windowId);
+      store$i.state.contentByWindow.delete(windowId);
     } else {
-      store$g.state.contentByWindow.set(windowId, next);
+      store$i.state.contentByWindow.set(windowId, next);
     }
     const changedDetail = { windowId, content: next, previous, source };
     document.dispatchEvent(
@@ -4924,14 +5134,14 @@ var desktopMode = function(exports) {
     );
     doAction(HOOKS.WINDOW_CONTENT_CHANGED, changedDetail);
     broadcastGroupsIfChanged();
-    notify$g();
+    notify$i();
   }
   function getWindowContent(windowId) {
-    return store$g.state.contentByWindow.get(windowId);
+    return store$i.state.contentByWindow.get(windowId);
   }
   function listWindowLinkGroups() {
     const byKey = /* @__PURE__ */ new Map();
-    for (const [windowId, ref] of store$g.state.contentByWindow) {
+    for (const [windowId, ref] of store$i.state.contentByWindow) {
       const groupKey = rootKeyOf(ref);
       let group = byKey.get(groupKey);
       if (!group) {
@@ -4949,7 +5159,7 @@ var desktopMode = function(exports) {
         group.rootWindowIds.push(windowId);
       }
     }
-    const seq = store$g.state.focusSeq;
+    const seq = store$i.state.focusSeq;
     for (const group of byKey.values()) {
       group.rootWindowIds.sort(
         (a, b) => (seq.get(b) ?? 0) - (seq.get(a) ?? 0)
@@ -5009,9 +5219,9 @@ var desktopMode = function(exports) {
     return Array.from(related);
   }
   function listWindowLinkEdges() {
-    const seq = store$g.state.focusSeq;
+    const seq = store$i.state.focusSeq;
     const windowByKey = /* @__PURE__ */ new Map();
-    for (const [windowId, ref] of store$g.state.contentByWindow) {
+    for (const [windowId, ref] of store$i.state.contentByWindow) {
       const key = keyOf(ref);
       const current = windowByKey.get(key);
       if (!current || (seq.get(windowId) ?? 0) > (seq.get(current) ?? 0)) {
@@ -5020,7 +5230,7 @@ var desktopMode = function(exports) {
     }
     const edges = /* @__PURE__ */ new Map();
     const directedKey = (from, to) => `${from}→${to}`;
-    for (const [windowId, ref] of store$g.state.contentByWindow) {
+    for (const [windowId, ref] of store$i.state.contentByWindow) {
       if (ref.root) {
         const target2 = windowByKey.get(keyOf(ref.root));
         if (target2 && target2 !== windowId) {
@@ -5094,13 +5304,13 @@ var desktopMode = function(exports) {
     return filtered;
   }
   function subscribeWindowLinks(cb) {
-    store$g.state.listeners.add(cb);
+    store$i.state.listeners.add(cb);
     return () => {
-      store$g.state.listeners.delete(cb);
+      store$i.state.listeners.delete(cb);
     };
   }
-  function notify$g() {
-    for (const cb of Array.from(store$g.state.listeners)) {
+  function notify$i() {
+    for (const cb of Array.from(store$i.state.listeners)) {
       try {
         cb();
       } catch (err) {
@@ -5114,14 +5324,14 @@ var desktopMode = function(exports) {
     }
   }
   function relationsSignature() {
-    return Array.from(store$g.state.contentByWindow).map(([id, ref]) => `${id}=${refSignature(ref)}`).sort().join(";");
+    return Array.from(store$i.state.contentByWindow).map(([id, ref]) => `${id}=${refSignature(ref)}`).sort().join(";");
   }
   function broadcastGroupsIfChanged() {
     const signature = relationsSignature();
-    if (signature === store$g.state.lastGroupsSignature) {
+    if (signature === store$i.state.lastGroupsSignature) {
       return;
     }
-    store$g.state.lastGroupsSignature = signature;
+    store$i.state.lastGroupsSignature = signature;
     const groups = listWindowLinkGroups();
     const detail = { groups };
     document.dispatchEvent(
@@ -5141,13 +5351,13 @@ var desktopMode = function(exports) {
     subscribe: subscribeWindowLinks
   };
   function startWindowLinksEngine({
-    manager
+    manager: manager2
   }) {
-    store$g.state.manager = manager;
-    if (store$g.state.started) {
+    store$i.state.manager = manager2;
+    if (store$i.state.started) {
       return;
     }
-    store$g.state.started = true;
+    store$i.state.started = true;
     addAction(
       HOOKS.WINDOW_OPENED,
       "desktop-mode/window-links-seed",
@@ -5155,7 +5365,7 @@ var desktopMode = function(exports) {
         if (!e?.windowId) {
           return;
         }
-        const win = store$g.state.manager?.getById(e.windowId);
+        const win = store$i.state.manager?.getById(e.windowId);
         const content = win?.config?.content;
         if (content) {
           setWindowContent(e.windowId, content, { source: "config" });
@@ -5169,7 +5379,7 @@ var desktopMode = function(exports) {
         if (!e?.windowId) {
           return;
         }
-        store$g.state.focusSeq.delete(e.windowId);
+        store$i.state.focusSeq.delete(e.windowId);
         setWindowContent(e.windowId, null, { source: "config" });
       }
     );
@@ -5180,8 +5390,8 @@ var desktopMode = function(exports) {
         if (!e?.windowId) {
           return;
         }
-        store$g.state.seq += 1;
-        store$g.state.focusSeq.set(e.windowId, store$g.state.seq);
+        store$i.state.seq += 1;
+        store$i.state.focusSeq.set(e.windowId, store$i.state.seq);
       }
     );
     window.addEventListener("message", (event) => {
@@ -5192,7 +5402,7 @@ var desktopMode = function(exports) {
       if (!data || data.type !== "desktop-mode-content-identity") {
         return;
       }
-      const win = store$g.state.manager?.findByIframeSource?.(
+      const win = store$i.state.manager?.findByIframeSource?.(
         event.source
       );
       if (!win) {
@@ -5210,38 +5420,38 @@ var desktopMode = function(exports) {
   function bindAdminLinkDispatch(deps2) {
     adminLinkDepsStore.state.deps = deps2;
   }
-  const store$f = createSharedStore(
+  const store$h = createSharedStore(
     "desktop-mode/wallpaper-registry",
     () => ({
       seed: [],
       listeners: /* @__PURE__ */ new Set()
     })
   );
-  const seed$3 = store$f.state.seed;
-  const listeners$d = store$f.state.listeners;
-  function register$2(def) {
+  const seed$4 = store$h.state.seed;
+  const listeners$e = store$h.state.listeners;
+  function register$3(def) {
     throwOnRegistrationErrors(
       "Wallpaper",
       collectRegistrationErrors(def, WALLPAPER_CHECKS),
       def
     );
-    const idx = seed$3.findIndex((w) => w.id === def.id);
+    const idx = seed$4.findIndex((w) => w.id === def.id);
     if (idx >= 0) {
-      seed$3[idx] = def;
+      seed$4[idx] = def;
     } else {
-      seed$3.push(def);
+      seed$4.push(def);
     }
-    notify$f();
+    notify$h();
   }
-  function unregister$2(id) {
-    const idx = seed$3.findIndex((w) => w.id === id);
+  function unregister$3(id) {
+    const idx = seed$4.findIndex((w) => w.id === id);
     if (idx >= 0) {
-      seed$3.splice(idx, 1);
-      notify$f();
+      seed$4.splice(idx, 1);
+      notify$h();
     }
   }
-  function notify$f() {
-    const snapshot = Array.from(listeners$d);
+  function notify$h() {
+    const snapshot = Array.from(listeners$e);
     for (const cb of snapshot) {
       try {
         cb();
@@ -5255,8 +5465,8 @@ var desktopMode = function(exports) {
       }
     }
   }
-  function all$1() {
-    const copy = seed$3.slice();
+  function all$2() {
+    const copy = seed$4.slice();
     const filtered = applyFilters(HOOKS.WALLPAPERS, copy);
     if (!Array.isArray(filtered)) {
       if (typeof console !== "undefined") {
@@ -5268,8 +5478,8 @@ var desktopMode = function(exports) {
     }
     return filtered.filter(isValidDef$1);
   }
-  function get$1(id) {
-    return all$1().find((w) => w.id === id);
+  function get$2(id) {
+    return all$2().find((w) => w.id === id);
   }
   const WALLPAPER_CHECKS = [
     {
@@ -5309,15 +5519,15 @@ var desktopMode = function(exports) {
   function isValidDef$1(def) {
     return collectRegistrationErrors(def, WALLPAPER_CHECKS).length === 0;
   }
-  const store$e = createSharedStore(
+  const store$g = createSharedStore(
     "desktop-mode/wallpaper-settings",
     () => ({ values: {} })
   );
   function getWallpaperSettings(id) {
-    return { ...store$e.state.values[id] ?? {} };
+    return { ...store$g.state.values[id] ?? {} };
   }
   function seedWallpaperSettings(all2) {
-    const values = store$e.state.values;
+    const values = store$g.state.values;
     for (const key of Object.keys(values)) {
       delete values[key];
     }
@@ -5851,7 +6061,7 @@ var desktopMode = function(exports) {
     }
     return { id, url };
   }
-  const store$d = createSharedStore(
+  const store$f = createSharedStore(
     "desktop-mode/dock-rail-registry",
     () => ({
       registry: /* @__PURE__ */ new Map(),
@@ -5859,10 +6069,10 @@ var desktopMode = function(exports) {
       activeId: "default"
     })
   );
-  const registry$a = store$d.state.registry;
-  const listeners$c = store$d.state.listeners;
+  const registry$a = store$f.state.registry;
+  const listeners$d = store$f.state.listeners;
   const ID_RE = /^[a-z0-9_-]+$/;
-  function register$1(renderer) {
+  function register$2(renderer) {
     if (!renderer || typeof renderer !== "object") {
       throw new TypeError(
         "[desktop-mode] registerDockRailRenderer: renderer must be an object."
@@ -5889,11 +6099,11 @@ var desktopMode = function(exports) {
       );
     }
     registry$a.set(renderer.id, renderer);
-    notify$e();
+    notify$g();
   }
-  function unregister$1(id) {
+  function unregister$2(id) {
     if (registry$a.delete(id)) {
-      notify$e();
+      notify$g();
     }
   }
   function unregisterByOwner$1(owner) {
@@ -5908,31 +6118,31 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$e();
+      notify$g();
     }
     return removed;
   }
   function list() {
     return Array.from(registry$a.values());
   }
-  function subscribe$3(cb) {
-    listeners$c.add(cb);
+  function subscribe$4(cb) {
+    listeners$d.add(cb);
     return () => {
-      listeners$c.delete(cb);
+      listeners$d.delete(cb);
     };
   }
   function setActiveRenderer(id) {
-    if (store$d.state.activeId === id) {
+    if (store$f.state.activeId === id) {
       return;
     }
-    store$d.state.activeId = id;
-    notify$e();
+    store$f.state.activeId = id;
+    notify$g();
   }
   function resolveActive() {
-    return registry$a.get(store$d.state.activeId) ?? registry$a.get("default") ?? registry$a.values().next().value;
+    return registry$a.get(store$f.state.activeId) ?? registry$a.get("default") ?? registry$a.values().next().value;
   }
-  function notify$e() {
-    const snapshot = Array.from(listeners$c);
+  function notify$g() {
+    const snapshot = Array.from(listeners$d);
     for (const cb of snapshot) {
       try {
         cb();
@@ -5945,16 +6155,6 @@ var desktopMode = function(exports) {
         }
       }
     }
-  }
-  function hashTitleToHue(input) {
-    if (!input) {
-      return 214;
-    }
-    let hash2 = 5381;
-    for (let i = 0; i < input.length; i++) {
-      hash2 = Math.imul(hash2, 33) + input.charCodeAt(i);
-    }
-    return (hash2 % 360 + 360) % 360;
   }
   const SHOW_DELAY_MS = 180;
   const HIDE_DELAY_MS = 220;
@@ -5980,6 +6180,7 @@ var desktopMode = function(exports) {
     const tearDown = () => {
       cancelShow();
       cancelHide();
+      tile2.removeAttribute("data-peek-active");
       if (popover) {
         popover.remove();
         popover = null;
@@ -6026,6 +6227,7 @@ var desktopMode = function(exports) {
     };
     const showPeek = () => {
       deps2.suppressTooltip(true);
+      tile2.setAttribute("data-peek-active", "");
       popover = buildPopover(deps2, () => tearDown());
       document.body.appendChild(popover);
       inheritShellSchemeVars(popover);
@@ -6079,6 +6281,15 @@ var desktopMode = function(exports) {
       cards.appendChild(ghost);
     }
     return root;
+  }
+  function restoreIfMinimized(win, card) {
+    if (win.state !== "minimized") {
+      return;
+    }
+    win.restore();
+    if (card) {
+      delete card.dataset.state;
+    }
   }
   function buildInstanceCard(win, deps2, index2, dismiss) {
     const card = document.createElement("button");
@@ -6141,14 +6352,18 @@ var desktopMode = function(exports) {
       body.classList.add("desktop-mode-dock-peek__card-body--custom");
     }
     card.appendChild(body);
+    if (win.state === "minimized") {
+      card.dataset.state = "minimized";
+    }
     card.addEventListener("click", () => {
       spawnFocusViewTransition(deps2, win, card, dismiss);
     });
     card.addEventListener("pointerenter", () => {
-      if (deps2.windowManager.getFocused() === win) {
-        return;
+      if (win.state === "minimized") {
+        restoreIfMinimized(win, card);
+      } else if (deps2.windowManager.getFocused() !== win) {
+        deps2.windowManager.focus(win);
       }
-      deps2.windowManager.focus(win);
     });
     const finalCard = applyFilters(
       HOOKS.DOCK_PEEK_CARD_ELEMENT,
@@ -6162,6 +6377,7 @@ var desktopMode = function(exports) {
     const vtName = `desktop-mode-peek-card-${win.id}`;
     const focus = () => {
       dismiss();
+      restoreIfMinimized(win, card);
       deps2.windowManager.focus(win);
     };
     if (typeof doc.startViewTransition !== "function") {
@@ -6598,21 +6814,30 @@ var desktopMode = function(exports) {
     return entry;
   }
   const mountState = /* @__PURE__ */ new WeakMap();
+  function mountIntact(state2, container) {
+    for (const node of state2.nodes) {
+      if (node.parentNode !== container) {
+        return false;
+      }
+    }
+    return true;
+  }
   function render$1(result, container) {
     const existing = mountState.get(container);
-    if (existing && existing.strings === result.strings) {
+    if (existing && existing.strings === result.strings && mountIntact(existing, container)) {
       applyValues(existing.parts, result.values);
       return;
     }
     const compiled = compile(result.strings);
     const fragment = compiled.template.content.cloneNode(true);
     const parts = compiled.buildParts(fragment);
+    const nodes = Array.from(fragment.childNodes);
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
     container.appendChild(fragment);
     applyValues(parts, result.values);
-    mountState.set(container, { strings: result.strings, parts });
+    mountState.set(container, { strings: result.strings, parts, nodes });
   }
   function applyValues(parts, values) {
     for (const part of parts) {
@@ -7303,7 +7528,7 @@ var desktopMode = function(exports) {
     closeMenu$1();
     const canonical = canonicalItemId(opts.id);
     const nativeRail = railFromId(opts.id, opts.surface);
-    const currentPlacement = resolvePlacement(
+    const currentPlacement2 = resolvePlacement(
       canonical,
       nativeRail,
       getApi()?.getOsSettings?.().itemVisibility ?? {}
@@ -7324,7 +7549,7 @@ var desktopMode = function(exports) {
           )
         )
       });
-      if (currentPlacement !== "both") {
+      if (currentPlacement2 !== "both") {
         options.push({
           id: "show-on-desktop-too",
           label: __("Also show on desktop"),
@@ -7347,7 +7572,7 @@ var desktopMode = function(exports) {
           )
         )
       });
-      if (currentPlacement !== "both") {
+      if (currentPlacement2 !== "both") {
         options.push({
           id: "show-on-dock-too",
           label: __("Also show on dock"),
@@ -8800,6 +9025,18 @@ var desktopMode = function(exports) {
       if (item.windowId) {
         return item.windowId;
       }
+      if (item.id.startsWith("dock:")) {
+        const iconId = item.id.slice(5);
+        const cfg = window.desktopModeConfig;
+        const icon = cfg?.desktopIcons?.find((i) => i.id === iconId);
+        if (icon?.window) {
+          return icon.window;
+        }
+        if (icon?.url) {
+          const remapped2 = resolveNativeUrlRemap(icon.url);
+          return remapped2 ?? this.deriveWindowId(icon.url);
+        }
+      }
       const remapped = resolveNativeUrlRemap(item.url);
       return remapped ?? this.deriveWindowId(item.url);
     }
@@ -8919,7 +9156,6 @@ var desktopMode = function(exports) {
      */
     updateActiveStates() {
       const focused = this.windowManager.getFocused();
-      const focusedBaseId = focused ? focused.config.baseId || focused.id : null;
       const activeDesktopId = this.windowManager.getActiveDesktopId();
       const onActiveDesktop = (w) => (w.config.desktopId || activeDesktopId) === activeDesktopId;
       const isMinimized = (w) => w.state === "minimized";
@@ -8929,15 +9165,33 @@ var desktopMode = function(exports) {
           continue;
         }
         const baseId = this.resolveItemBaseId(item);
-        const instances = this.windowManager.getAllByBaseId(baseId).filter(onActiveDesktop);
+        let instances = this.windowManager.getAllByBaseId(baseId).filter(onActiveDesktop);
+        if (instances.length === 0 && item.url) {
+          const derivedId = this.deriveWindowId(item.url);
+          instances = this.windowManager.getAll().filter((w) => {
+            const wBase = w.config.baseId || w.id;
+            if (wBase === baseId || wBase === derivedId || wBase === item.id) {
+              return true;
+            }
+            if (w.config.url) {
+              const wDerived = this.deriveWindowId(w.config.url);
+              return wDerived === baseId || wDerived === derivedId;
+            }
+            return false;
+          }).filter(onActiveDesktop);
+        }
         const isOpen = instances.length > 0;
         const allMinimized = isOpen && instances.every(isMinimized);
-        const isFocused = focusedBaseId === baseId && !!focused && onActiveDesktop(focused) && !isMinimized(focused);
+        const isFocused = !!focused && onActiveDesktop(focused) && !isMinimized(focused) && instances.some((w) => w.id === focused.id || (focused.config.baseId || focused.id) === baseId);
         tile2.classList.toggle("desktop-mode-dock__item--active", isOpen);
         tile2.classList.toggle("desktop-mode-dock__item--focused", isFocused);
         tile2.classList.toggle(
           "desktop-mode-dock__item--all-minimized",
           allMinimized
+        );
+        tile2.classList.toggle(
+          "desktop-mode-dock__item--stacked",
+          isOpen && instances.length > 1
         );
       }
       for (const sys of this.systemItems) {
@@ -9058,9 +9312,9 @@ var desktopMode = function(exports) {
     return dock instanceof Dock ? dock : null;
   }
   function installDefaultDockRailRenderer() {
-    register$1(defaultDockRailRenderer);
+    register$2(defaultDockRailRenderer);
   }
-  const modalStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000;--desktop-mode-text:#f0f0f1;--desktop-mode-text-muted:#bbc1c7;--desktop-mode-muted:#a7aaad;--desktop-mode-muted-fg:#a7aaad;--desktop-mode-border:rgba( 255,255,255,0.25 );--wpd-button-bg-hover:rgba( 255,255,255,0.08 )}:host( [ open ] ){display:flex}.dialog{max-width:92vw;max-height:90vh;background:var( --wpd-modal-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-modal-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );display:flex;flex-direction:column;overflow:hidden}:host( [ size='sm' ] ) .dialog{width:min( 360px,92vw )}:host(:not( [ size ] ) ) .dialog,:host( [ size='md' ] ) .dialog{width:min( 540px,92vw )}:host( [ size='lg' ] ) .dialog{width:min( 760px,94vw )}.header{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;border-bottom:1px solid rgba( 255,255,255,0.06 )}.title{margin:0;flex:1;font-size:15px;font-weight:600}.header-actions{display:flex;gap:6px}.header-actions::slotted( * ){margin-inline-start:6px}.close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;cursor:pointer;opacity:0.7}.close:hover{opacity:1;background:rgba( 255,255,255,0.08 )}.body{padding:16px 20px;overflow:auto;flex:1 1 auto;font-size:13px;line-height:1.5}.footer{padding:12px 20px 16px;border-top:1px solid rgba( 255,255,255,0.06 )}.footer slot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}:host( [ mandatory ] ) .close{display:none}`;
+  const modalStyles = css`:host{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba( 0,0,0,0.45 );backdrop-filter:blur( 2px );z-index:10000;--desktop-mode-text:#f0f0f1;--desktop-mode-text-muted:#bbc1c7;--desktop-mode-muted:#a7aaad;--desktop-mode-muted-fg:#a7aaad;--desktop-mode-border:rgba( 255,255,255,0.25 );--desktop-mode-window-bg:#2c3338;--wpd-button-bg-hover:rgba( 255,255,255,0.08 )}:host( [ open ] ){display:flex}.dialog{max-width:92vw;max-height:90vh;background:var( --wpd-modal-bg,var( --desktop-mode-bg,#1d2327 ) );color:var( --wpd-modal-fg,var( --desktop-mode-fg,#fff ) );border:1px solid rgba( 255,255,255,0.08 );border-radius:10px;box-shadow:0 20px 50px rgba( 0,0,0,0.6 );display:flex;flex-direction:column;overflow:hidden}:host( [ size='sm' ] ) .dialog{width:min( 360px,92vw )}:host(:not( [ size ] ) ) .dialog,:host( [ size='md' ] ) .dialog{width:min( 540px,92vw )}:host( [ size='lg' ] ) .dialog{width:min( 760px,94vw )}.header{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;border-bottom:1px solid rgba( 255,255,255,0.06 )}.title{margin:0;flex:1;font-size:15px;font-weight:600}.header-actions{display:flex;gap:6px}.header-actions::slotted( * ){margin-inline-start:6px}.close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;cursor:pointer;opacity:0.7}.close:hover{opacity:1;background:rgba( 255,255,255,0.08 )}.body{padding:16px 20px;overflow:auto;flex:1 1 auto;font-size:13px;line-height:1.5}.footer{padding:12px 20px 16px;border-top:1px solid rgba( 255,255,255,0.06 )}.footer slot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}:host( [ mandatory ] ) .close{display:none}`;
   const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   const _WpdModal = class _WpdModal extends Component {
     constructor() {
@@ -9197,7 +9451,7 @@ var desktopMode = function(exports) {
   _WpdModal.styles = [modalStyles];
   _WpdModal.help = {
     title: "Modal overlay",
-    summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm. The dialog surface is dark and re-points the shared surface tokens (--desktop-mode-text/-muted/-border, --wpd-button-bg-hover) so wpd-* controls slotted into it resolve readable dark-surface colors automatically.",
+    summary: "Overlay container with title, body, and footer slots. Handles ESC, click-outside, focus trap. Use for rich modal flows that go beyond a yes/no confirm. The dialog surface is dark and re-points the shared surface tokens (--desktop-mode-text/-muted/-border/-window-bg, --wpd-button-bg-hover) so wpd-* controls slotted into it resolve readable dark-surface colors automatically.",
     status: "experimental",
     since: "0.8.5",
     props: [
@@ -9224,13 +9478,20 @@ var desktopMode = function(exports) {
   };
   let WpdModal = _WpdModal;
   defineComponent("wpd-modal", WpdModal);
-  const styles$6 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}`;
+  const styles$6 = css`:host{display:inline-flex}:host( [ fill-cell ] ){display:flex;width:100%}button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var( --wpd-button-padding,6px 12px );border-radius:var( --wpd-button-border-radius,6px );font:inherit;font-weight:500;cursor:pointer;transition:background-color 0.12s ease,color 0.12s ease,border-color 0.12s ease;background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid var( --desktop-mode-border,#c3c4c7 ) )}:host( [ fill-cell ] ) button{width:100%;min-height:var( --wpd-button-min-height,44px )}button:disabled{opacity:0.5;cursor:not-allowed}button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.04 ) )}:host( [ variant='primary' ] ) button{background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) );color:var( --wpd-button-fg,#fff );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='primary' ] ) button:hover:not(:disabled ){filter:brightness( 1.06 );background:var( --wpd-button-bg,var( --wp-admin-theme-color,#2271b1 ) )}:host( [ variant='secondary' ] ) button{background:var( --wpd-button-bg,rgba( 0,0,0,0.06 ) );color:var( --wpd-button-fg,var( --desktop-mode-text,#1d2327 ) );border:var( --wpd-button-border,1px solid transparent )}:host( [ variant='secondary' ] ) button:hover:not(:disabled ){background:var( --wpd-button-bg-hover,rgba( 0,0,0,0.1 ) )}:host( [ variant='danger' ] ) button{background:var( --wpd-button-bg,transparent );color:var( --wpd-button-fg,#d63638 );border:var( --wpd-button-border,1px solid currentColor )}:host( [ variant='danger' ] ) button:hover:not(:disabled ){background:#d63638;color:#fff}:host( [ variant='link' ] ) button{background:transparent;color:var( --wpd-button-fg,var( --wp-admin-theme-color,#2271b1 ) );border:0;padding:0;text-decoration:underline}:host( [ busy ] ) button{pointer-events:none;opacity:0.75}.wpd-button__spinner{box-sizing:border-box;display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:wpd-button-spin 0.6s linear infinite;flex-shrink:0}@keyframes wpd-button-spin{to{transform:rotate( 360deg )}}`;
   const _WpdButton = class _WpdButton extends Component {
     render() {
       const disabled = this.disabled !== null;
+      const busy = this.busy !== null;
       const type = this.type || "button";
       return html`
-			<button part="button" type=${type} ?disabled=${disabled}>
+			<button
+				part="button"
+				type=${type}
+				?disabled=${disabled || busy}
+				aria-busy=${busy ? "true" : "false"}
+			>
+				${busy ? html`<span class="wpd-button__spinner" aria-hidden="true"></span>` : ""}
 				<slot></slot>
 			</button>
 		`;
@@ -9307,7 +9568,7 @@ var desktopMode = function(exports) {
   }
   const CUSTOM_GRADIENT_DESCRIPTION = () => __("Mix your own two-colour gradient and set the angle — your desk, your palette.");
   function registerCustomGradient(ctx) {
-    register$2({
+    register$3({
       id: CUSTOM_GRADIENT_ID,
       label: __("Custom gradient"),
       type: "css",
@@ -9318,12 +9579,12 @@ var desktopMode = function(exports) {
   }
   function registerCustomImageIfPresent(state2) {
     if (!state2.customImage) {
-      unregister$2(CUSTOM_IMAGE_ID);
+      unregister$3(CUSTOM_IMAGE_ID);
       return;
     }
     const safeUrl = encodeURI(state2.customImage.url);
     const value = `url("${safeUrl}") center/cover no-repeat, #1d2327`;
-    register$2({
+    register$3({
       id: CUSTOM_IMAGE_ID,
       label: __("Custom image"),
       type: "css",
@@ -9462,7 +9723,7 @@ var desktopMode = function(exports) {
         return;
       }
       seedWallpaperSettings(this.state.wallpaperSettings);
-      const def = get$1(this.state.wallpaper) || get$1(getDefaultWallpaperId()) || get$1(DEFAULT_WALLPAPER_ID) || all$1()[0];
+      const def = get$2(this.state.wallpaper) || get$2(getDefaultWallpaperId()) || get$2(DEFAULT_WALLPAPER_ID) || all$2()[0];
       if (def) {
         this.layer.apply(def);
       }
@@ -9781,12 +10042,12 @@ var desktopMode = function(exports) {
     return {
       id,
       pluginUrl,
-      prefersReducedMotion: prefersReducedMotion(),
+      prefersReducedMotion: prefersReducedMotion$1(),
       visible: !document.hidden,
       settings: getWallpaperSettings(id)
     };
   }
-  function prefersReducedMotion() {
+  function prefersReducedMotion$1() {
     if (typeof window.matchMedia !== "function") {
       return false;
     }
@@ -9796,14 +10057,11 @@ var desktopMode = function(exports) {
     constructor(element, pluginUrl) {
       this.generation = 0;
       this.active = null;
+      this.suspendReasons = /* @__PURE__ */ new Map();
+      this.freezeOverlay = null;
+      this.frozenCanvas = null;
       this.boundVisibilityChange = () => {
-        if (!this.active) {
-          return;
-        }
-        doAction(HOOKS.WALLPAPER_VISIBILITY, {
-          id: this.active.id,
-          state: document.hidden ? "hidden" : "visible"
-        });
+        this.emitEffectiveVisibility();
       };
       this.element = element;
       this.pluginUrl = pluginUrl;
@@ -9824,11 +10082,58 @@ var desktopMode = function(exports) {
       this.applyCanvas(def, gen);
     }
     /**
+     * Suspend wallpaper animation — e.g. while a game renders its own
+     * canvas. Refcounted per reason; the wallpaper stays suspended
+     * until every held reason is resumed. On the first held reason the
+     * layer freezes the current frame into a bitmap overlay
+     * (best-effort) and re-emits the effective visibility so mounted
+     * scenes stop their tickers. The scene is never destroyed.
+     */
+    suspend(reason) {
+      const wasSuspended = this.isSuspended();
+      this.suspendReasons.set(
+        reason,
+        (this.suspendReasons.get(reason) ?? 0) + 1
+      );
+      if (wasSuspended) {
+        return;
+      }
+      this.installFreezeOverlay();
+      this.emitSuspendAction();
+      this.emitEffectiveVisibility();
+    }
+    /**
+     * Release one hold on a suspend reason. Animation resumes once no
+     * reason remains held. Unknown reasons are ignored.
+     */
+    resume(reason) {
+      const count = this.suspendReasons.get(reason);
+      if (count === void 0) {
+        return;
+      }
+      if (count > 1) {
+        this.suspendReasons.set(reason, count - 1);
+        return;
+      }
+      this.suspendReasons.delete(reason);
+      if (this.isSuspended()) {
+        return;
+      }
+      this.removeFreezeOverlay();
+      this.emitSuspendAction();
+      this.emitEffectiveVisibility();
+    }
+    /** Whether any suspend reason is currently held. */
+    isSuspended() {
+      return this.suspendReasons.size > 0;
+    }
+    /**
      * Imperative teardown entry point — called from desktop.ts on
      * `pagehide` so a canvas wallpaper's ticker doesn't compete with
      * the session-beacon flush at unload.
      */
     teardownActive() {
+      this.removeFreezeOverlay();
       if (!this.active) {
         return;
       }
@@ -9875,6 +10180,9 @@ var desktopMode = function(exports) {
         }
         this.active = { id: def.id, teardown };
         doAction(HOOKS.WALLPAPER_MOUNTED, { id: def.id, container: this.element, ctx });
+        if (this.isEffectivelyHidden()) {
+          this.emitEffectiveVisibility();
+        }
       };
       depsReady.then(
         () => {
@@ -9906,6 +10214,78 @@ var desktopMode = function(exports) {
           this.handleMountFailure(def.id, err);
         }
       );
+    }
+    /** Hidden tab OR held suspend reason — what mounted scenes act on. */
+    isEffectivelyHidden() {
+      return document.hidden || this.isSuspended();
+    }
+    /**
+     * Re-emit `WALLPAPER_VISIBILITY` with the effective state. Both the
+     * `visibilitychange` listener and suspend/resume route through this,
+     * so a tab re-focus during suspension cannot restart animation.
+     */
+    emitEffectiveVisibility() {
+      if (!this.active) {
+        return;
+      }
+      doAction(HOOKS.WALLPAPER_VISIBILITY, {
+        id: this.active.id,
+        state: this.isEffectivelyHidden() ? "hidden" : "visible"
+      });
+    }
+    emitSuspendAction() {
+      doAction(HOOKS.WALLPAPER_SUSPEND, {
+        id: this.active?.id ?? null,
+        suspended: this.isSuspended(),
+        reasons: Array.from(this.suspendReasons.keys())
+      });
+    }
+    /**
+     * Freeze the current frame: copy the live wallpaper canvas onto a
+     * 2D overlay canvas layered above it, then hide the live canvas.
+     * Best-effort — Pixi's WebGL canvas has no `preserveDrawingBuffer`,
+     * so the draw can produce a blank on some drivers; on any failure
+     * we skip the overlay entirely (a canvas whose ticker stops keeps
+     * presenting its last frame anyway).
+     */
+    installFreezeOverlay() {
+      if (this.freezeOverlay || !this.active) {
+        return;
+      }
+      const source = this.element.querySelector("canvas");
+      if (!source || source.width === 0 || source.height === 0) {
+        return;
+      }
+      try {
+        const overlay = document.createElement("canvas");
+        overlay.width = source.width;
+        overlay.height = source.height;
+        const ctx2d = overlay.getContext("2d");
+        if (!ctx2d) {
+          return;
+        }
+        ctx2d.drawImage(source, 0, 0);
+        overlay.className = "desktop-mode-wallpaper-freeze";
+        overlay.style.position = "absolute";
+        overlay.style.inset = "0";
+        overlay.style.width = "100%";
+        overlay.style.height = "100%";
+        overlay.style.pointerEvents = "none";
+        overlay.setAttribute("aria-hidden", "true");
+        this.element.appendChild(overlay);
+        source.style.visibility = "hidden";
+        this.freezeOverlay = overlay;
+        this.frozenCanvas = source;
+      } catch {
+      }
+    }
+    removeFreezeOverlay() {
+      this.freezeOverlay?.remove();
+      this.freezeOverlay = null;
+      if (this.frozenCanvas) {
+        this.frozenCanvas.style.visibility = "";
+        this.frozenCanvas = null;
+      }
     }
     handleMountFailure(id, err) {
       this.element.innerHTML = "";
@@ -9970,7 +10350,7 @@ var desktopMode = function(exports) {
       }
       const cssDef = defFromCssEntry(entry);
       if (cssDef) {
-        register$2(cssDef);
+        register$3(cssDef);
         registered.add(entry.id);
         osSettings.apply();
         return;
@@ -9991,7 +10371,7 @@ var desktopMode = function(exports) {
         return;
       }
       try {
-        register$2(def);
+        register$3(def);
       } catch (err) {
         doAction(HOOKS.SHELL_ERROR, {
           scope: "wallpaper-register",
@@ -10007,7 +10387,7 @@ var desktopMode = function(exports) {
       if (!registered.has(id)) {
         return;
       }
-      unregister$2(id);
+      unregister$3(id);
       registered.delete(id);
       osSettings.apply();
     };
@@ -10027,6 +10407,848 @@ var desktopMode = function(exports) {
         }
       }
     };
+  }
+  const store$e = createSharedStore(
+    "desktop-mode/games-registry",
+    () => ({
+      seed: [],
+      listeners: /* @__PURE__ */ new Set()
+    })
+  );
+  const seed$3 = store$e.state.seed;
+  const listeners$c = store$e.state.listeners;
+  function register$1(entry) {
+    throwOnRegistrationErrors(
+      "Game",
+      collectRegistrationErrors(entry, GAME_CHECKS),
+      entry
+    );
+    const idx = seed$3.findIndex((g) => g.id === entry.id);
+    if (idx >= 0) {
+      seed$3[idx] = entry;
+    } else {
+      seed$3.push(entry);
+    }
+    notify$f();
+  }
+  function unregister$1(id) {
+    const idx = seed$3.findIndex((g) => g.id === id);
+    if (idx >= 0) {
+      seed$3.splice(idx, 1);
+      notify$f();
+    }
+  }
+  function subscribe$3(cb) {
+    listeners$c.add(cb);
+    return () => {
+      listeners$c.delete(cb);
+    };
+  }
+  function notify$f() {
+    const snapshot = Array.from(listeners$c);
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] games registry listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function all$1() {
+    const copy = seed$3.slice();
+    const filtered = applyFilters(HOOKS.GAMES, copy);
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.games` filter returned a non-array; falling back to seed list."
+        );
+      }
+      return copy;
+    }
+    return filtered.filter(isValidEntry);
+  }
+  function get$1(id) {
+    return all$1().find((g) => g.id === id);
+  }
+  const GAME_CHECKS = [
+    {
+      field: "id",
+      message: "missing or not a non-empty string",
+      valid: (g) => typeof g.id === "string" && g.id !== ""
+    },
+    {
+      field: "title",
+      message: "missing or not a non-empty string",
+      valid: (g) => typeof g.title === "string" && g.title !== ""
+    },
+    {
+      field: "scoreColumns",
+      message: "must be an array",
+      valid: (g) => Array.isArray(g.scoreColumns)
+    },
+    {
+      field: "render/scriptUrl",
+      message: "needs a `render` callback or a `scriptUrl` to lazily load one",
+      valid: (g) => typeof g.render === "function" || typeof g.scriptUrl === "string" && g.scriptUrl !== ""
+    }
+  ];
+  function isValidEntry(entry) {
+    return collectRegistrationErrors(entry, GAME_CHECKS).length === 0;
+  }
+  function stubFromServerEntry(entry) {
+    return {
+      id: entry.id,
+      title: entry.title,
+      icon: entry.icon,
+      description: entry.description || void 0,
+      scoreColumns: Array.isArray(entry.scoreColumns) ? entry.scoreColumns : [],
+      config: entry.config ?? {},
+      scriptUrl: entry.scriptUrl,
+      scriptTranslations: entry.scriptTranslations,
+      scriptL10n: entry.scriptL10n,
+      scriptBefore: entry.scriptBefore,
+      scriptAfter: entry.scriptAfter
+    };
+  }
+  function createGamesRegistrySync() {
+    const registered = /* @__PURE__ */ new Set();
+    const registerEntry = (entry) => {
+      try {
+        const existing = get$1(entry.id);
+        const stub = stubFromServerEntry(entry);
+        register$1(
+          existing && typeof existing.render === "function" ? { ...stub, render: existing.render, window: existing.window } : stub
+        );
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            `[desktop-mode] Server game "${entry.id}" failed to register:`,
+            err
+          );
+        }
+        return;
+      }
+      registered.add(entry.id);
+    };
+    const unregisterEntry = (id) => {
+      if (!registered.has(id)) {
+        return;
+      }
+      unregister$1(id);
+      registered.delete(id);
+    };
+    return async (list2) => {
+      const incoming = /* @__PURE__ */ new Set();
+      for (const entry of list2) {
+        if (entry && typeof entry.id === "string" && entry.id !== "") {
+          incoming.add(entry.id);
+        }
+      }
+      for (const id of Array.from(registered)) {
+        if (!incoming.has(id)) {
+          unregisterEntry(id);
+        }
+      }
+      for (const entry of list2) {
+        if (incoming.has(entry.id)) {
+          registerEntry(entry);
+        }
+      }
+    };
+  }
+  const suppliers = /* @__PURE__ */ new Map();
+  const subscribers = /* @__PURE__ */ new Map();
+  let booted$3 = false;
+  const heartbeat = {
+    contribute(field, supplier) {
+      suppliers.set(field, supplier);
+      return () => {
+        if (suppliers.get(field) === supplier) {
+          suppliers.delete(field);
+        }
+      };
+    },
+    subscribe(field, cb) {
+      let set = subscribers.get(field);
+      if (!set) {
+        set = /* @__PURE__ */ new Set();
+        subscribers.set(field, set);
+      }
+      set.add(cb);
+      return () => {
+        set.delete(cb);
+      };
+    }
+  };
+  function bootHeartbeatBus() {
+    if (booted$3) {
+      return;
+    }
+    booted$3 = true;
+    const $ = window.jQuery;
+    if (!$) {
+      console.warn(
+        "[desktop-mode/heartbeat] jQuery missing — Heartbeat bus disabled."
+      );
+      return;
+    }
+    $(document).on("heartbeat-send", (...args) => {
+      const data = args[1];
+      if (!data) {
+        return;
+      }
+      for (const [field, supplier] of suppliers) {
+        try {
+          data[field] = supplier();
+        } catch (err) {
+          console.error(
+            `[desktop-mode/heartbeat] supplier for "${field}" threw:`,
+            err
+          );
+        }
+      }
+    });
+    $(document).on("heartbeat-tick", (...args) => {
+      const response = args[1];
+      if (!response) {
+        return;
+      }
+      for (const [field, set] of subscribers) {
+        const value = response[field];
+        if (value === void 0) {
+          continue;
+        }
+        for (const cb of set) {
+          try {
+            cb(value);
+          } catch (err) {
+            console.error(
+              `[desktop-mode/heartbeat] subscriber for "${field}" threw:`,
+              err
+            );
+          }
+        }
+      }
+    });
+  }
+  let _config = null;
+  let _state = {
+    installHintDismissed: false,
+    notificationsEnabled: false
+  };
+  const _listeners = /* @__PURE__ */ new Set();
+  function initPwaState(config) {
+    if (!config) {
+      _config = null;
+      return;
+    }
+    _config = config;
+    _state = { ...config.state };
+    notify$e();
+  }
+  function getPwaState() {
+    return { ..._state };
+  }
+  function updatePwaState(patch) {
+    _state = { ..._state, ...patch };
+    notify$e();
+    if (!_config) {
+      return getPwaState();
+    }
+    const body = JSON.stringify(patch);
+    const nonce = readRestNonce$2();
+    void fetch(_config.stateUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        ...nonce ? { "X-WP-Nonce": nonce } : {}
+      },
+      body
+    }).catch((err) => {
+      if (typeof console !== "undefined") {
+        console.warn("[desktop-mode] pwa-state write failed:", err);
+      }
+    });
+    return getPwaState();
+  }
+  function subscribePwaState(cb) {
+    _listeners.add(cb);
+    return () => {
+      _listeners.delete(cb);
+    };
+  }
+  function notify$e() {
+    const snapshot = getPwaState();
+    for (const cb of Array.from(_listeners)) {
+      try {
+        cb(snapshot);
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] pwa-state listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function readRestNonce$2() {
+    const cfg = window.desktopModeConfig;
+    return cfg?.restNonce ?? "";
+  }
+  const state = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    getPwaState,
+    initPwaState,
+    subscribePwaState,
+    updatePwaState
+  }, Symbol.toStringTag, { value: "Module" }));
+  function notify$d(options) {
+    const intent = activity.filter(
+      "desktop-mode/notification-requested",
+      { ...options }
+    );
+    if (!intent || intent.cancel === true || !intent.title) {
+      return () => void 0;
+    }
+    let dismissed = false;
+    let dismissNative = null;
+    let dismissToast = null;
+    const dismiss = () => {
+      if (dismissed) {
+        return;
+      }
+      dismissed = true;
+      if (dismissNative) {
+        dismissNative();
+      }
+      if (dismissToast) {
+        dismissToast();
+      }
+    };
+    const fallback = () => {
+      dismissToast = showToast({
+        message: intent.body ? intent.title + " — " + intent.body : intent.title
+      });
+      activity.publish("desktop-mode/notification-shown", {
+        ...intent,
+        fallback: "toast"
+      });
+    };
+    if (typeof window === "undefined" || typeof Notification === "undefined") {
+      fallback();
+      return dismiss;
+    }
+    const perm = Notification.permission;
+    if (perm === "granted") {
+      dismissNative = renderNative(intent);
+      if (!dismissNative) {
+        fallback();
+      }
+      return dismiss;
+    }
+    if (perm === "denied") {
+      fallback();
+      return dismiss;
+    }
+    void Notification.requestPermission().then((result) => {
+      if (dismissed) {
+        return;
+      }
+      if (result === "granted") {
+        updatePwaState({ notificationsEnabled: true });
+        dismissNative = renderNative(intent);
+        if (!dismissNative) {
+          fallback();
+        }
+        return;
+      }
+      fallback();
+    });
+    return dismiss;
+  }
+  function renderNative(intent) {
+    let n = null;
+    try {
+      n = new Notification(intent.title, {
+        body: intent.body,
+        icon: intent.icon,
+        tag: intent.tag,
+        requireInteraction: intent.requireInteraction
+      });
+    } catch (err) {
+      if (typeof console !== "undefined") {
+        console.warn("[desktop-mode] Notification ctor threw:", err);
+      }
+      return null;
+    }
+    if (intent.onClick) {
+      const handler = intent.onClick;
+      n.onclick = () => {
+        try {
+          handler(n);
+        } catch (hErr) {
+          if (typeof console !== "undefined") {
+            console.error(
+              "[desktop-mode] notification onClick threw:",
+              hErr
+            );
+          }
+        }
+      };
+    }
+    activity.publish("desktop-mode/notification-shown", {
+      ...intent,
+      fallback: null
+    });
+    return () => {
+      if (n) {
+        n.close();
+      }
+    };
+  }
+  async function requestNotificationPermission() {
+    if (typeof Notification === "undefined") {
+      return "unsupported";
+    }
+    if (Notification.permission !== "default") {
+      return Notification.permission;
+    }
+    const result = await Notification.requestPermission();
+    if (result === "granted") {
+      updatePwaState({ notificationsEnabled: true });
+    }
+    return result;
+  }
+  function getNotificationPermission() {
+    if (typeof Notification === "undefined") {
+      return "unsupported";
+    }
+    return Notification.permission;
+  }
+  const store$d = createSharedStore(
+    "desktop-mode/games-challenges",
+    () => ({
+      rows: /* @__PURE__ */ new Map(),
+      version: 0,
+      listeners: /* @__PURE__ */ new Set()
+    })
+  );
+  function challengesState() {
+    return store$d.state;
+  }
+  function ingestChallenges(rows) {
+    const state2 = store$d.state;
+    let changed = false;
+    for (const row of rows) {
+      if (!row || typeof row.id !== "number") {
+        continue;
+      }
+      const prev = state2.rows.get(row.id);
+      if (!prev || prev.updatedAtMs !== row.updatedAtMs) {
+        state2.rows.set(row.id, row);
+        changed = true;
+      }
+      if (row.updatedAtMs > state2.version) {
+        state2.version = row.updatedAtMs;
+      }
+    }
+    if (changed) {
+      notify$c();
+    }
+  }
+  function subscribeChallenges(cb) {
+    store$d.state.listeners.add(cb);
+    return () => {
+      store$d.state.listeners.delete(cb);
+    };
+  }
+  function notify$c() {
+    for (const cb of Array.from(store$d.state.listeners)) {
+      try {
+        cb();
+      } catch (err) {
+        if (typeof console !== "undefined") {
+          console.error(
+            "[desktop-mode] challenges store listener threw:",
+            err
+          );
+        }
+      }
+    }
+  }
+  function allChallenges() {
+    return Array.from(store$d.state.rows.values()).sort(
+      (a, b) => b.updatedAtMs - a.updatedAtMs
+    );
+  }
+  const SOURCE = "desktop-mode/games";
+  function restEnv() {
+    const wpGlobal = window.wp;
+    const config = wpGlobal?.desktop?.config;
+    return {
+      restUrl: config?.restUrl || "/wp-json/",
+      restNonce: config?.restNonce || ""
+    };
+  }
+  async function call$2(path, init2 = {}, opts = {}) {
+    const { restUrl: restUrl2, restNonce } = restEnv();
+    const headers = new Headers(init2.headers ?? {});
+    headers.set("X-WP-Nonce", restNonce);
+    if (init2.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const res = await trackedFetch$1(
+      joinRestUrl(restUrl2, path),
+      { ...init2, headers, credentials: "same-origin" },
+      { source: SOURCE, windowId: opts.windowId, silent: opts.silent }
+    );
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const message = body?.message || `Games request failed (${res.status})`;
+      const error = new Error(message);
+      error.status = res.status;
+      throw error;
+    }
+    return body;
+  }
+  function submitScore(game, submission, opts = {}) {
+    return call$2(
+      `desktop-mode/v1/games/${game}/scores`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          score: submission.score,
+          meta: submission.meta ?? {}
+        })
+      },
+      opts
+    );
+  }
+  function fetchPlaytime() {
+    return call$2("desktop-mode/v1/games/playtime");
+  }
+  function recordPlaytime(game, seconds, opts = {}) {
+    return call$2(
+      `desktop-mode/v1/games/${game}/playtime`,
+      {
+        method: "POST",
+        body: JSON.stringify({ seconds })
+      },
+      opts
+    );
+  }
+  function acceptChallenge(id) {
+    return call$2(`desktop-mode/v1/games/challenges/${id}/accept`, {
+      method: "POST"
+    });
+  }
+  function completeChallenge(id, submission, opts = {}) {
+    return call$2(
+      `desktop-mode/v1/games/challenges/${id}/complete`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          score: submission.score,
+          meta: submission.meta ?? {}
+        })
+      },
+      opts
+    );
+  }
+  const FLUSH_INTERVAL_MS = 6e4;
+  function startPlaytimeTracker(gameId, opts = {}) {
+    let runningSince = Date.now();
+    let bankedMs = 0;
+    let stopped = false;
+    const harvest = () => {
+      if (runningSince === null) {
+        return;
+      }
+      const now = Date.now();
+      bankedMs += Math.max(0, now - runningSince);
+      runningSince = now;
+    };
+    const flush = () => {
+      harvest();
+      const seconds = Math.floor(bankedMs / 1e3);
+      if (seconds < 1) {
+        return;
+      }
+      bankedMs -= seconds * 1e3;
+      recordPlaytime(gameId, seconds, {
+        windowId: opts.windowId,
+        silent: true
+      }).catch(() => {
+        bankedMs += seconds * 1e3;
+      });
+    };
+    const interval = setInterval(flush, FLUSH_INTERVAL_MS);
+    return {
+      pause: () => {
+        harvest();
+        runningSince = null;
+      },
+      resume: () => {
+        if (stopped || runningSince !== null) {
+          return;
+        }
+        runningSince = Date.now();
+      },
+      stop: () => {
+        if (stopped) {
+          return;
+        }
+        stopped = true;
+        clearInterval(interval);
+        harvest();
+        runningSince = null;
+        flush();
+      }
+    };
+  }
+  function desktopGlobal() {
+    return window.wp?.desktop ?? {};
+  }
+  const DEFAULT_GAME_WIDTH = 760;
+  const DEFAULT_GAME_HEIGHT = 560;
+  const DEFAULT_GAME_MIN_WIDTH = 480;
+  const DEFAULT_GAME_MIN_HEIGHT = 380;
+  async function ensureGameRender(entry) {
+    if (typeof entry.render === "function") {
+      return entry;
+    }
+    const loadVendorScript2 = desktopGlobal().loadVendorScript;
+    if (!entry.scriptUrl || typeof loadVendorScript2 !== "function") {
+      throw new Error(
+        `[desktop-mode] Game "${entry.id}" has no render callback and no loadable script.`
+      );
+    }
+    await loadVendorScript2(entry.scriptUrl, {
+      translations: entry.scriptTranslations,
+      l10n: entry.scriptL10n,
+      before: entry.scriptBefore,
+      after: entry.scriptAfter
+    });
+    const globals = window;
+    const def = globals.desktopModeGames?.[entry.id];
+    if (!def || typeof def.render !== "function") {
+      throw new Error(
+        `[desktop-mode] No game def on window.desktopModeGames["${entry.id}"]. Script loaded but didn't publish a def — check the plugin's global assignment.`
+      );
+    }
+    const upgraded = {
+      ...entry,
+      render: def.render,
+      window: def.window ?? entry.window
+    };
+    register$1(upgraded);
+    return upgraded;
+  }
+  async function launchGame(id, opts = {}) {
+    const desktop = desktopGlobal();
+    let entry = get$1(id);
+    if (!entry) {
+      throw new Error(`[desktop-mode] Unknown game "${id}".`);
+    }
+    entry = await ensureGameRender(entry);
+    const render2 = entry.render;
+    if (typeof render2 !== "function") {
+      throw new Error(
+        `[desktop-mode] Game "${id}" did not provide a render callback.`
+      );
+    }
+    if (typeof desktop.registerWindow !== "function") {
+      throw new Error(
+        "[desktop-mode] wp.desktop.registerWindow is missing — the shell must boot before launching games."
+      );
+    }
+    const windowId = `desktop-mode-game-${id}`;
+    const suspendReason = `game:${windowId}`;
+    const manager2 = desktop.windowManager;
+    const existing = manager2?.getByBaseId?.(windowId) ?? manager2?.getById(windowId);
+    if (existing) {
+      const winDesktop = existing.config?.desktopId;
+      if (winDesktop && manager2?.switchDesktop && winDesktop !== manager2?.getActiveDesktopId?.()) {
+        manager2.switchDesktop(winDesktop);
+      }
+      void desktop.registerWindow({
+        id: windowId,
+        title: entry.title,
+        icon: entry.icon,
+        render: () => void 0
+      });
+      return;
+    }
+    desktop.wallpaper?.suspend(suspendReason);
+    let resumed = false;
+    const resumeOnce = () => {
+      if (resumed) {
+        return;
+      }
+      resumed = true;
+      desktop.wallpaper?.resume(suspendReason);
+    };
+    let tracker = null;
+    const stopTracker = () => {
+      tracker?.stop();
+      tracker = null;
+    };
+    desktop.onWindow?.(windowId, {
+      closed: () => {
+        stopTracker();
+        resumeOnce();
+      },
+      minimized: () => tracker?.pause(),
+      restored: () => tracker?.resume()
+    });
+    const submit = (result) => {
+      if (opts.challenge) {
+        return completeChallenge(opts.challenge.id, result, {
+          windowId
+        }).then(() => void 0);
+      }
+      return submitScore(id, result, { windowId }).then(
+        () => void 0
+      );
+    };
+    try {
+      await desktop.registerWindow({
+        id: windowId,
+        title: entry.title,
+        icon: entry.icon,
+        width: entry.window?.width ?? DEFAULT_GAME_WIDTH,
+        height: entry.window?.height ?? DEFAULT_GAME_HEIGHT,
+        minWidth: entry.window?.minWidth ?? DEFAULT_GAME_MIN_WIDTH,
+        minHeight: entry.window?.minHeight ?? DEFAULT_GAME_MIN_HEIGHT,
+        render: (body) => {
+          const ctx = {
+            windowId,
+            container: body,
+            config: entry.config ?? {},
+            challenge: opts.challenge,
+            submitScore: submit,
+            close: () => {
+              desktop.windowManager?.getById(windowId)?.close();
+            }
+          };
+          tracker = startPlaytimeTracker(id, { windowId });
+          const teardown = render2(ctx);
+          return () => {
+            try {
+              teardown?.();
+            } finally {
+              stopTracker();
+              resumeOnce();
+            }
+          };
+        }
+      });
+    } catch (err) {
+      stopTracker();
+      resumeOnce();
+      throw err;
+    }
+  }
+  function gameTitle(id) {
+    return get$1(id)?.title || id;
+  }
+  const promptedPending = /* @__PURE__ */ new Set();
+  const promptedCompleted = /* @__PURE__ */ new Set();
+  async function acceptAndPlay(row) {
+    const { challenge } = await acceptChallenge(row.id);
+    ingestChallenges([challenge]);
+    await launchGame(row.game, {
+      challenge: {
+        id: row.id,
+        scoreToBeat: row.scoreToBeat,
+        scoreMeta: row.scoreMeta,
+        challengerName: row.challengerName
+      }
+    });
+  }
+  function promptRecipient(row) {
+    const message = sprintf(
+      /* translators: 1: challenger display name, 2: game title/slug, 3: score. */
+      __("%1$s challenged you to %2$s — beat %3$s!"),
+      row.challengerName,
+      gameTitle(row.game),
+      String(row.scoreToBeat)
+    );
+    notify$d({
+      title: __("Game challenge"),
+      body: message,
+      tag: `desktop-mode-game-challenge-${row.id}`
+    });
+    showToast({
+      message,
+      persistent: true,
+      dismissible: true,
+      action: {
+        label: __("Accept & Play"),
+        onClick: () => {
+          void acceptAndPlay(row).catch((err) => {
+            showToast({
+              message: err instanceof Error ? err.message : __("Could not accept the challenge.")
+            });
+          });
+        }
+      }
+    });
+  }
+  function promptChallenger(row) {
+    let format;
+    if ("beaten" === row.result) {
+      format = __("%1$s beat your score: %2$s vs your %3$s.");
+    } else {
+      format = __("%1$s did not beat your score: %2$s vs your %3$s.");
+    }
+    const message = sprintf(
+      format,
+      row.recipientName,
+      String(row.resultScore ?? 0),
+      String(row.scoreToBeat)
+    );
+    notify$d({
+      title: __("Challenge finished"),
+      body: message,
+      tag: `desktop-mode-game-challenge-${row.id}`
+    });
+    showToast({ message });
+  }
+  function bootGamesChallenges(deps2) {
+    const { currentUserId } = deps2;
+    if (!currentUserId) {
+      return;
+    }
+    heartbeat.contribute("desktop_mode_games_subscribe", () => ({
+      challengesVersion: challengesState().version
+    }));
+    heartbeat.subscribe("desktop_mode_games", (payload) => {
+      if (Array.isArray(payload?.challenges)) {
+        ingestChallenges(payload.challenges);
+      }
+    });
+    const scan = () => {
+      for (const row of allChallenges()) {
+        if ("pending" === row.state && row.recipientId === currentUserId && !promptedPending.has(row.id)) {
+          promptedPending.add(row.id);
+          promptRecipient(row);
+        }
+        if ("completed" === row.state && row.challengerId === currentUserId && !promptedCompleted.has(row.id)) {
+          promptedCompleted.add(row.id);
+          promptChallenger(row);
+        }
+      }
+    };
+    subscribeChallenges(scan);
+    scan();
   }
   const COMMAND_SLUG = /^[a-z0-9_/-]+$/;
   const commandRegistryStore = createSharedStore(
@@ -10060,11 +11282,11 @@ var desktopMode = function(exports) {
     }
     throwOnRegistrationErrors("Command", errors, cmd);
     registry$8.set(slug, { ...cmd, slug });
-    notify$d();
+    notify$b();
   }
   function unregisterCommand(slug) {
     if (registry$8.delete(slug.toLowerCase())) {
-      notify$d();
+      notify$b();
     }
   }
   function unregisterByOwner(owner) {
@@ -10079,7 +11301,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$d();
+      notify$b();
     }
     return removed;
   }
@@ -10104,7 +11326,7 @@ var desktopMode = function(exports) {
   function findCommand(slug) {
     return registry$8.get(slug.toLowerCase()) ?? null;
   }
-  function notify$d() {
+  function notify$b() {
     const snapshot = Array.from(listeners$b);
     for (const cb of snapshot) {
       try {
@@ -10232,11 +11454,11 @@ var desktopMode = function(exports) {
       return;
     }
     registry$7.set(id, { ...tab, id });
-    notify$c();
+    notify$a();
   }
   function unregisterSettingsTab(id) {
     if (registry$7.delete(id.toLowerCase())) {
-      notify$c();
+      notify$a();
     }
   }
   function unregisterSettingsTabsByOwner(owner) {
@@ -10251,7 +11473,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$c();
+      notify$a();
     }
     return removed;
   }
@@ -10260,7 +11482,7 @@ var desktopMode = function(exports) {
       (a, b) => (a.order ?? 100) - (b.order ?? 100)
     );
   }
-  function notify$c() {
+  function notify$a() {
     const snapshot = Array.from(listeners$a);
     for (const cb of snapshot) {
       try {
@@ -10393,11 +11615,11 @@ var desktopMode = function(exports) {
     throwOnRegistrationErrors("TitleBarButton", errors, def);
     const id = def.id.trim().toLowerCase();
     registry$6.set(id, { ...def, id });
-    notify$b();
+    notify$9();
   }
   function unregisterTitleBarButton(id) {
     if (registry$6.delete(id.toLowerCase())) {
-      notify$b();
+      notify$9();
     }
   }
   function unregisterTitleBarButtonsByOwner(owner) {
@@ -10412,7 +11634,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$b();
+      notify$9();
     }
     return removed;
   }
@@ -10421,7 +11643,7 @@ var desktopMode = function(exports) {
       (a, b) => (a.order ?? 100) - (b.order ?? 100)
     );
   }
-  function notify$b() {
+  function notify$9() {
     const snapshot = Array.from(listeners$9);
     for (const cb of snapshot) {
       try {
@@ -10518,11 +11740,11 @@ var desktopMode = function(exports) {
     throwOnRegistrationErrors("WindowLinkRenderer", errors, def);
     const id = def.id.trim().toLowerCase();
     registry$5.set(id, { ...def, id });
-    notify$a();
+    notify$8();
   }
   function unregisterWindowLinkRenderer(id) {
     if (registry$5.delete(id.toLowerCase())) {
-      notify$a();
+      notify$8();
     }
   }
   function unregisterWindowLinkRenderersByOwner(owner) {
@@ -10537,7 +11759,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$a();
+      notify$8();
     }
     return removed;
   }
@@ -10566,7 +11788,7 @@ var desktopMode = function(exports) {
       listeners$8.delete(cb);
     };
   }
-  function notify$a() {
+  function notify$8() {
     const snapshot = Array.from(listeners$8);
     for (const cb of snapshot) {
       try {
@@ -10943,7 +12165,7 @@ var desktopMode = function(exports) {
   const VISIBLE_CLASS = "desktop-mode-window-links--visible";
   let _started$2 = false;
   function startWindowLinkRenderHost({
-    manager,
+    manager: manager2,
     osSettings
   }) {
     if (_started$2) {
@@ -10988,7 +12210,7 @@ var desktopMode = function(exports) {
         }
         const members = [];
         const push = (windowId, role, content) => {
-          const win = manager.getById(windowId);
+          const win = manager2.getById(windowId);
           if (!win || !content) {
             return;
           }
@@ -11018,11 +12240,11 @@ var desktopMode = function(exports) {
         );
         return Number.isFinite(z) ? z : null;
       };
-      const focusedId = manager.getFocused()?.id ?? null;
+      const focusedId = manager2.getFocused()?.id ?? null;
       const edges = [];
       for (const edge of listWindowLinkEdges()) {
-        const fromWin = manager.getById(edge.fromWindowId);
-        const toWin = manager.getById(edge.toWindowId);
+        const fromWin = manager2.getById(edge.fromWindowId);
+        const toWin = manager2.getById(edge.toWindowId);
         if (!fromWin || !toWin) {
           continue;
         }
@@ -11045,7 +12267,7 @@ var desktopMode = function(exports) {
         });
       }
       const obstacles = [];
-      for (const win of manager.getAll()) {
+      for (const win of manager2.getAll()) {
         const rect = rectOf(win);
         if (!rect) {
           continue;
@@ -11201,7 +12423,7 @@ var desktopMode = function(exports) {
       emitFrame();
     };
     const focusedNeighbors = () => {
-      const focused = manager.getFocused();
+      const focused = manager2.getFocused();
       if (!focused) {
         return /* @__PURE__ */ new Set();
       }
@@ -11220,14 +12442,14 @@ var desktopMode = function(exports) {
       if (!isEnabled() || snapshot.windowLinkRaiseOnFocus === false || snapshot.windowLinkVisibility === "off") {
         return;
       }
-      const focused = manager.getFocused();
+      const focused = manager2.getFocused();
       if (!focused) {
         return;
       }
       for (const id of getDirectlyRelatedWindowIds(focused.id)) {
-        const win = manager.getById(id);
+        const win = manager2.getById(id);
         if (win && win.state !== "minimized") {
-          manager.raise(id);
+          manager2.raise(id);
         }
       }
     };
@@ -11235,7 +12457,7 @@ var desktopMode = function(exports) {
       if (!elevatedLayer) {
         return;
       }
-      const focused = manager.getFocused();
+      const focused = manager2.getFocused();
       const related = focusedNeighbors();
       if (!focused || related.size === 0 || !isEnabled() || snapshot.windowLinkVisibility === "off") {
         elevatedLayer.style.zIndex = "";
@@ -11243,7 +12465,7 @@ var desktopMode = function(exports) {
       }
       let maxZ = -Infinity;
       for (const id of [focused.id, ...related]) {
-        const win = manager.getById(id);
+        const win = manager2.getById(id);
         const el = win?.element;
         if (!el || win.state === "minimized") {
           continue;
@@ -11259,11 +12481,11 @@ var desktopMode = function(exports) {
       const next = isEnabled() && snapshot.windowLinkHighlight !== false && snapshot.windowLinkVisibility !== "off" ? focusedNeighbors() : /* @__PURE__ */ new Set();
       for (const id of linkedWindows) {
         if (!next.has(id)) {
-          manager.getById(id)?.element?.classList.remove(LINKED_CLASS);
+          manager2.getById(id)?.element?.classList.remove(LINKED_CLASS);
         }
       }
       for (const id of next) {
-        manager.getById(id)?.element?.classList.add(LINKED_CLASS);
+        manager2.getById(id)?.element?.classList.add(LINKED_CLASS);
       }
       linkedWindows.clear();
       for (const id of next) {
@@ -11363,6 +12585,248 @@ var desktopMode = function(exports) {
     });
     recompute();
   }
+  function groupRank(group) {
+    if (group === "comments") {
+      return 0;
+    }
+    if (group.startsWith("terms/")) {
+      return 1;
+    }
+    if (group === "media") {
+      return 2;
+    }
+    if (group === "links") {
+      return 3;
+    }
+    return 4;
+  }
+  function buildRelatedMenu({
+    items,
+    onPick
+  }) {
+    const panel2 = document.createElement("wpd-menu");
+    panel2.classList.add("desktop-mode-window__menu-panel");
+    panel2.classList.add("desktop-mode-window__related-panel");
+    const groups = /* @__PURE__ */ new Map();
+    for (const item of items) {
+      const bucket2 = groups.get(item.group);
+      if (bucket2) {
+        bucket2.push(item);
+      } else {
+        groups.set(item.group, [item]);
+      }
+    }
+    const ordered = Array.from(groups.entries()).sort(
+      (a, b) => groupRank(a[0]) - groupRank(b[0])
+    );
+    const rows = [];
+    for (const [, groupItems] of ordered) {
+      const groupLabel = groupItems.find(
+        (item) => typeof item.groupLabel === "string" && item.groupLabel !== ""
+      )?.groupLabel;
+      if (groupLabel) {
+        const header = document.createElement("div");
+        header.className = "desktop-mode-window__related-group";
+        header.setAttribute("role", "presentation");
+        header.textContent = groupLabel;
+        panel2.appendChild(header);
+      }
+      for (const item of groupItems) {
+        const row = document.createElement("wpd-menu-item");
+        row.setAttribute("role", "menuitem");
+        row.setAttribute("value", item.id);
+        row.tabIndex = -1;
+        if (item.icon) {
+          row.setAttribute("icon", item.icon);
+        }
+        row.classList.add("desktop-mode-window__related-item");
+        row.textContent = typeof item.count === "number" ? `${item.label} (${item.count})` : item.label;
+        row.addEventListener("wpd-menu-item-click", (e) => {
+          e.stopPropagation();
+          onPick(item);
+        });
+        rows.push(row);
+        panel2.appendChild(row);
+      }
+    }
+    panel2.addEventListener("keydown", (e) => {
+      const kev = e;
+      const active2 = rows.indexOf(
+        panel2.ownerDocument.activeElement
+      );
+      if (kev.key === "ArrowDown" || kev.key === "ArrowUp") {
+        kev.preventDefault();
+        kev.stopPropagation();
+        const down = kev.key === "ArrowDown";
+        let next = rows[down ? 0 : rows.length - 1];
+        if (active2 !== -1) {
+          const step = down ? 1 : -1;
+          next = rows[(active2 + step + rows.length) % rows.length];
+        }
+        next?.focus();
+      } else if (kev.key === "Home" || kev.key === "End") {
+        kev.preventDefault();
+        kev.stopPropagation();
+        rows[kev.key === "Home" ? 0 : rows.length - 1]?.focus();
+      } else if (kev.key === "Enter" || kev.key === " ") {
+        const row = rows[active2];
+        if (row) {
+          kev.preventDefault();
+          kev.stopPropagation();
+          row.dispatchEvent(
+            new CustomEvent("wpd-menu-item-click", {
+              bubbles: true
+            })
+          );
+        }
+      }
+    });
+    return panel2;
+  }
+  function isValidItem(item) {
+    if (!item || typeof item !== "object") {
+      return false;
+    }
+    const candidate = item;
+    const requiredString = (v) => typeof v === "string" && v.trim() !== "";
+    return requiredString(candidate.id) && requiredString(candidate.group) && requiredString(candidate.label) && requiredString(candidate.url) && (candidate.groupLabel === void 0 || typeof candidate.groupLabel === "string") && (candidate.icon === void 0 || typeof candidate.icon === "string") && (candidate.count === void 0 || typeof candidate.count === "number" && Number.isFinite(candidate.count));
+  }
+  function resolveRelatedItems(windowId) {
+    const content = getWindowContent(windowId) ?? null;
+    const base = content && Array.isArray(content.related) ? content.related.map((item) => ({ ...item })) : [];
+    const filtered = applyFilters(
+      HOOKS.RELATED_ENTITIES_ITEMS,
+      base,
+      { windowId, content }
+    );
+    if (!Array.isArray(filtered)) {
+      if (typeof console !== "undefined") {
+        console.warn(
+          "[desktop-mode] `desktop-mode.related-entities.items` filter returned a non-array; falling back to the identity list."
+        );
+      }
+      return base.filter(isValidItem);
+    }
+    return filtered.filter(isValidItem);
+  }
+  function closePanels(root) {
+    root?.querySelectorAll(
+      ".desktop-mode-window__related-panel"
+    ).forEach((el) => {
+      if (el._wpdRelatedClose) {
+        el._wpdRelatedClose();
+      } else {
+        el.remove();
+      }
+    });
+  }
+  function suppressNextDblclick(titleBar) {
+    const swallow = (e) => {
+      e.stopImmediatePropagation();
+    };
+    titleBar.addEventListener("dblclick", swallow, true);
+    setTimeout(() => {
+      titleBar.removeEventListener("dblclick", swallow, true);
+    }, 500);
+  }
+  function openRelatedMenu(host, win, openUrl) {
+    const titleBar = host.closest(
+      ".desktop-mode-window__titlebar"
+    );
+    if (!titleBar) {
+      return;
+    }
+    const items = resolveRelatedItems(win.id);
+    if (items.length === 0) {
+      return;
+    }
+    let onDocPointerDown = null;
+    const close = () => {
+      if (onDocPointerDown) {
+        document.removeEventListener("pointerdown", onDocPointerDown, true);
+        onDocPointerDown = null;
+      }
+      titleBar.removeEventListener("keydown", onTitleBarKeydown);
+      panel2.remove();
+      host.setAttribute("aria-expanded", "false");
+    };
+    const onTitleBarKeydown = (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        close();
+        host.focus();
+      }
+    };
+    const panel2 = buildRelatedMenu({
+      items,
+      onPick: (item) => {
+        close();
+        suppressNextDblclick(titleBar);
+        openUrl(item);
+      }
+    });
+    panel2._wpdRelatedClose = close;
+    titleBar.appendChild(panel2);
+    titleBar.addEventListener("keydown", onTitleBarKeydown);
+    host.setAttribute("aria-expanded", "true");
+    onDocPointerDown = (e) => {
+      const target2 = e.target;
+      if (!target2 || panel2.contains(target2) || host.contains(target2)) {
+        return;
+      }
+      close();
+    };
+    setTimeout(() => {
+      if (onDocPointerDown) {
+        document.addEventListener("pointerdown", onDocPointerDown, true);
+      }
+    }, 0);
+    panel2.querySelector('[role="menuitem"]')?.focus();
+  }
+  function bootRelatedEntities({
+    manager: manager2,
+    openUrl
+  }) {
+    registerTitleBarButton({
+      id: "desktop-mode/related-entities",
+      label: __("Related"),
+      icon: "dashicons-networking",
+      placement: "right",
+      order: 60,
+      match: (win) => resolveRelatedItems(win.id).length > 0,
+      render: (host, win) => {
+        closePanels(win.element);
+        host.setAttribute("aria-haspopup", "menu");
+        host.setAttribute("aria-expanded", "false");
+        host.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const open = win.element?.querySelector(
+            ".desktop-mode-window__related-panel"
+          );
+          if (open) {
+            closePanels(win.element);
+            return;
+          }
+          openRelatedMenu(host, win, openUrl);
+        });
+      }
+    });
+    addAction(
+      HOOKS.WINDOW_CONTENT_CHANGED,
+      "desktop-mode/related-entities",
+      (e) => {
+        if (!e?.windowId) {
+          return;
+        }
+        const win = manager2.getById(e.windowId);
+        if (!win) {
+          return;
+        }
+        closePanels(win.element);
+        win.renderCustomTitleBarButtons?.();
+      }
+    );
+  }
   const UNFOCUS_EFFECT_NONE = "none";
   const store$9 = createSharedStore(
     "desktop-mode/unfocus-effect-registry",
@@ -11397,11 +12861,11 @@ var desktopMode = function(exports) {
     throwOnRegistrationErrors("UnfocusEffect", errors, def);
     const id = def.id.trim().toLowerCase();
     registry$4.set(id, { ...def, id });
-    notify$9();
+    notify$7();
   }
   function unregisterUnfocusEffect(id) {
     if (registry$4.delete(id.toLowerCase())) {
-      notify$9();
+      notify$7();
     }
   }
   function unregisterUnfocusEffectsByOwner(owner) {
@@ -11416,7 +12880,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$9();
+      notify$7();
     }
     return removed;
   }
@@ -11445,7 +12909,7 @@ var desktopMode = function(exports) {
       listeners$7.delete(cb);
     };
   }
-  function notify$9() {
+  function notify$7() {
     const snapshot = Array.from(listeners$7);
     for (const cb of snapshot) {
       try {
@@ -11586,7 +13050,7 @@ var desktopMode = function(exports) {
   function hostsCanvas(el) {
     return el.querySelector("canvas") !== null;
   }
-  function startUnfocusEngine({ manager, osSettings }) {
+  function startUnfocusEngine({ manager: manager2, osSettings }) {
     if (_started$1) {
       return;
     }
@@ -11620,7 +13084,7 @@ var desktopMode = function(exports) {
     const recompute = () => {
       const def = currentId === UNFOCUS_EFFECT_NONE ? void 0 : getUnfocusEffect(currentId);
       const allEffects = listUnfocusEffects();
-      for (const win of manager.getAll()) {
+      for (const win of manager2.getAll()) {
         const el = win.element;
         if (!el) {
           continue;
@@ -11738,11 +13202,11 @@ var desktopMode = function(exports) {
     throwOnRegistrationErrors("WindowTheme", errors, def);
     const id = def.id.trim().toLowerCase();
     registry$3.set(id, { ...def, id });
-    notify$8();
+    notify$6();
   }
   function unregisterWindowTheme(id) {
     if (registry$3.delete(id.toLowerCase())) {
-      notify$8();
+      notify$6();
     }
   }
   function unregisterWindowThemesByOwner(owner) {
@@ -11757,7 +13221,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$8();
+      notify$6();
     }
     return removed;
   }
@@ -11766,7 +13230,7 @@ var desktopMode = function(exports) {
       (a, b) => (a.priority ?? 100) - (b.priority ?? 100)
     );
   }
-  function notify$8() {
+  function notify$6() {
     const snapshot = Array.from(listeners$6);
     for (const cb of snapshot) {
       try {
@@ -11939,11 +13403,11 @@ var desktopMode = function(exports) {
     throwOnRegistrationErrors("WindowControl", errors, def);
     const id = def.id.trim().toLowerCase();
     registry$2.set(id, { ...def, id });
-    notify$7();
+    notify$5();
   }
   function unregisterWindowControl(id) {
     if (registry$2.delete(id.toLowerCase())) {
-      notify$7();
+      notify$5();
     }
   }
   function unregisterWindowControlsByOwner(owner) {
@@ -11958,7 +13422,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$7();
+      notify$5();
     }
     return removed;
   }
@@ -11972,7 +13436,7 @@ var desktopMode = function(exports) {
       return a.id.localeCompare(b.id);
     });
   }
-  function notify$7() {
+  function notify$5() {
     const snapshot = Array.from(listeners$5);
     for (const cb of snapshot) {
       try {
@@ -12171,11 +13635,11 @@ var desktopMode = function(exports) {
     throwOnRegistrationErrors("WindowSlot", errors, def);
     const id = def.id.trim().toLowerCase();
     registry$1.set(id, { ...def, id });
-    notify$6();
+    notify$4();
   }
   function unregisterWindowSlot(id) {
     if (registry$1.delete(id.toLowerCase())) {
-      notify$6();
+      notify$4();
     }
   }
   function unregisterWindowSlotsByOwner(owner) {
@@ -12190,7 +13654,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$6();
+      notify$4();
     }
     return removed;
   }
@@ -12204,7 +13668,7 @@ var desktopMode = function(exports) {
       return a.id.localeCompare(b.id);
     });
   }
-  function notify$6() {
+  function notify$4() {
     const snapshot = Array.from(listeners$4);
     for (const cb of snapshot) {
       try {
@@ -12688,11 +14152,11 @@ var desktopMode = function(exports) {
     throwOnRegistrationErrors("WindowChrome", errors, def);
     const id = def.id.trim().toLowerCase();
     registry.set(id, { ...def, id });
-    notify$5();
+    notify$3();
   }
   function unregisterWindowChrome(id) {
     if (registry.delete(id.toLowerCase())) {
-      notify$5();
+      notify$3();
     }
   }
   function unregisterWindowChromesByOwner(owner) {
@@ -12707,7 +14171,7 @@ var desktopMode = function(exports) {
       }
     }
     if (removed > 0) {
-      notify$5();
+      notify$3();
     }
     return removed;
   }
@@ -12716,7 +14180,7 @@ var desktopMode = function(exports) {
       (a, b) => a.id.localeCompare(b.id)
     );
   }
-  function notify$5() {
+  function notify$3() {
     const snapshot = Array.from(listeners$3);
     for (const cb of snapshot) {
       try {
@@ -12834,7 +14298,7 @@ var desktopMode = function(exports) {
   function nextId() {
     return `desktop-mode-conn-${++_connSeq}`;
   }
-  function createConnectionBridge(manager) {
+  function createConnectionBridge(manager2) {
     const sendToIframe = (win, message) => {
       try {
         win.contentWindow?.postMessage(message, INITIAL_ORIGIN$2);
@@ -12859,14 +14323,14 @@ var desktopMode = function(exports) {
         if (synth) {
           return synth;
         }
-        const w = manager.getById(targetWindowId);
+        const w = manager2.getById(targetWindowId);
         return w?.iframe ?? null;
       };
       const isNativeTarget = () => {
         if (targetIframe()) {
           return false;
         }
-        const w = manager.getById(targetWindowId);
+        const w = manager2.getById(targetWindowId);
         return !!w && w.config?.native === true;
       };
       const nativeSubUnsubs = [];
@@ -13148,7 +14612,7 @@ var desktopMode = function(exports) {
     };
     const handleConnectionRequest = (windowId, requestId, topics) => {
       const synth = _syntheticIframes.get(windowId);
-      const iframe = synth ?? manager.getById(windowId)?.iframe ?? null;
+      const iframe = synth ?? manager2.getById(windowId)?.iframe ?? null;
       if (!iframe) {
         return;
       }
@@ -13784,13 +15248,14 @@ var desktopMode = function(exports) {
     }
     runInvoke(name, title, icon) {
       return (_args, ctx) => {
-        ctx.close();
         const cb = this.callbackCache[name];
         if (typeof cb !== "function") {
+          ctx.close();
           return;
         }
         const captured = this.runWithNavCapture(cb);
         if (captured) {
+          ctx.close();
           const id = deriveWindowId(captured, this.adminUrl);
           this.manager.open({ id, baseId: id, url: captured, title, icon });
         }
@@ -14099,7 +15564,7 @@ var desktopMode = function(exports) {
   const DRAG_THRESHOLD_PX$1 = 5;
   const DRAG_THRESHOLD_SQUARED = DRAG_THRESHOLD_PX$1 * DRAG_THRESHOLD_PX$1;
   const DRAG_EXCLUDED_SELECTORS = 'input, textarea, select, button, a, [contenteditable="true"]';
-  function buildFrame(def, ctx, handlers) {
+  function buildFrame(def, ctx, handlers2) {
     const card = document.createElement("div");
     card.className = "desktop-mode-widgets__card";
     card.dataset.widgetId = def.id;
@@ -14112,9 +15577,9 @@ var desktopMode = function(exports) {
       card.classList.add(RESIZABLE_CLASS);
     }
     if (movable) {
-      card.appendChild(buildChrome(def, handlers.onRemove, handlers.onRedock));
+      card.appendChild(buildChrome(def, handlers2.onRemove, handlers2.onRedock));
     } else {
-      card.appendChild(buildCornerClose(def, handlers.onRemove));
+      card.appendChild(buildCornerClose(def, handlers2.onRemove));
     }
     const body = document.createElement("div");
     body.className = "desktop-mode-widgets__card-body";
@@ -14138,7 +15603,7 @@ var desktopMode = function(exports) {
         handle.dataset.dir = dir;
         card.appendChild(handle);
         resizeCleanups.push(
-          attachResize(card, handle, dir, def, ctx, handlers, isFloating)
+          attachResize(card, handle, dir, def, ctx, handlers2, isFloating)
         );
       }
     }
@@ -14148,7 +15613,7 @@ var desktopMode = function(exports) {
         ".desktop-mode-widgets__chrome"
       );
       if (chrome) {
-        dragCleanup = attachDrag(card, chrome, def, ctx, handlers);
+        dragCleanup = attachDrag(card, chrome, def, ctx, handlers2);
       }
     }
     return {
@@ -14223,7 +15688,7 @@ var desktopMode = function(exports) {
     });
     return close;
   }
-  function attachDrag(card, chrome, def, ctx, handlers) {
+  function attachDrag(card, chrome, def, ctx, handlers2) {
     let pointerId = null;
     let startX = 0;
     let startY = 0;
@@ -14259,7 +15724,7 @@ var desktopMode = function(exports) {
         };
         applyGeometry(card, initial);
         card.classList.add(FLOATING_CLASS);
-        handlers.onLiberate(initial);
+        handlers2.onLiberate(initial);
         initialLeft = parseFloat(card.style.left) || 0;
         initialTop = parseFloat(card.style.top) || 0;
       }
@@ -14302,7 +15767,7 @@ var desktopMode = function(exports) {
       }
       committed = false;
       card.classList.remove(DRAGGING_CLASS);
-      handlers.onGeometryChanged(currentGeometry(card));
+      handlers2.onGeometryChanged(currentGeometry(card));
     };
     chrome.addEventListener("pointerdown", onDown);
     chrome.addEventListener("pointermove", onMove);
@@ -14315,7 +15780,7 @@ var desktopMode = function(exports) {
       chrome.removeEventListener("pointercancel", onUp);
     };
   }
-  function attachResize(card, handle, dir, def, ctx, handlers, isFloating) {
+  function attachResize(card, handle, dir, def, ctx, handlers2, isFloating) {
     let pointerId = null;
     let startX = 0;
     let startY = 0;
@@ -14380,9 +15845,9 @@ var desktopMode = function(exports) {
       pointerId = null;
       card.classList.remove(RESIZING_CLASS);
       if (isFloating()) {
-        handlers.onGeometryChanged(currentGeometry(card));
+        handlers2.onGeometryChanged(currentGeometry(card));
       } else {
-        handlers.onDockedHeightChanged(card.offsetHeight);
+        handlers2.onDockedHeightChanged(card.offsetHeight);
       }
     };
     handle.addEventListener("pointerdown", onDown);
@@ -15125,7 +16590,7 @@ var desktopMode = function(exports) {
       return readyPromise;
     };
   }
-  function createRegisterWindow(manager) {
+  function createRegisterWindow(manager2) {
     return async (def) => {
       const userRender = def.render;
       let render2 = userRender;
@@ -15152,7 +16617,7 @@ var desktopMode = function(exports) {
         }
         userOnClose?.();
       } : userOnClose;
-      const win = await manager.open({
+      const win = await manager2.open({
         id: def.id,
         baseId: def.baseId || def.id,
         native: true,
@@ -15178,7 +16643,7 @@ var desktopMode = function(exports) {
     };
   }
   let onWindowInstanceCounter = 0;
-  function onWindow(id, handlers, options = {}) {
+  function onWindow(id, handlers2, options = {}) {
     const namespace = `desktop-mode/on-window/${id}/${++onWindowInstanceCounter}`;
     const persistent = options.persistent === true;
     const bindings = [
@@ -15210,7 +16675,7 @@ var desktopMode = function(exports) {
       }
     };
     for (const [key, hookName2] of bindings) {
-      const handler = handlers[key];
+      const handler = handlers2[key];
       if (!handler) {
         continue;
       }
@@ -15237,7 +16702,7 @@ var desktopMode = function(exports) {
     };
   }
   function createNativeWindowSync(deps2) {
-    const { manager, appendSystemTile, removeSystemTile } = deps2;
+    const { manager: manager2, appendSystemTile, removeSystemTile } = deps2;
     const registered = /* @__PURE__ */ new Set();
     const injectedTemplates = /* @__PURE__ */ new Set();
     const loadedScripts = /* @__PURE__ */ new Set();
@@ -15330,7 +16795,7 @@ var desktopMode = function(exports) {
         return render2?.(body, ctx);
       };
       const size = resolveSizeForEntry(entry);
-      void manager.open({
+      void manager2.open({
         id: entry.id,
         baseId: entry.id,
         native: true,
@@ -15353,7 +16818,7 @@ var desktopMode = function(exports) {
         return render2?.(body, ctx);
       };
       const size = resolveSizeForEntry(entry);
-      void manager.openNew({
+      void manager2.openNew({
         id: entry.id,
         baseId: entry.id,
         native: true,
@@ -15388,7 +16853,7 @@ var desktopMode = function(exports) {
         id: entry.id,
         title: entry.title,
         icon: entry.icon,
-        isOpen: () => !!manager.getById(entry.id),
+        isOpen: () => !!manager2.getById(entry.id),
         onOpen: () => openFromEntry(entry)
       });
       doAction(HOOKS.DOCK_ITEM_APPENDED, { id: entry.id });
@@ -15454,7 +16919,7 @@ var desktopMode = function(exports) {
         if (!windowId || typeof width !== "number" || typeof height !== "number") {
           return;
         }
-        const win = manager.getById(windowId);
+        const win = manager2.getById(windowId);
         if (!win) {
           return;
         }
@@ -15479,7 +16944,7 @@ var desktopMode = function(exports) {
         if (!windowId) {
           return;
         }
-        const win = manager.getById(windowId);
+        const win = manager2.getById(windowId);
         if (!win) {
           return;
         }
@@ -15508,7 +16973,7 @@ var desktopMode = function(exports) {
         if (!windowId) {
           return;
         }
-        const win = manager.getById(windowId);
+        const win = manager2.getById(windowId);
         if (!win) {
           return;
         }
@@ -15526,7 +16991,7 @@ var desktopMode = function(exports) {
         if (!windowId) {
           return;
         }
-        const win = manager.getById(windowId);
+        const win = manager2.getById(windowId);
         if (!win) {
           return;
         }
@@ -15567,78 +17032,6 @@ var desktopMode = function(exports) {
         (sub) => deriveWindowId(sub.url, adminUrl) === targetId
       )
     ) ?? null;
-  }
-  function renderIcon(icon, opts) {
-    const className = opts.className ?? "";
-    const title = opts.title ?? "";
-    if (typeof icon === "string" && icon.startsWith("dashicons-")) {
-      const el = document.createElement("span");
-      el.className = `dashicons ${icon} ${className}`.trim();
-      el.setAttribute("aria-hidden", "true");
-      return el;
-    }
-    if (typeof icon === "string" && icon.startsWith("data:image/svg+xml;base64,")) {
-      const base64Part = icon.slice("data:image/svg+xml;base64,".length);
-      if (/^[A-Za-z0-9+/=]+$/.test(base64Part)) {
-        const el = document.createElement("span");
-        el.className = className;
-        el.setAttribute("aria-hidden", "true");
-        el.style.backgroundImage = `url("${icon}")`;
-        el.style.backgroundRepeat = "no-repeat";
-        el.style.backgroundPosition = "center";
-        el.style.backgroundSize = "contain";
-        el.style.display = "inline-block";
-        return el;
-      }
-    }
-    if (typeof icon === "string" && /^data:image\/(png|jpeg|jpg|gif|webp|x-icon|vnd\.microsoft\.icon);base64,/i.test(icon)) {
-      const commaIdx = icon.indexOf(",");
-      const payload = commaIdx >= 0 ? icon.slice(commaIdx + 1) : "";
-      if (/^[A-Za-z0-9+/=]+$/.test(payload)) {
-        return makeImgIcon(icon, className);
-      }
-    }
-    if (typeof icon === "string" && (icon.startsWith("http://") || icon.startsWith("https://"))) {
-      return makeImgIcon(icon, className);
-    }
-    const span = document.createElement("span");
-    span.className = `${className} desktop-mode-icon-letter`.trim();
-    span.setAttribute("aria-hidden", "true");
-    const letters = letterFromTitle(title);
-    span.textContent = letters;
-    const hue = hashTitleToHue(title);
-    span.style.backgroundColor = `hsl( ${hue}, 60%, 45% )`;
-    span.style.color = "#fff";
-    span.style.display = "inline-flex";
-    span.style.alignItems = "center";
-    span.style.justifyContent = "center";
-    span.style.fontWeight = "600";
-    span.style.borderRadius = "4px";
-    return span;
-  }
-  function makeImgIcon(src, className) {
-    const img = document.createElement("img");
-    img.className = className;
-    img.src = src;
-    img.alt = "";
-    img.setAttribute("aria-hidden", "true");
-    img.draggable = false;
-    return img;
-  }
-  function letterFromTitle(title) {
-    const trimmed = (title ?? "").trim();
-    if (trimmed === "") {
-      return "?";
-    }
-    const words = trimmed.split(/\s+/);
-    if (words.length >= 2) {
-      return (words[0][0] + words[1][0]).toUpperCase();
-    }
-    const first = words[0];
-    if (first.length >= 2) {
-      return first.slice(0, 2).toUpperCase();
-    }
-    return first.toUpperCase();
   }
   const BADGE_CLASS = "desktop-mode-icon__badge";
   const _badges = /* @__PURE__ */ new Map();
@@ -16191,7 +17584,7 @@ var desktopMode = function(exports) {
     buildDocksForCurrentLayout();
     repaintIcons();
     let lastResolvedId = resolveActive()?.id ?? null;
-    subscribe$3(() => {
+    subscribe$4(() => {
       const nextId2 = resolveActive()?.id ?? null;
       if (nextId2 === lastResolvedId) {
         return;
@@ -16556,8 +17949,8 @@ var desktopMode = function(exports) {
   const POSTMESSAGE_TYPE = "desktop-mode-broadcast";
   const ORIGIN = window.location.origin;
   let _manager = null;
-  function attachBroadcastBus(manager) {
-    _manager = manager;
+  function attachBroadcastBus(manager2) {
+    _manager = manager2;
   }
   function broadcast(topic, payload) {
     const filteredTopic = String(
@@ -16651,7 +18044,7 @@ var desktopMode = function(exports) {
   }
   const TARGET_ID = "desktop-mode-recycle-bin";
   const HEARTBEAT_FIELD$1 = "desktop_mode_recycle_bin_seen_ts";
-  function getDesktopApi() {
+  function getDesktopApi$1() {
     return window.wp?.desktop;
   }
   const store$3 = createSharedStore(
@@ -16677,7 +18070,7 @@ var desktopMode = function(exports) {
     return store$3.state.current;
   }
   function paintBadge(count) {
-    const desktop = getDesktopApi();
+    const desktop = getDesktopApi$1();
     const active2 = isBinWindowActive();
     const visible = active2 ? 0 : count;
     log("paintBadge", { count, visible, active: active2 });
@@ -16686,7 +18079,7 @@ var desktopMode = function(exports) {
     desktop?.icons?.setBadge?.(TARGET_ID, visible);
   }
   function isBinWindowActive() {
-    const mgr = getDesktopApi()?.windowManager;
+    const mgr = getDesktopApi$1()?.windowManager;
     if (mgr?.isActiveByBaseId) {
       return mgr.isActiveByBaseId(TARGET_ID);
     }
@@ -17185,79 +18578,6 @@ var desktopMode = function(exports) {
       `Current URL:       ${m.currentUrl}`
     ].join("\n");
   }
-  let _config = null;
-  let _state = {
-    installHintDismissed: false,
-    notificationsEnabled: false
-  };
-  const _listeners = /* @__PURE__ */ new Set();
-  function initPwaState(config) {
-    if (!config) {
-      _config = null;
-      return;
-    }
-    _config = config;
-    _state = { ...config.state };
-    notify$4();
-  }
-  function getPwaState() {
-    return { ..._state };
-  }
-  function updatePwaState(patch) {
-    _state = { ..._state, ...patch };
-    notify$4();
-    if (!_config) {
-      return getPwaState();
-    }
-    const body = JSON.stringify(patch);
-    const nonce = readRestNonce$2();
-    void fetch(_config.stateUrl, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/json",
-        ...nonce ? { "X-WP-Nonce": nonce } : {}
-      },
-      body
-    }).catch((err) => {
-      if (typeof console !== "undefined") {
-        console.warn("[desktop-mode] pwa-state write failed:", err);
-      }
-    });
-    return getPwaState();
-  }
-  function subscribePwaState(cb) {
-    _listeners.add(cb);
-    return () => {
-      _listeners.delete(cb);
-    };
-  }
-  function notify$4() {
-    const snapshot = getPwaState();
-    for (const cb of Array.from(_listeners)) {
-      try {
-        cb(snapshot);
-      } catch (err) {
-        if (typeof console !== "undefined") {
-          console.error(
-            "[desktop-mode] pwa-state listener threw:",
-            err
-          );
-        }
-      }
-    }
-  }
-  function readRestNonce$2() {
-    const cfg = window.desktopModeConfig;
-    return cfg?.restNonce ?? "";
-  }
-  const state = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-    __proto__: null,
-    getPwaState,
-    initPwaState,
-    subscribePwaState,
-    updatePwaState
-  }, Symbol.toStringTag, { value: "Module" }));
   let _registration = null;
   let _registrationFailed = false;
   let _controllerChangeBound = false;
@@ -17496,129 +18816,6 @@ var desktopMode = function(exports) {
     Promise.resolve().then(() => state).then((m) => {
       m.updatePwaState({ installHintDismissed: false });
     });
-  }
-  function notify$3(options) {
-    const intent = activity.filter(
-      "desktop-mode/notification-requested",
-      { ...options }
-    );
-    if (!intent || intent.cancel === true || !intent.title) {
-      return () => void 0;
-    }
-    let dismissed = false;
-    let dismissNative = null;
-    let dismissToast = null;
-    const dismiss = () => {
-      if (dismissed) {
-        return;
-      }
-      dismissed = true;
-      if (dismissNative) {
-        dismissNative();
-      }
-      if (dismissToast) {
-        dismissToast();
-      }
-    };
-    const fallback = () => {
-      dismissToast = showToast({
-        message: intent.body ? intent.title + " — " + intent.body : intent.title
-      });
-      activity.publish("desktop-mode/notification-shown", {
-        ...intent,
-        fallback: "toast"
-      });
-    };
-    if (typeof window === "undefined" || typeof Notification === "undefined") {
-      fallback();
-      return dismiss;
-    }
-    const perm = Notification.permission;
-    if (perm === "granted") {
-      dismissNative = renderNative(intent);
-      if (!dismissNative) {
-        fallback();
-      }
-      return dismiss;
-    }
-    if (perm === "denied") {
-      fallback();
-      return dismiss;
-    }
-    void Notification.requestPermission().then((result) => {
-      if (dismissed) {
-        return;
-      }
-      if (result === "granted") {
-        updatePwaState({ notificationsEnabled: true });
-        dismissNative = renderNative(intent);
-        if (!dismissNative) {
-          fallback();
-        }
-        return;
-      }
-      fallback();
-    });
-    return dismiss;
-  }
-  function renderNative(intent) {
-    let n = null;
-    try {
-      n = new Notification(intent.title, {
-        body: intent.body,
-        icon: intent.icon,
-        tag: intent.tag,
-        requireInteraction: intent.requireInteraction
-      });
-    } catch (err) {
-      if (typeof console !== "undefined") {
-        console.warn("[desktop-mode] Notification ctor threw:", err);
-      }
-      return null;
-    }
-    if (intent.onClick) {
-      const handler = intent.onClick;
-      n.onclick = () => {
-        try {
-          handler(n);
-        } catch (hErr) {
-          if (typeof console !== "undefined") {
-            console.error(
-              "[desktop-mode] notification onClick threw:",
-              hErr
-            );
-          }
-        }
-      };
-    }
-    activity.publish("desktop-mode/notification-shown", {
-      ...intent,
-      fallback: null
-    });
-    return () => {
-      if (n) {
-        n.close();
-      }
-    };
-  }
-  async function requestNotificationPermission() {
-    if (typeof Notification === "undefined") {
-      return "unsupported";
-    }
-    if (Notification.permission !== "default") {
-      return Notification.permission;
-    }
-    const result = await Notification.requestPermission();
-    if (result === "granted") {
-      updatePwaState({ notificationsEnabled: true });
-    }
-    return result;
-  }
-  function getNotificationPermission() {
-    if (typeof Notification === "undefined") {
-      return "unsupported";
-    }
-    return Notification.permission;
   }
   function bootstrapPwa(config, showToast2) {
     if (!config.pwa) {
@@ -17957,12 +19154,12 @@ var desktopMode = function(exports) {
   function defaultOffsetY(source) {
     return source.offsetHeight / 2;
   }
-  let _installed$3 = false;
+  let _installed$4 = false;
   function installRecovery(cancelActive) {
-    if (_installed$3) {
+    if (_installed$4) {
       return;
     }
-    _installed$3 = true;
+    _installed$4 = true;
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         cancelActive("escape");
@@ -18334,8 +19531,8 @@ var desktopMode = function(exports) {
   }
   const TARGET_ID_PREFIX = "desktop-mode-iframe-drop-";
   const IFRAME_SELECTOR = "iframe.desktop-mode-window__iframe";
-  const DROP_ACTIVE_ATTR = "data-desktop-mode-iframe-drop-active";
-  let _installed$2 = false;
+  const DROP_ACTIVE_ATTR$1 = "data-desktop-mode-iframe-drop-active";
+  let _installed$3 = false;
   let _dragManager = null;
   const _suppressedIframes = /* @__PURE__ */ new Map();
   const _activeRegistrations = /* @__PURE__ */ new Map();
@@ -18478,18 +19675,18 @@ var desktopMode = function(exports) {
         if (!bridge) {
           return;
         }
-        target2.setAttribute(DROP_ACTIVE_ATTR, "");
+        target2.setAttribute(DROP_ACTIVE_ATTR$1, "");
         postIntoIframe(iframe, {
           type: "desktop-mode-drag-over",
           payload: bridge
         });
       },
       onLeave: () => {
-        target2.removeAttribute(DROP_ACTIVE_ATTR);
+        target2.removeAttribute(DROP_ACTIVE_ATTR$1);
         postIntoIframe(iframe, { type: "desktop-mode-drag-leave" });
       },
       onDrop: (session, ev) => {
-        target2.removeAttribute(DROP_ACTIVE_ATTR);
+        target2.removeAttribute(DROP_ACTIVE_ATTR$1);
         const bridge = extractBridgePayload(session.payload);
         if (!bridge) {
           return;
@@ -18568,10 +19765,10 @@ var desktopMode = function(exports) {
     _activeRegistrations.clear();
   }
   function installIframeDropTargets(dragManager) {
-    if (_installed$2) {
+    if (_installed$3) {
       return;
     }
-    _installed$2 = true;
+    _installed$3 = true;
     _dragManager = dragManager;
     document.addEventListener(DRAG_EVENTS.START, (e) => {
       const detail = e.detail;
@@ -18611,7 +19808,7 @@ var desktopMode = function(exports) {
       }
     );
     window.__desktopModeIframeDropDebug = () => ({
-      installed: _installed$2,
+      installed: _installed$3,
       iframesInDom: document.querySelectorAll(IFRAME_SELECTOR).length,
       suppressedCount: _suppressedIframes.size,
       registeredCount: _activeRegistrations.size,
@@ -18623,7 +19820,7 @@ var desktopMode = function(exports) {
   const FOCUS_ON_DRAG_HOVER_DWELL_MS = 250;
   const FOCUS_ON_DRAG_HOVER_WATCHDOG_MS = 1e3;
   const DRAG_HOVER_MESSAGE_TYPE = "desktop-mode-drag-hover";
-  let _installed$1 = false;
+  let _installed$2 = false;
   let _host = null;
   let _lastHoverWindowId = null;
   let _dwellTimer = null;
@@ -18766,10 +19963,10 @@ var desktopMode = function(exports) {
     resetHoverState();
   };
   function installFocusWindowOnDragHover(host) {
-    if (_installed$1) {
+    if (_installed$2) {
       return;
     }
-    _installed$1 = true;
+    _installed$2 = true;
     _host = host;
     document.addEventListener(DRAG_EVENTS.MOVE, onDragMove);
     document.addEventListener(DRAG_EVENTS.END, onDragEnd);
@@ -18988,88 +20185,13 @@ var desktopMode = function(exports) {
       }
     });
   }
-  const suppliers = /* @__PURE__ */ new Map();
-  const subscribers = /* @__PURE__ */ new Map();
-  let booted$2 = false;
-  const heartbeat = {
-    contribute(field, supplier) {
-      suppliers.set(field, supplier);
-      return () => {
-        if (suppliers.get(field) === supplier) {
-          suppliers.delete(field);
-        }
-      };
-    },
-    subscribe(field, cb) {
-      let set = subscribers.get(field);
-      if (!set) {
-        set = /* @__PURE__ */ new Set();
-        subscribers.set(field, set);
-      }
-      set.add(cb);
-      return () => {
-        set.delete(cb);
-      };
-    }
-  };
-  function bootHeartbeatBus() {
-    if (booted$2) {
-      return;
-    }
-    booted$2 = true;
-    const $ = window.jQuery;
-    if (!$) {
-      console.warn(
-        "[desktop-mode/heartbeat] jQuery missing — Heartbeat bus disabled."
-      );
-      return;
-    }
-    $(document).on("heartbeat-send", (...args) => {
-      const data = args[1];
-      if (!data) {
-        return;
-      }
-      for (const [field, supplier] of suppliers) {
-        try {
-          data[field] = supplier();
-        } catch (err) {
-          console.error(
-            `[desktop-mode/heartbeat] supplier for "${field}" threw:`,
-            err
-          );
-        }
-      }
-    });
-    $(document).on("heartbeat-tick", (...args) => {
-      const response = args[1];
-      if (!response) {
-        return;
-      }
-      for (const [field, set] of subscribers) {
-        const value = response[field];
-        if (value === void 0) {
-          continue;
-        }
-        for (const cb of set) {
-          try {
-            cb(value);
-          } catch (err) {
-            console.error(
-              `[desktop-mode/heartbeat] subscriber for "${field}" threw:`,
-              err
-            );
-          }
-        }
-      }
-    });
-  }
   const store$2 = createSharedStore(
     "desktop-mode/presence",
     () => ({ byUser: /* @__PURE__ */ new Map(), serverTimeMs: 0 })
   );
   const ACTIVE_THRESHOLD_MS = 5 * 60 * 1e3;
   let lastInputMs = Date.now();
-  let booted$1 = false;
+  let booted$2 = false;
   function noteUserActivity() {
     lastInputMs = Date.now();
   }
@@ -19126,10 +20248,10 @@ var desktopMode = function(exports) {
     });
   }
   function bootPresenceProbe() {
-    if (booted$1) {
+    if (booted$2) {
       return;
     }
-    booted$1 = true;
+    booted$2 = true;
     document.addEventListener("pointerdown", noteUserActivity, {
       capture: true,
       passive: true
@@ -19227,9 +20349,43 @@ var desktopMode = function(exports) {
     markActive,
     applyBatch: applyPresenceBatch
   });
+  let seenTs = null;
+  function bootContentChangesHeartbeat() {
+    heartbeat.contribute(
+      "desktop_mode_content_changes_seen_ts",
+      () => seenTs === null ? 0 : seenTs
+    );
+    heartbeat.subscribe(
+      "desktop_mode_content_changes",
+      (block) => {
+        if (!block || typeof block.ts !== "number") {
+          return;
+        }
+        const handshake = seenTs === null;
+        const floor = seenTs ?? 0;
+        let maxTs = Math.max(floor, block.ts);
+        if (!handshake && Array.isArray(block.entries)) {
+          for (const entry of block.entries) {
+            if (!entry || typeof entry.ts !== "number" || entry.ts <= floor || typeof entry.type !== "string" || entry.type === "") {
+              continue;
+            }
+            broadcast(`desktop-mode.${entry.type}.changed`, {
+              source: "heartbeat",
+              action: typeof entry.action === "string" && entry.action !== "" ? entry.action : "updated",
+              ids: Array.isArray(entry.ids) ? entry.ids.map(Number).filter((id) => id > 0) : []
+            });
+            if (entry.ts > maxTs) {
+              maxTs = entry.ts;
+            }
+          }
+        }
+        seenTs = maxTs;
+      }
+    );
+  }
   const HEARTBEAT_FIELD = "desktop_mode_nonces";
   const targets = /* @__PURE__ */ new Map();
-  let booted = false;
+  let booted$1 = false;
   function registerNonceTarget(action, updater) {
     if (typeof action !== "string" || action === "") {
       return () => {
@@ -19246,10 +20402,10 @@ var desktopMode = function(exports) {
     };
   }
   function bootNonceRefresh() {
-    if (booted) {
+    if (booted$1) {
       return;
     }
-    booted = true;
+    booted$1 = true;
     heartbeat.subscribe(HEARTBEAT_FIELD, (payload) => {
       if (!payload || typeof payload !== "object") {
         return;
@@ -19319,6 +20475,194 @@ var desktopMode = function(exports) {
     }
     return window.desktopModeWindowConfig;
   }
+  const AUTH_FIELD = "desktop_mode_auth";
+  const FAILURE_COOLDOWN_MS = 5e3;
+  const TICK_COOLDOWN_MS = 1e3;
+  const RECOVERY_COOLDOWN_MS = 1e4;
+  let booted = false;
+  let sawLoggedOut = false;
+  let authLostAnnounced = false;
+  let bootUid = 0;
+  let failureCooldownUntil = 0;
+  let tickCooldownUntil = 0;
+  let tickTimer = null;
+  let lastRecoveryAt = 0;
+  let messageListener = null;
+  let modalObserver = null;
+  let reloadShell = () => {
+    try {
+      window.location.reload();
+    } catch {
+    }
+  };
+  function connectNow() {
+    try {
+      const hb = window.wp?.heartbeat;
+      if (hb && typeof hb.connectNow === "function") {
+        hb.connectNow();
+      }
+    } catch {
+    }
+  }
+  function forceTickSoon(cooldownMs = TICK_COOLDOWN_MS) {
+    const now = Date.now();
+    if (now < tickCooldownUntil) {
+      if (tickTimer === null) {
+        tickTimer = window.setTimeout(() => {
+          tickTimer = null;
+          tickCooldownUntil = Date.now() + TICK_COOLDOWN_MS;
+          connectNow();
+        }, tickCooldownUntil - now);
+      }
+      return;
+    }
+    tickCooldownUntil = now + cooldownMs;
+    connectNow();
+  }
+  function announceAuthLost() {
+    sawLoggedOut = true;
+    if (authLostAnnounced) {
+      return;
+    }
+    authLostAnnounced = true;
+    doAction(HOOKS.AUTH_LOST);
+    document.dispatchEvent(new CustomEvent("desktop-mode-auth-lost"));
+  }
+  function reloadChromelessIframes() {
+    for (const frame of _reloadableIframes()) {
+      try {
+        frame.contentWindow?.location.reload();
+      } catch {
+      }
+    }
+  }
+  function _reloadableIframes() {
+    let frames;
+    try {
+      frames = document.querySelectorAll("iframe");
+    } catch {
+      return [];
+    }
+    return Array.from(frames).filter(
+      (frame) => frame.id !== "wp-auth-check-frame" && !frame.closest("#wp-auth-check-wrap")
+    );
+  }
+  function runRecovery() {
+    const now = Date.now();
+    if (now - lastRecoveryAt < RECOVERY_COOLDOWN_MS) {
+      return;
+    }
+    lastRecoveryAt = now;
+    sawLoggedOut = false;
+    authLostAnnounced = false;
+    if (tickTimer !== null) {
+      window.clearTimeout(tickTimer);
+      tickTimer = null;
+    }
+    tickCooldownUntil = 0;
+    forceTickSoon();
+    reloadChromelessIframes();
+    doAction(HOOKS.AUTH_RESTORED);
+    document.dispatchEvent(new CustomEvent("desktop-mode-auth-restored"));
+  }
+  function checkUid(value) {
+    const uid = value && typeof value === "object" ? Number(value.uid) : NaN;
+    if (!Number.isFinite(uid) || uid <= 0) {
+      return;
+    }
+    if (bootUid <= 0) {
+      bootUid = uid;
+      return;
+    }
+    if (uid !== bootUid) {
+      reloadShell();
+    }
+  }
+  function noteAuthFailure(status, url) {
+    if (status !== 401 && status !== 403) {
+      return;
+    }
+    let resolved;
+    try {
+      resolved = new URL(String(url || ""), window.location.href);
+    } catch {
+      return;
+    }
+    if (resolved.origin !== window.location.origin) {
+      return;
+    }
+    if (resolved.pathname.indexOf("/wp-admin/admin-ajax.php") !== -1 && /(?:^|&|\?)action=heartbeat(?:&|$)/.test(resolved.search)) {
+      return;
+    }
+    if (resolved.pathname.indexOf("/wp-login.php") !== -1) {
+      return;
+    }
+    const now = Date.now();
+    if (now < failureCooldownUntil) {
+      return;
+    }
+    failureCooldownUntil = now + FAILURE_COOLDOWN_MS;
+    connectNow();
+  }
+  function observeAuthCheckModal() {
+    const wrap = document.getElementById("wp-auth-check-wrap");
+    if (!wrap || typeof MutationObserver === "undefined") {
+      return;
+    }
+    let wasVisible = !wrap.classList.contains("hidden");
+    modalObserver = new MutationObserver(() => {
+      const visible = !wrap.classList.contains("hidden");
+      if (wasVisible && !visible) {
+        forceTickSoon();
+      }
+      wasVisible = visible;
+    });
+    modalObserver.observe(wrap, {
+      attributes: true,
+      attributeFilter: ["class"]
+    });
+  }
+  function bootAuthRecovery(opts = {}) {
+    if (booted) {
+      return;
+    }
+    booted = true;
+    bootUid = Number(opts.currentUserId) > 0 ? Number(opts.currentUserId) : 0;
+    if (opts.reloadShell) {
+      reloadShell = opts.reloadShell;
+    }
+    heartbeat.subscribe("wp-auth-check", (value) => {
+      if (value === false) {
+        announceAuthLost();
+        return;
+      }
+      if (value === true && sawLoggedOut) {
+        runRecovery();
+      }
+    });
+    heartbeat.subscribe("nonces_expired", () => {
+      if (sawLoggedOut) {
+        runRecovery();
+        return;
+      }
+      forceTickSoon();
+    });
+    heartbeat.subscribe(AUTH_FIELD, checkUid);
+    messageListener = (ev) => {
+      if (ev.origin !== window.location.origin) {
+        return;
+      }
+      const data = ev.data;
+      if (!data || typeof data !== "object") {
+        return;
+      }
+      if (data.type === "desktop-mode-reauth-detected") {
+        runRecovery();
+      }
+    };
+    window.addEventListener("message", messageListener);
+    observeAuthCheckModal();
+  }
   const VIEWPORT_CLAMP_MARGIN = 12;
   function findDockEntryForUrl(url, config) {
     const windowId = deriveWindowId(url, config.adminUrl);
@@ -19340,7 +20684,7 @@ var desktopMode = function(exports) {
     return { x, y, width, height };
   }
   const INITIAL_ORIGIN$1 = window.location.origin;
-  function bindTopWindowLinkInterceptor(manager, config) {
+  function bindTopWindowLinkInterceptor(manager2, config) {
     document.addEventListener(
       "click",
       (e) => {
@@ -19431,10 +20775,10 @@ var desktopMode = function(exports) {
           submenu: dockEntry?.submenu
         };
         if (isAdminBarNew) {
-          void manager.openNew(openOpts);
+          void manager2.openNew(openOpts);
           return;
         }
-        void manager.open(openOpts);
+        void manager2.open(openOpts);
       },
       true
     );
@@ -19495,6 +20839,7 @@ var desktopMode = function(exports) {
       syncServerUnfocusEffects,
       syncServerWindowLinkRenderers,
       syncServerDockRailRenderers,
+      syncServerGames,
       renderIcons,
       syncShortcuts
     } = deps2;
@@ -19512,6 +20857,7 @@ var desktopMode = function(exports) {
       const serverUnfocusEffectScripts = payload.serverUnfocusEffectScripts;
       const serverWindowLinkRendererScripts = payload.serverWindowLinkRendererScripts;
       const serverWindowNotices = payload.serverWindowNotices;
+      const serverGames = payload.serverGames;
       const desktopIcons = payload.desktopIcons;
       if (!Array.isArray(dockItems) || dockItems.length === 0) {
         return;
@@ -19548,6 +20894,10 @@ var desktopMode = function(exports) {
           serverWallpapers
         );
         config.serverWallpapers = serverWallpapers;
+      }
+      if (Array.isArray(serverGames)) {
+        void syncServerGames(serverGames);
+        config.serverGames = serverGames;
       }
       if (Array.isArray(serverCommandScripts)) {
         void syncServerCommands(
@@ -19626,6 +20976,7 @@ var desktopMode = function(exports) {
       syncServerUnfocusEffects,
       syncServerWindowLinkRenderers,
       syncServerDockRailRenderers,
+      syncServerGames,
       renderIcons,
       syncShortcuts
     } = deps2;
@@ -19641,6 +20992,7 @@ var desktopMode = function(exports) {
       syncServerUnfocusEffects,
       syncServerWindowLinkRenderers,
       syncServerDockRailRenderers,
+      syncServerGames,
       renderIcons,
       syncShortcuts
     });
@@ -19751,10 +21103,10 @@ var desktopMode = function(exports) {
     }
     return !!session.activeDesktop && session.activeDesktop !== "desktop-1";
   }
-  async function restoreSession(manager, config, desktopArea) {
+  async function restoreSession(manager2, config, desktopArea) {
     const rect = desktopArea.getBoundingClientRect();
     if (Array.isArray(config.session.desktops) && config.session.desktops.length > 0) {
-      manager.seedDesktops(
+      manager2.seedDesktops(
         config.session.desktops,
         config.session.activeDesktop || config.session.desktops[0].id
       );
@@ -19762,7 +21114,7 @@ var desktopMode = function(exports) {
     for (const win of config.session.windows) {
       const clamped = clampGeometryToViewport(win, rect);
       const dockEntry = findDockEntryForUrl(win.url, config);
-      const opened = await manager.open({
+      const opened = await manager2.open({
         id: win.id,
         baseId: win.baseId || win.id,
         desktopId: win.desktopId,
@@ -19799,19 +21151,19 @@ var desktopMode = function(exports) {
       }
     }
     if (config.session.focused) {
-      const focused = manager.getById(config.session.focused);
+      const focused = manager2.getById(config.session.focused);
       if (focused) {
-        manager.focus(focused);
+        manager2.focus(focused);
       }
     }
   }
-  async function openCurrentPage(manager, config) {
+  async function openCurrentPage(manager2, config) {
     if (tryNativeUrlRemap(config.currentPage)) {
       return;
     }
     const windowId = deriveWindowId(config.currentPage, config.adminUrl);
     const dockEntry = findDockEntryForUrl(config.currentPage, config);
-    await manager.open({
+    await manager2.open({
       id: windowId,
       baseId: windowId,
       multi: !!dockEntry?.multi,
@@ -19826,18 +21178,35 @@ var desktopMode = function(exports) {
     const suppress = inputs.fromPortal && !inputs.fromPortalIntent && (inputs.hasSession || !inputs.defaultEnabled || inputs.isNativeDefault);
     return !suppress;
   }
-  function trackedFetch(manager, input, requestInit, opts) {
+  function trackedFetch(manager2, input, requestInit, opts) {
     const finalInit = injectRestNonce(input, requestInit);
     const promise = window.fetch(input, finalInit);
+    void promise.then(
+      (res) => {
+        if (res.status === 401 || res.status === 403) {
+          let url;
+          if (typeof input === "string") {
+            url = input;
+          } else if (input instanceof URL) {
+            url = input.href;
+          } else {
+            url = input.url;
+          }
+          noteAuthFailure(res.status, url);
+        }
+      },
+      () => {
+      }
+    );
     if (opts?.silent) {
       return promise;
     }
     let target2 = opts?.window;
     if (!target2 && opts?.windowId) {
-      target2 = manager.getById(opts.windowId) ?? null;
+      target2 = manager2.getById(opts.windowId) ?? null;
     }
     if (!target2) {
-      target2 = manager.getFocused();
+      target2 = manager2.getFocused();
     }
     if (target2 && typeof target2.trackActivity === "function") {
       void target2.trackActivity(promise).catch(() => {
@@ -19846,18 +21215,18 @@ var desktopMode = function(exports) {
     return promise;
   }
   const SESSION_SAVE_DEBOUNCE_MS = 500;
-  function createSessionSaver(manager, config) {
+  function createSessionSaver(manager2, config) {
     let debounceTimer = null;
     let inFlight = false;
     const doSave = async () => {
       if (inFlight) {
         return;
       }
-      const payload = manager.snapshot();
+      const payload = manager2.snapshot();
       inFlight = true;
       try {
         await trackedFetch(
-          manager,
+          manager2,
           config.sessionUrl,
           {
             method: "POST",
@@ -19883,7 +21252,7 @@ var desktopMode = function(exports) {
         clearTimeout(debounceTimer);
         debounceTimer = null;
       }
-      const payload = manager.snapshot();
+      const payload = manager2.snapshot();
       const body = new Blob(
         [JSON.stringify({ session: payload })],
         { type: "application/json" }
@@ -20438,9 +21807,9 @@ var desktopMode = function(exports) {
       (inner ?? dialog2).focus?.();
     });
   }
-  function collectWallpaperSurfaces(manager) {
+  function collectWallpaperSurfaces(manager2) {
     const seed2 = [];
-    for (const w of manager.getVisibleRects()) {
+    for (const w of manager2.getVisibleRects()) {
       if (w.state === "minimized") {
         continue;
       }
@@ -20894,6 +22263,15 @@ var desktopMode = function(exports) {
     const nonce = readDesktopConfig().restNonce;
     return typeof nonce === "string" && nonce !== "" ? nonce : null;
   }
+  const gamesApi = {
+    register: register$1,
+    unregister: unregister$1,
+    list: all$1,
+    get: get$1,
+    subscribe: subscribe$3,
+    launch: launchGame,
+    getPlaytime: () => fetchPlaytime().then((res) => res.playtime)
+  };
   const RESERVED_NAMESPACE_KEYS = /* @__PURE__ */ new Set([
     "windowManager",
     "dock",
@@ -20922,6 +22300,8 @@ var desktopMode = function(exports) {
     "repaintLoadingOverlays",
     "loadVendorScript",
     "getWallpaperSurfaces",
+    "wallpaper",
+    "games",
     "registerModule",
     "loadModules",
     "whenReady",
@@ -21016,7 +22396,7 @@ var desktopMode = function(exports) {
   ]);
   function buildPublicApi(deps2) {
     const {
-      manager,
+      manager: manager2,
       dock,
       layoutDispatcher,
       osSettings,
@@ -21036,10 +22416,11 @@ var desktopMode = function(exports) {
       dragManager,
       connect,
       getConnection,
+      wallpaperSuspend,
       config
     } = deps2;
     const desktopApi = {
-      windowManager: manager,
+      windowManager: manager2,
       dock,
       sideDock: layoutDispatcher?.getSide() ?? null,
       desktopLayout: osSettings.getOsSettingsSnapshot().desktopLayout,
@@ -21051,7 +22432,7 @@ var desktopMode = function(exports) {
       HOOKS,
       isActive: () => !!document.getElementById("desktop-mode-shell"),
       registerWallpaper: (def) => {
-        register$2(def);
+        register$3(def);
         osSettings.apply();
       },
       registerWidget: (def) => {
@@ -21064,11 +22445,13 @@ var desktopMode = function(exports) {
         }
       },
       loadVendorScript,
-      getWallpaperSurfaces: () => collectWallpaperSurfaces(manager),
+      getWallpaperSurfaces: () => collectWallpaperSurfaces(manager2),
+      wallpaper: wallpaperSuspend,
+      games: gamesApi,
       registerWindow,
       openWindow: openWindowById,
       openNewWindow: openNewWindowById,
-      fetch: (input, requestInit, opts) => trackedFetch(manager, input, requestInit, opts),
+      fetch: (input, requestInit, opts) => trackedFetch(manager2, input, requestInit, opts),
       repaintLoadingOverlays,
       cloneTemplate,
       onWindow,
@@ -21098,8 +22481,8 @@ var desktopMode = function(exports) {
       registerSettingsTab,
       unregisterSettingsTab,
       listSettingsTabs,
-      registerDockRailRenderer: register$1,
-      unregisterDockRailRenderer: unregister$1,
+      registerDockRailRenderer: register$2,
+      unregisterDockRailRenderer: unregister$2,
       listDockRailRenderers: list,
       openOsSettings,
       getOsSettings: () => osSettings.getOsSettingsSnapshot(),
@@ -21238,7 +22621,7 @@ var desktopMode = function(exports) {
       unregisterWindowTheme,
       listWindowThemes,
       applyWindowTheme: (windowId, override) => {
-        const win = manager.getById(windowId);
+        const win = manager2.getById(windowId);
         if (!win) {
           return;
         }
@@ -21248,7 +22631,7 @@ var desktopMode = function(exports) {
       unregisterWindowControl,
       listWindowControls,
       applyWindowControls: (windowId, override) => {
-        const win = manager.getById(windowId);
+        const win = manager2.getById(windowId);
         if (!win) {
           return;
         }
@@ -21258,7 +22641,7 @@ var desktopMode = function(exports) {
       unregisterWindowSlot,
       listWindowSlots,
       applyWindowSlot: (windowId, slot, slotConfig) => {
-        const win = manager.getById(windowId);
+        const win = manager2.getById(windowId);
         if (!win) {
           return;
         }
@@ -21273,7 +22656,7 @@ var desktopMode = function(exports) {
       unregisterWindowChrome,
       listWindowChromes,
       applyWindowChrome: (windowId, chromeId) => {
-        const win = manager.getById(windowId);
+        const win = manager2.getById(windowId);
         if (!win) {
           return;
         }
@@ -21293,7 +22676,7 @@ var desktopMode = function(exports) {
       activity,
       heartbeat,
       showToast,
-      notify: notify$3,
+      notify: notify$d,
       pwa: {
         promptInstall,
         undismissInstallHint,
@@ -21605,12 +22988,12 @@ var desktopMode = function(exports) {
       }
     }
   }
-  let deps$1 = null;
+  let deps$2 = null;
   function installOpenDeps(next) {
-    deps$1 = next;
+    deps$2 = next;
   }
   async function openFile(file, ctx) {
-    if (!deps$1) {
+    if (!deps$2) {
       console.warn(
         "[desktop-mode] wp.desktop.files.open() called before the shell installed open deps. The file will not open."
       );
@@ -21633,16 +23016,16 @@ var desktopMode = function(exports) {
         if (!url) {
           return false;
         }
-        const id = handler.windowId ? handler.windowId(file) : deps$1.deriveWindowId(url);
+        const id = handler.windowId ? handler.windowId(file) : deps$2.deriveWindowId(url);
         const title = handler.title ? handler.title(file) : file.title();
         const icon = file.icon();
-        const opened = deps$1.openUrl({ id, url, title, icon });
+        const opened = deps$2.openUrl({ id, url, title, icon });
         doAction("desktop-mode.files.opened", { file, openerId: opener.id, kind: "url" });
         return opened;
       }
       if (handler.kind === "window") {
         const config = handler.config ? handler.config(file) : void 0;
-        const opened = deps$1.openNativeWindow(handler.windowId, config);
+        const opened = deps$2.openNativeWindow(handler.windowId, config);
         doAction("desktop-mode.files.opened", { file, openerId: opener.id, kind: "window" });
         return opened;
       }
@@ -21666,6 +23049,7 @@ var desktopMode = function(exports) {
     registerType({ type: "folder", label: "Folder", sort: 5 });
     registerType({ type: "post", label: "Post", sort: 10 });
     registerType({ type: "attachment", label: "Media", sort: 20 });
+    registerType({ type: "upload", label: "Uploaded file", sort: 25 });
     registerType({ type: "user", label: "User", sort: 30 });
     registerType({ type: "term", label: "Taxonomy term", sort: 40 });
     registerType({ type: "comment", label: "Comment", sort: 50 });
@@ -21673,15 +23057,18 @@ var desktopMode = function(exports) {
     registerType({ type: "link", label: "Web link", sort: 70 });
     registerType({ type: "embed", label: "Embedded web window", sort: 80 });
   }
-  let deps = null;
+  let deps$1 = null;
   function installRestDeps(next) {
-    deps = next;
+    deps$1 = next;
   }
-  function ensureDeps() {
-    if (!deps) {
+  function ensureDeps$1() {
+    if (!deps$1) {
       throw new Error("[desktop-mode] files REST client called before installRestDeps().");
     }
-    return deps;
+    return deps$1;
+  }
+  function getFilesRestDeps() {
+    return ensureDeps$1();
   }
   class FilesConflictError extends Error {
     constructor(detail) {
@@ -21693,8 +23080,8 @@ var desktopMode = function(exports) {
       this.detail = detail;
     }
   }
-  async function call(path, init2) {
-    const { baseUrl, nonce } = ensureDeps();
+  async function call$1(path, init2) {
+    const { baseUrl, nonce } = ensureDeps$1();
     const url = joinRestUrl(baseUrl, path);
     const headers = new Headers(init2.headers ?? {});
     headers.set("X-WP-Nonce", nonce);
@@ -21743,13 +23130,13 @@ var desktopMode = function(exports) {
     return body;
   }
   function listPlacements(folderId = 0) {
-    return call(
+    return call$1(
       `/placements?folder=${encodeURIComponent(String(folderId))}`,
       { method: "GET" }
     );
   }
   function createPlacement(body) {
-    return call("/placements", {
+    return call$1("/placements", {
       method: "POST",
       body: JSON.stringify(body)
     });
@@ -21759,17 +23146,17 @@ var desktopMode = function(exports) {
     if (typeof ifMatchMs === "number" && ifMatchMs > 0) {
       headers["If-Match"] = String(ifMatchMs);
     }
-    return call(`/placements/${id}`, {
+    return call$1(`/placements/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
       headers
     });
   }
   function deletePlacement(id) {
-    return call(`/placements/${id}`, { method: "DELETE" });
+    return call$1(`/placements/${id}`, { method: "DELETE" });
   }
   async function restoreTrashedItem(id, type) {
-    const { baseUrl, nonce } = ensureDeps();
+    const { baseUrl, nonce } = ensureDeps$1();
     const root = baseUrl.replace(/\/files\/?$/, "");
     const url = `${root}/recycle-bin/restore`;
     const res = await trackedFetch$1(
@@ -21791,10 +23178,10 @@ var desktopMode = function(exports) {
     return await res.json();
   }
   function listFolders() {
-    return call("/folders", { method: "GET" });
+    return call$1("/folders", { method: "GET" });
   }
   function createFolder(body) {
-    return call("/folders", {
+    return call$1("/folders", {
       method: "POST",
       body: JSON.stringify(body)
     });
@@ -21804,79 +23191,147 @@ var desktopMode = function(exports) {
     if (typeof ifMatchMs === "number" && ifMatchMs > 0) {
       headers["If-Match"] = String(ifMatchMs);
     }
-    return call(`/folders/${id}`, {
+    return call$1(`/folders/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
       headers
     });
   }
   function deleteFolder(id) {
-    return call(`/folders/${id}`, { method: "DELETE" });
+    return call$1(`/folders/${id}`, { method: "DELETE" });
   }
   function saveAssociations(associations) {
-    return call("/associations", {
+    return call$1("/associations", {
       method: "PUT",
       body: JSON.stringify({ associations })
     });
   }
   function listShares(folderId) {
-    return call(`/folders/${folderId}/shares`, { method: "GET" });
+    return call$1(`/folders/${folderId}/shares`, { method: "GET" });
   }
   function inviteShare(folderId, body) {
-    return call(`/folders/${folderId}/shares`, {
+    return call$1(`/folders/${folderId}/shares`, {
       method: "POST",
       body: JSON.stringify(body)
     });
   }
   function updateShareCapability(folderId, shareId, capability) {
-    return call(`/folders/${folderId}/shares/${shareId}`, {
+    return call$1(`/folders/${folderId}/shares/${shareId}`, {
       method: "PATCH",
       body: JSON.stringify({ capability })
     });
   }
   function revokeShare(folderId, shareId) {
-    return call(`/folders/${folderId}/shares/${shareId}`, {
+    return call$1(`/folders/${folderId}/shares/${shareId}`, {
       method: "DELETE"
     });
   }
   function acceptShare(folderId, shareId) {
-    return call(`/folders/${folderId}/shares/${shareId}/accept`, {
+    return call$1(`/folders/${folderId}/shares/${shareId}/accept`, {
       method: "POST"
     });
   }
   function denyShare(folderId, shareId) {
-    return call(`/folders/${folderId}/shares/${shareId}/deny`, {
+    return call$1(`/folders/${folderId}/shares/${shareId}/deny`, {
       method: "POST"
     });
   }
   function leaveShare(folderId) {
-    return call(`/folders/${folderId}/leave`, {
+    return call$1(`/folders/${folderId}/leave`, {
       method: "POST"
     });
   }
   function purgeFolderSharingTables() {
-    return call(
+    return call$1(
       "/folder-sharing-tables/purge",
       { method: "POST" }
     );
   }
+  function listFileShares(fileId) {
+    return call$1(
+      `/uploads/${fileId}/shares`,
+      { method: "GET" }
+    );
+  }
+  function inviteFileShare(fileId, userId) {
+    return call$1(`/uploads/${fileId}/shares`, {
+      method: "POST",
+      body: JSON.stringify({ userId })
+    });
+  }
+  function revokeFileShare(fileId, shareId) {
+    return call$1(
+      `/uploads/${fileId}/shares/${shareId}`,
+      { method: "DELETE" }
+    );
+  }
+  function acceptFileShare(fileId, shareId) {
+    return call$1(
+      `/uploads/${fileId}/shares/${shareId}/accept`,
+      { method: "POST" }
+    );
+  }
+  function denyFileShare(fileId, shareId) {
+    return call$1(
+      `/uploads/${fileId}/shares/${shareId}/deny`,
+      { method: "POST" }
+    );
+  }
+  function leaveFileShare(fileId) {
+    return call$1(`/uploads/${fileId}/leave`, {
+      method: "POST"
+    });
+  }
+  function renameUpload(fileId, name) {
+    return call$1(
+      `/uploads/${fileId}`,
+      { method: "PATCH", body: JSON.stringify({ name }) }
+    );
+  }
+  function ensureUploadPath(parentId, relativePath) {
+    return call$1("/uploads/paths", {
+      method: "POST",
+      body: JSON.stringify({ parentId, relativePath })
+    });
+  }
+  function getUploadDownloadUrl(fileId) {
+    const { baseUrl, nonce } = ensureDeps$1();
+    const base = joinRestUrl(baseUrl, `/uploads/${fileId}/download`);
+    return `${base}${base.includes("?") ? "&" : "?"}_wpnonce=${encodeURIComponent(nonce)}`;
+  }
+  function getFolderZipUrl(folderId) {
+    const { baseUrl, nonce } = ensureDeps$1();
+    const base = joinRestUrl(baseUrl, `/folders/${folderId}/download`);
+    return `${base}${base.includes("?") ? "&" : "?"}_wpnonce=${encodeURIComponent(nonce)}`;
+  }
   const filesRest = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
     FilesConflictError,
+    acceptFileShare,
     acceptShare,
     createFolder,
     createPlacement,
     deleteFolder,
     deletePlacement,
+    denyFileShare,
     denyShare,
+    ensureUploadPath,
+    getFilesRestDeps,
+    getFolderZipUrl,
+    getUploadDownloadUrl,
     installRestDeps,
+    inviteFileShare,
     inviteShare,
+    leaveFileShare,
     leaveShare,
+    listFileShares,
     listFolders,
     listPlacements,
     listShares,
     purgeFolderSharingTables,
+    renameUpload,
     restoreTrashedItem,
+    revokeFileShare,
     revokeShare,
     saveAssociations,
     updateFolder,
@@ -22002,6 +23457,20 @@ var desktopMode = function(exports) {
   function getFilesState() {
     return getFilesStore().getState();
   }
+  function currentPlacement(snapshot) {
+    const state2 = getFilesState();
+    const sameFolder = state2.placementsByFolder.get(snapshot.parentId)?.find((p) => p && p.id === snapshot.id);
+    if (sameFolder) {
+      return sameFolder;
+    }
+    for (const list2 of state2.placementsByFolder.values()) {
+      const hit = list2.find((p) => p && p.id === snapshot.id);
+      if (hit) {
+        return hit;
+      }
+    }
+    return snapshot;
+  }
   const store = {
     getState: getFilesState,
     subscribe: subscribeFilesStore,
@@ -22009,7 +23478,8 @@ var desktopMode = function(exports) {
     upsertPlacement,
     upsertFolder,
     removePlacement,
-    removeFolder
+    removeFolder,
+    currentPlacement
   };
   const styles$4 = css`:host{display:inline-block}`;
   const styles$3 = css`:host{position:absolute;width:var( --wpd-ribbon-size,90px );height:var( --wpd-ribbon-size,90px );overflow:hidden;pointer-events:none;z-index:var( --wpd-ribbon-z,2 )}:host( [ hidden ] ){display:none}.banner{position:absolute;display:block;width:var( --wpd-ribbon-banner-width,140px );padding:var( --wpd-ribbon-padding,4px 0 );text-align:center;font:var( --wpd-ribbon-font,700 10px/1.4 var( --desktop-mode-font,system-ui ) );letter-spacing:var( --wpd-ribbon-tracking,0.06em );text-transform:uppercase;color:var( --wpd-ribbon-fg,#fff );background:var( --wpd-ribbon-bg,var( --wp-admin-theme-color,#2271b1 ) );box-shadow:var( --wpd-ribbon-shadow,0 2px 4px rgba( 0,0,0,0.2 ) )}:host(:not( [ placement ] ) ),:host( [ placement='top-end' ] ){inset-block-start:0;inset-inline-end:0}:host(:not( [ placement ] ) ) .banner,:host( [ placement='top-end' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host( [ placement='top-start' ] ){inset-block-start:0;inset-inline-start:0}:host( [ placement='top-start' ] ) .banner{inset-block-start:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-end' ] ){inset-block-end:0;inset-inline-end:0}:host( [ placement='bottom-end' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-end:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( -45deg )}:host( [ placement='bottom-start' ] ){inset-block-end:0;inset-inline-start:0}:host( [ placement='bottom-start' ] ) .banner{inset-block-end:var( --wpd-ribbon-banner-offset,20px );inset-inline-start:var( --wpd-ribbon-banner-pull,-36px );transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host(:not( [ placement ] ) ) .banner,:host-context( [ dir='rtl' ] ):host( [ placement='top-end' ] ) .banner{transform:rotate( -45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='top-start' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-end' ] ) .banner{transform:rotate( 45deg )}:host-context( [ dir='rtl' ] ):host( [ placement='bottom-start' ] ) .banner{transform:rotate( -45deg )}:host( [ tone='success' ] ) .banner{background:var( --wpd-ribbon-success,#1a7f37 )}:host( [ tone='warning' ] ) .banner{background:var( --wpd-ribbon-warning,#9a6700 )}:host( [ tone='danger' ] ) .banner{background:var( --wpd-ribbon-danger,#cf222e )}:host( [ tone='info' ] ) .banner{background:var( --wpd-ribbon-info,#0969da )}:host( [ tone='neutral' ] ) .banner{background:var( --wpd-ribbon-neutral,#57606a )}`;
@@ -22082,7 +23552,7 @@ var desktopMode = function(exports) {
       return true;
     }
   }
-  function getDragManager$1() {
+  function getDragManager$3() {
     const api = window.wp?.desktop?.dragManager;
     return api ?? null;
   }
@@ -22276,7 +23746,7 @@ var desktopMode = function(exports) {
         if (e.button !== 0) {
           return;
         }
-        const dragManager = getDragManager$1();
+        const dragManager = getDragManager$3();
         if (!dragManager) {
           return;
         }
@@ -22399,11 +23869,14 @@ var desktopMode = function(exports) {
     }
     return tile2;
   }
+  function placementLabel(placement) {
+    const metaName = placement.meta && typeof placement.meta.name === "string" ? placement.meta.name.trim() : "";
+    return metaName !== "" ? metaName : resolve(placement.file).title();
+  }
   function placementToSpec(placement, folderId) {
     const file = resolve(placement.file);
     const previewUrl = file.previewUrl();
-    const metaName = placement.meta && typeof placement.meta.name === "string" ? placement.meta.name.trim() : "";
-    const label = metaName !== "" ? metaName : file.title();
+    const label = placementLabel(placement);
     const metaIconUrl = placement.meta && typeof placement.meta.iconUrl === "string" ? placement.meta.iconUrl.trim() : "";
     return {
       type: placement.file.type,
@@ -22425,7 +23898,6 @@ var desktopMode = function(exports) {
     };
   }
   function buildTile(placement, folderId) {
-    const file = resolve(placement.file);
     const tile2 = buildTileFromSpec(placementToSpec(placement, folderId));
     const classFiltered = applyFilters(
       "desktop-mode.files.tile-class",
@@ -22446,19 +23918,21 @@ var desktopMode = function(exports) {
     tile2.addEventListener("dblclick", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (placement.accessGated) {
+      const live = currentPlacement(placement);
+      const file = resolve(live.file);
+      if (live.accessGated) {
         showToast({
-          message: `You don’t have permission to open "${placement.file.title || file.title()}". Ask the folder owner if you need access to this item.`,
+          message: `You don’t have permission to open "${live.file.title || file.title()}". Ask the folder owner if you need access to this item.`,
           duration: 6e3
         });
         return;
       }
       void openFile(file, {
         placement: {
-          id: placement.id,
-          x: placement.x,
-          y: placement.y,
-          meta: placement.meta
+          id: live.id,
+          x: live.x,
+          y: live.y,
+          meta: live.meta
         }
       });
     });
@@ -22468,6 +23942,31 @@ var desktopMode = function(exports) {
   function setTilePosition(tile2, x, y) {
     tile2.style.left = `${x}px`;
     tile2.style.top = `${y}px`;
+  }
+  const handlers$2 = /* @__PURE__ */ new Map();
+  function registerTilePayloadHandler(type, handler) {
+    handlers$2.set(type, handler);
+    return () => {
+      if (handlers$2.get(type) === handler) {
+        handlers$2.delete(type);
+      }
+    };
+  }
+  function tilePayloadAcceptLabel(type, ctx) {
+    const handler = handlers$2.get(type);
+    return handler && handler.appliesTo(ctx) ? handler.acceptLabel : void 0;
+  }
+  function tilePayloadAccepts(payload, ctx) {
+    const handler = handlers$2.get(payload.type);
+    return handler ? handler.appliesTo(ctx) && handler.accept(payload.data, ctx) : false;
+  }
+  function tilePayloadDrop(session, ev, ctx) {
+    const handler = handlers$2.get(session.payload.type);
+    if (!handler || !handler.appliesTo(ctx)) {
+      return false;
+    }
+    handler.onDrop(session, ev, ctx);
+    return true;
   }
   function attachDismissable(host, options) {
     const onAway = (e) => {
@@ -22824,6 +24323,27 @@ var desktopMode = function(exports) {
       duration: 7e3
     });
   }
+  const handlers$1 = /* @__PURE__ */ new Map();
+  function registerCanvasPayloadHandler(type, handler) {
+    handlers$1.set(type, handler);
+    return () => {
+      if (handlers$1.get(type) === handler) {
+        handlers$1.delete(type);
+      }
+    };
+  }
+  function canvasPayloadAccepts(payload, ctx) {
+    const handler = handlers$1.get(payload.type);
+    return handler ? handler.accept(payload.data, ctx) : false;
+  }
+  function canvasPayloadDrop(session, ev, ctx) {
+    const handler = handlers$1.get(session.payload.type);
+    if (!handler) {
+      return false;
+    }
+    handler.onDrop(session, ev, ctx);
+    return true;
+  }
   function broadcastFilesChange(kind, action, ids) {
     const api = window.wp?.desktop;
     api?.broadcast?.(`desktop-mode.${kind}.changed`, {
@@ -22963,7 +24483,7 @@ var desktopMode = function(exports) {
     }
     return void 0;
   }
-  function getDragManager() {
+  function getDragManager$2() {
     const api = window.wp?.desktop?.dragManager;
     return api ?? null;
   }
@@ -23059,16 +24579,12 @@ var desktopMode = function(exports) {
         attachContextMenu(tile2, placement);
         attachSelectOnClick(tile2, placement);
         if (shouldRejectTileDrops(placement)) {
-          const dragManager = getDragManager();
+          const dragManager = getDragManager$2();
           if (dragManager) {
-            const deregister = dragManager.registerDropTarget({
-              id: `desktop-mode-files-tile-${placement.id}-reject`,
-              element: tile2,
-              accept: () => false,
-              onDrop: () => {
-              }
-            });
-            tileRejectDeregisters.set(placement.id, deregister);
+            tileRejectDeregisters.set(
+              placement.id,
+              registerTileRejectTarget(dragManager, tile2, placement)
+            );
           }
         }
         return tile2;
@@ -23083,7 +24599,7 @@ var desktopMode = function(exports) {
       if (placement.file.type === "folder") {
         const targetFolderId = parseInt(placement.file.ref, 10);
         if (targetFolderId > 0) {
-          const dragManager = getDragManager();
+          const dragManager = getDragManager$2();
           if (dragManager) {
             const deregister = registerFolderDropTarget(
               dragManager,
@@ -23094,16 +24610,12 @@ var desktopMode = function(exports) {
           }
         }
       } else if (shouldRejectTileDrops(placement)) {
-        const dragManager = getDragManager();
+        const dragManager = getDragManager$2();
         if (dragManager) {
-          const deregister = dragManager.registerDropTarget({
-            id: `desktop-mode-files-tile-${placement.id}-reject`,
-            element: tile2,
-            accept: () => false,
-            onDrop: () => {
-            }
-          });
-          tileRejectDeregisters.set(placement.id, deregister);
+          tileRejectDeregisters.set(
+            placement.id,
+            registerTileRejectTarget(dragManager, tile2, placement)
+          );
         }
       }
       return tile2;
@@ -23169,6 +24681,7 @@ var desktopMode = function(exports) {
         const tile2 = existing.get(placement.id);
         if (tile2) {
           applyTilePosition(tile2, placement, pinnedSlots, displaced);
+          syncTileLabel(tile2, placement);
           continue;
         }
         container.appendChild(
@@ -23297,7 +24810,7 @@ var desktopMode = function(exports) {
       element: host,
       accept: (payload) => {
         if (payload.type !== "desktop-file" && payload.type !== "shortcut") {
-          return false;
+          return canvasPayloadAccepts(payload, { folderId, host });
         }
         if (folderId > 0 && payload.type === "desktop-file") {
           const data = payload.data;
@@ -23312,7 +24825,9 @@ var desktopMode = function(exports) {
       },
       onEnter: (session) => {
         host.setAttribute("data-files-drop-active", "");
-        installCanvasDropPreview(session);
+        if (session.payload.type === "desktop-file" || session.payload.type === "shortcut") {
+          installCanvasDropPreview(session);
+        }
       },
       onLeave: () => {
         host.removeAttribute("data-files-drop-active");
@@ -23321,6 +24836,10 @@ var desktopMode = function(exports) {
       onDrop: (session, ev) => {
         host.removeAttribute("data-files-drop-active");
         teardownCanvasDropPreview();
+        if (session.payload.type !== "desktop-file" && session.payload.type !== "shortcut") {
+          canvasPayloadDrop(session, ev, { folderId, host });
+          return;
+        }
         const rect = container.getBoundingClientRect();
         const ghost = session.payload.ghost;
         const offsetX = ghost?.offsetX ?? 0;
@@ -23402,7 +24921,7 @@ var desktopMode = function(exports) {
         }
       }
     };
-    const dragManagerForLayer = getDragManager();
+    const dragManagerForLayer = getDragManager$2();
     if (dragManagerForLayer) {
       dropTargetDeregisters.push(
         dragManagerForLayer.registerDropTarget(canvasDropTarget)
@@ -23418,7 +24937,7 @@ var desktopMode = function(exports) {
     function attachSelectOnClick(tile2, placement) {
       tile2.addEventListener("click", (e) => {
         e.stopPropagation();
-        setSelected(placement);
+        setSelected(store.currentPlacement(placement));
       });
     }
     repaint(store.getState());
@@ -23800,8 +25319,15 @@ var desktopMode = function(exports) {
       } else {
         setTilePosition(tile2, placement.x, placement.y);
       }
+      syncTileLabel(tile2, placement);
     }
     return true;
+  }
+  function syncTileLabel(tile2, placement) {
+    const label = placementLabel(placement);
+    if (tile2.getAttribute("label") !== label) {
+      tile2.setAttribute("label", label);
+    }
   }
   function hidePromotedDockItem(dockItemId) {
     const api = window.wp?.desktop;
@@ -23811,6 +25337,31 @@ var desktopMode = function(exports) {
     const current = api.getOsSettings().itemVisibility ?? {};
     const next = { ...current, [dockItemId]: "dock" };
     api.updateOsSettings({ itemVisibility: next });
+  }
+  function registerTileRejectTarget(dragManager, tile2, placement) {
+    const ctx = { placement };
+    let hoveredType = null;
+    return dragManager.registerDropTarget({
+      id: `desktop-mode-files-tile-${placement.id}-reject`,
+      element: tile2,
+      get acceptLabel() {
+        return hoveredType ? tilePayloadAcceptLabel(hoveredType, ctx) : void 0;
+      },
+      accept: (payload) => {
+        hoveredType = payload.type;
+        return tilePayloadAccepts(payload, ctx);
+      },
+      onEnter: () => {
+        tile2.classList.add(`${TILE_CLASS}--drop-target`);
+      },
+      onLeave: () => {
+        tile2.classList.remove(`${TILE_CLASS}--drop-target`);
+      },
+      onDrop: (session, ev) => {
+        tile2.classList.remove(`${TILE_CLASS}--drop-target`);
+        tilePayloadDrop(session, ev, ctx);
+      }
+    });
   }
   function registerFolderDropTarget(dragManager, tile2, targetFolderId, currentFolderId) {
     const target2 = {
@@ -23906,7 +25457,7 @@ var desktopMode = function(exports) {
       if (e.button !== 0) {
         return;
       }
-      const dragManager = getDragManager();
+      const dragManager = getDragManager$2();
       if (!dragManager) {
         return;
       }
@@ -23944,10 +25495,11 @@ var desktopMode = function(exports) {
       });
     });
   }
-  function attachContextMenu(tile2, placement) {
+  function attachContextMenu(tile2, wiredPlacement) {
     tile2.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      const placement = store.currentPlacement(wiredPlacement);
       const items = [
         {
           id: "open",
@@ -24078,6 +25630,20 @@ var desktopMode = function(exports) {
       openTileMenu({ x: e.clientX, y: e.clientY }, { placement, items });
     });
   }
+  function formatBytes$1(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+      return "0 B";
+    }
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let v = bytes;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    const decimals = v >= 100 || i === 0 ? 0 : 1;
+    return `${v.toFixed(decimals)} ${units[i]}`;
+  }
   const STATUS_BAR_CLASS = "desktop-mode-folder-status-bar";
   const ROOT_CLASS$2 = STATUS_BAR_CLASS;
   function mountFolderStatusBar(host, folderId) {
@@ -24090,9 +25656,20 @@ var desktopMode = function(exports) {
       const list2 = getFilesState().placementsByFolder.get(folderId) ?? [];
       const folders = list2.filter((p) => p.file.type === "folder").length;
       const files = list2.length - folders;
+      let bytes = 0;
+      for (const p of list2) {
+        if (p.file.type === "upload") {
+          const size = Number(
+            p.file.sizeBytes ?? 0
+          );
+          if (Number.isFinite(size) && size > 0) {
+            bytes += size;
+          }
+        }
+      }
       const ctx = {
         folderId,
-        totals: { files, folders, total: list2.length }
+        totals: { files, folders, total: list2.length, bytes }
       };
       const segments = computeSegments(ctx);
       render(bar, segments);
@@ -24107,11 +25684,13 @@ var desktopMode = function(exports) {
     };
   }
   function computeSegments(ctx) {
-    const { folders, files } = ctx.totals;
+    const { folders, files, bytes } = ctx.totals;
     const builtIns = [
       {
         id: "count",
-        label: pluralize(files, "file", "files") + (folders > 0 ? `, ${pluralize(folders, "folder", "folders")}` : ""),
+        label: pluralize(files, "file", "files") + (folders > 0 ? `, ${pluralize(folders, "folder", "folders")}` : "") + // Stored-upload weight — only when the folder holds
+        // real bytes (reference tiles weigh nothing).
+        (bytes > 0 ? ` (${formatBytes$1(bytes)})` : ""),
         align: "start",
         sort: 10
       }
@@ -25127,6 +26706,15 @@ var desktopMode = function(exports) {
     }
     return Math.abs(h).toString(36);
   }
+  function navigateToDownload(url) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.setAttribute("download", "");
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
   function adminBase() {
     const cfg = window.wp?.desktop?.config;
     const url = cfg?.adminUrl ?? "/wp-admin/";
@@ -25204,6 +26792,23 @@ var desktopMode = function(exports) {
       handler: {
         kind: "url",
         url: (file) => `${adminBase()}comment.php?action=editcomment&c=${encodeURIComponent(file.ref())}`
+      }
+    });
+    registerOpener({
+      id: "desktop-mode-upload-download",
+      label: "Download",
+      types: ["upload"],
+      isDefault: true,
+      sort: 10,
+      handler: {
+        kind: "js",
+        open: (file) => {
+          const fileId = parseInt(file.ref(), 10);
+          if (!fileId) {
+            return;
+          }
+          navigateToDownload(getUploadDownloadUrl(fileId));
+        }
       }
     });
     registerOpener({
@@ -25591,7 +27196,8 @@ var desktopMode = function(exports) {
         byFolder: /* @__PURE__ */ new Map(),
         pending: [],
         sharesVersion: 0,
-        deniedFolders: /* @__PURE__ */ new Set()
+        deniedFolders: /* @__PURE__ */ new Set(),
+        deniedFiles: /* @__PURE__ */ new Set()
       }));
     }
     return _store$1;
@@ -25622,14 +27228,19 @@ var desktopMode = function(exports) {
     s.notify();
   }
   function inviteEquals(a, b) {
-    return a.id === b.id && a.folderId === b.folderId && a.capability === b.capability && a.invitedAtMs === b.invitedAtMs && a.folderName === b.folderName && a.ownerName === b.ownerName;
+    return a.id === b.id && a.folderId === b.folderId && a.capability === b.capability && a.invitedAtMs === b.invitedAtMs && a.folderName === b.folderName && a.fileName === b.fileName && a.ownerName === b.ownerName;
   }
   function ingestPendingInvites(invites) {
     const s = sharesStore();
     const existingById = new Map(s.state.pending.map((p) => [p.id, p]));
     let mutated = false;
-    for (const inv of invites) {
-      if (s.state.deniedFolders.has(inv.folderId)) {
+    for (const raw of invites) {
+      const inv = raw.targetType === "file" && typeof raw.folderId !== "number" ? { ...raw, folderId: 0 } : raw;
+      if (inv.targetType === "file") {
+        if (typeof inv.fileId === "number" && s.state.deniedFiles.has(inv.fileId)) {
+          continue;
+        }
+      } else if (s.state.deniedFolders.has(inv.folderId)) {
         continue;
       }
       const existing = existingById.get(inv.id);
@@ -25655,6 +27266,9 @@ var desktopMode = function(exports) {
     s.state.pending = s.state.pending.filter((p) => p.id !== shareId);
     if (opts.denied && typeof opts.folderId === "number") {
       s.state.deniedFolders.add(opts.folderId);
+    }
+    if (opts.denied && typeof opts.fileId === "number") {
+      s.state.deniedFiles.add(opts.fileId);
     }
     s.notify();
   }
@@ -26131,7 +27745,7 @@ var desktopMode = function(exports) {
   let WpdSegmented = _WpdSegmented;
   defineComponent("wpd-segmented", WpdSegmented);
   const containerStyles = css`:host{position:fixed;top:calc( var( --wp-admin--admin-bar--height,32px ) + 16px );inset-inline-end:16px;display:flex;flex-direction:column;gap:8px;z-index:calc( var( --desktop-mode-z-fullscreen,99999 ) + 10 );pointer-events:none}`;
-  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:10px;border:1px solid rgba( 255,255,255,0.12 );box-shadow:0 10px 30px rgba( 0,0,0,0.4 ),0 2px 6px rgba( 0,0,0,0.18 ),inset 0 0 0 1px rgba( 255,255,255,0.04 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}.wpd-toast__close{display:inline-flex;align-items:center;justify-content:center;padding:4px;border-radius:6px;background:transparent;color:rgba( 255,255,255,0.7 )}.wpd-toast__close:hover{background:rgba( 255,255,255,0.14 );color:#fff}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
+  const toastStyles = css`:host{display:flex;align-items:center;gap:12px;min-width:280px;max-width:420px;padding:10px 14px;background:#1d2327;color:#fff;border-radius:10px;border:1px solid rgba( 255,255,255,0.12 );box-shadow:0 10px 30px rgba( 0,0,0,0.4 ),0 2px 6px rgba( 0,0,0,0.18 ),inset 0 0 0 1px rgba( 255,255,255,0.04 );font-size:13px;line-height:1.4;opacity:0;transform:translateY( -8px );transition:opacity 0.18s ease,transform 0.18s ease;pointer-events:auto}:host( [ state='in' ] ){opacity:1;transform:translateY( 0 )}:host( [ state='out' ] ){opacity:0;transform:translateY( -8px )}.wpd-toast__label{flex:1}button[ hidden ]{display:none}button{flex-shrink:0;padding:4px 10px;border:none;border-radius:4px;background:rgba( 255,255,255,0.12 );color:#fff;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background-color 0.12s ease}button:hover{background:rgba( 255,255,255,0.22 )}button:focus-visible{outline:2px solid rgba( 255,255,255,0.6 );outline-offset:2px}.wpd-toast__close{display:inline-flex;align-items:center;justify-content:center;padding:4px;border-radius:6px;background:transparent;color:rgba( 255,255,255,0.7 )}.wpd-toast__close:hover{background:rgba( 255,255,255,0.14 );color:#fff}@media ( prefers-reduced-motion:reduce ){:host{transition-duration:0.01ms}}`;
   const _WpdToastContainer = class _WpdToastContainer extends Component {
     connectedCallback() {
       super.connectedCallback();
@@ -26547,6 +28161,201 @@ var desktopMode = function(exports) {
     renderBody();
     await refresh();
   }
+  async function openFileShareModal(opts) {
+    const modal = document.createElement("wpd-modal");
+    modal.setAttribute("open", "");
+    modal.setAttribute("size", "md");
+    modal.setAttribute("title", `Share "${opts.fileName}"`);
+    document.body.appendChild(modal);
+    let shares = [];
+    const refresh = async () => {
+      try {
+        const res = await listFileShares(opts.fileId);
+        shares = res.shares;
+      } catch (err) {
+        showToast({
+          message: `Could not load shares: ${err.message}`
+        });
+      }
+      renderBody();
+    };
+    const renderBody = () => {
+      modal.innerHTML = "";
+      const note = document.createElement("div");
+      note.style.cssText = "opacity:0.7;margin-bottom:14px;font-size:12px;";
+      note.textContent = "People you share with can view and download this file. Only you can move, rename, or delete it.";
+      modal.appendChild(note);
+      const addLabel = document.createElement("div");
+      addLabel.textContent = "Add people";
+      addLabel.style.cssText = "font-weight:600;margin-bottom:6px;";
+      modal.appendChild(addLabel);
+      const userSearch = document.createElement("wpd-user-search");
+      userSearch.setAttribute(
+        "exclude",
+        shares.map((s) => s.principalRef).join(",")
+      );
+      userSearch.setAttribute("placeholder", "Search users…");
+      userSearch.addEventListener("wpd-user-pick", (e) => {
+        const detail = e.detail;
+        void (async () => {
+          try {
+            await inviteFileShare(opts.fileId, detail.user.id);
+            showToast({ message: `Invite sent to ${detail.user.name}.` });
+          } catch (err) {
+            showToast({
+              message: `Could not invite: ${err.message}`
+            });
+          }
+          await refresh();
+        })();
+      });
+      modal.appendChild(userSearch);
+      const listTitle = document.createElement("div");
+      listTitle.textContent = "Who has access";
+      listTitle.style.cssText = "font-weight:600;margin:14px 0 6px;";
+      modal.appendChild(listTitle);
+      if (shares.length === 0) {
+        const empty = document.createElement("div");
+        empty.textContent = "Only you can see this file.";
+        empty.style.cssText = "opacity:0.6;font-size:12px;";
+        modal.appendChild(empty);
+      } else {
+        for (const s of shares) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);";
+          const label = document.createElement("div");
+          label.style.flex = "1";
+          const display = s.displayName;
+          label.textContent = display || `User #${s.principalRef}`;
+          if (s.state === "pending") {
+            const tag = document.createElement("span");
+            tag.textContent = " · pending";
+            tag.style.cssText = "opacity:0.6;font-size:12px;";
+            label.appendChild(tag);
+          } else if (s.state === "denied") {
+            const tag = document.createElement("span");
+            tag.textContent = " · denied";
+            tag.style.cssText = "color:#d63638;font-size:12px;";
+            label.appendChild(tag);
+          }
+          row.appendChild(label);
+          const cap = document.createElement("span");
+          cap.textContent = "Read + download";
+          cap.style.cssText = "opacity:0.6;font-size:12px;";
+          row.appendChild(cap);
+          const removeBtn = buildIconButton(
+            "×",
+            () => {
+              void (async () => {
+                try {
+                  await revokeFileShare(opts.fileId, s.id);
+                  showToast({ message: "Access revoked." });
+                } catch (err) {
+                  showToast({
+                    message: `Could not revoke: ${err.message}`
+                  });
+                }
+                await refresh();
+              })();
+            },
+            { danger: true }
+          );
+          row.appendChild(removeBtn);
+          modal.appendChild(row);
+        }
+      }
+      const footer = document.createElement("div");
+      footer.setAttribute("slot", "footer");
+      footer.style.cssText = "display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;";
+      const doneBtn = document.createElement("wpd-button");
+      doneBtn.setAttribute("variant", "secondary");
+      doneBtn.textContent = "Done";
+      doneBtn.addEventListener("click", () => modal.remove());
+      footer.appendChild(doneBtn);
+      modal.appendChild(footer);
+    };
+    modal.addEventListener("wpd-modal-cancel", () => modal.remove());
+    renderBody();
+    await refresh();
+  }
+  function openPendingFileInviteModal(invite) {
+    return new Promise((resolve2) => {
+      const modal = document.createElement("wpd-modal");
+      modal.setAttribute("open", "");
+      modal.setAttribute(
+        "title",
+        invite.fileName ? `${invite.ownerName ?? "Someone"} shared "${invite.fileName}" with you` : "File shared with you"
+      );
+      const body = document.createElement("div");
+      body.innerHTML = `
+			<p style="margin: 0 0 12px;">Accept the invite to add this file to your desktop.</p>
+			<p style="margin: 0; opacity: 0.75;">Access level: <strong>Read + download</strong></p>
+		`;
+      modal.appendChild(body);
+      const footer = document.createElement("div");
+      footer.setAttribute("slot", "footer");
+      footer.style.cssText = "display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;";
+      const laterBtn = document.createElement("wpd-button");
+      laterBtn.setAttribute("variant", "secondary");
+      laterBtn.textContent = "Decide later";
+      laterBtn.addEventListener("click", () => {
+        modal.remove();
+        resolve2("dismissed");
+      });
+      const denyBtn = document.createElement("wpd-button");
+      denyBtn.setAttribute("variant", "danger");
+      denyBtn.textContent = "Deny";
+      denyBtn.addEventListener("click", async () => {
+        denyBtn.setAttribute("busy", "");
+        denyBtn.setAttribute("disabled", "");
+        try {
+          await denyFileShare(invite.fileId, invite.id);
+          sharesStore().state.deniedFiles.add(invite.fileId);
+          sharesStore().notify();
+          modal.remove();
+          resolve2("denied");
+        } catch (err) {
+          showToast({
+            message: `Could not deny: ${err.message}`
+          });
+          denyBtn.removeAttribute("busy");
+          denyBtn.removeAttribute("disabled");
+        }
+      });
+      const acceptBtn = document.createElement("wpd-button");
+      acceptBtn.setAttribute("variant", "primary");
+      acceptBtn.textContent = "Accept";
+      acceptBtn.addEventListener("click", async () => {
+        acceptBtn.setAttribute("busy", "");
+        acceptBtn.setAttribute("disabled", "");
+        try {
+          await acceptFileShare(invite.fileId, invite.id);
+          try {
+            const res = await listPlacements(0);
+            setFolderPlacements(0, res.placements);
+          } catch (_e) {
+          }
+          modal.remove();
+          resolve2("accepted");
+        } catch (err) {
+          showToast({
+            message: `Could not accept: ${err.message}`
+          });
+          acceptBtn.removeAttribute("busy");
+          acceptBtn.removeAttribute("disabled");
+        }
+      });
+      footer.appendChild(laterBtn);
+      footer.appendChild(denyBtn);
+      footer.appendChild(acceptBtn);
+      modal.appendChild(footer);
+      modal.addEventListener("wpd-modal-cancel", () => {
+        modal.remove();
+        resolve2("dismissed");
+      });
+      document.body.appendChild(modal);
+    });
+  }
   function openPendingInviteModal(invite) {
     return new Promise((resolve2) => {
       const modal = document.createElement("wpd-modal");
@@ -26626,10 +28435,17 @@ var desktopMode = function(exports) {
       document.body.appendChild(modal);
     });
   }
-  function viewerId() {
+  const shareSettingsModal = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    openFileShareModal,
+    openPendingFileInviteModal,
+    openPendingInviteModal,
+    openShareSettingsModal
+  }, Symbol.toStringTag, { value: "Module" }));
+  function viewerId$1() {
     return Number(window.desktopModeConfig?.currentUserId ?? 0);
   }
-  function sharingEnabled$1() {
+  function sharingEnabled$2() {
     const settings = window.wp?.desktop?.getOsSettings?.();
     if (!settings) {
       return true;
@@ -26665,7 +28481,7 @@ var desktopMode = function(exports) {
       "desktop-mode.files.tile-menu",
       "desktop-mode/folder-share",
       (items, placement) => {
-        if (!sharingEnabled$1()) {
+        if (!sharingEnabled$2()) {
           return items;
         }
         const folderId = placementFolderId(placement);
@@ -26673,7 +28489,7 @@ var desktopMode = function(exports) {
           return items;
         }
         const ownerId = folderOwnerId(folderId) || placementOwnerId(placement);
-        const viewer = viewerId();
+        const viewer = viewerId$1();
         if (ownerId === viewer) {
           const shared = !!placement.file.shareSummary?.shared;
           const label = shared ? "Manage sharing…" : "Share folder…";
@@ -26736,7 +28552,7 @@ var desktopMode = function(exports) {
       placement: "right",
       order: 50,
       match: (w) => {
-        if (!sharingEnabled$1()) {
+        if (!sharingEnabled$2()) {
           return false;
         }
         const base = w.config.baseId ?? w.id;
@@ -26744,7 +28560,7 @@ var desktopMode = function(exports) {
         if (folderId === null) {
           return false;
         }
-        return folderOwnerId(folderId) === viewerId();
+        return folderOwnerId(folderId) === viewerId$1();
       },
       onClick: (w) => {
         const base = w.config.baseId ?? w.id;
@@ -26796,7 +28612,7 @@ var desktopMode = function(exports) {
     );
   }
   const prompted = /* @__PURE__ */ new Set();
-  function sharingEnabled() {
+  function sharingEnabled$1() {
     const settings = window.wp?.desktop?.getOsSettings?.();
     if (!settings) {
       return true;
@@ -26806,7 +28622,7 @@ var desktopMode = function(exports) {
   function installShareInviteBanner() {
     const store2 = sharesStore();
     const handle = (state2) => {
-      if (!sharingEnabled()) {
+      if (!sharingEnabled$1()) {
         return;
       }
       for (const invite of state2.pending) {
@@ -26814,6 +28630,22 @@ var desktopMode = function(exports) {
           continue;
         }
         prompted.add(invite.id);
+        if (invite.targetType === "file" && typeof invite.fileId === "number") {
+          const fileId = invite.fileId;
+          void openPendingFileInviteModal({
+            id: invite.id,
+            fileId,
+            fileName: invite.fileName,
+            ownerName: invite.ownerName
+          }).then((decision) => {
+            if (decision === "accepted") {
+              dropPending(invite.id);
+            } else if (decision === "denied") {
+              dropPending(invite.id, { denied: true, fileId });
+            }
+          });
+          continue;
+        }
         void openPendingInviteModal({
           id: invite.id,
           folderId: invite.folderId,
@@ -26832,11 +28664,208 @@ var desktopMode = function(exports) {
     store2.subscribe(handle);
     handle(store2.state);
   }
+  function viewerId() {
+    return Number(window.desktopModeConfig?.currentUserId ?? 0);
+  }
+  function storageConfig() {
+    return window.desktopModeConfig?.desktopStorage ?? {};
+  }
+  function sharingEnabled() {
+    const settings = window.wp?.desktop?.getOsSettings?.();
+    if (!settings) {
+      return true;
+    }
+    return settings.foldersSharingEnabled !== false;
+  }
+  function uploadFileId(placement) {
+    if (placement.file.type !== "upload") {
+      return null;
+    }
+    const id = Number(placement.file.ref);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+  function installUploadMenuItems() {
+    addFilter(
+      "desktop-mode.files.tile-menu",
+      "desktop-mode/uploads",
+      (items, placement) => {
+        if (placement.file.type === "folder" && storageConfig().zipAvailable) {
+          const folderId = Number(placement.file.ref);
+          if (Number.isFinite(folderId) && folderId > 0) {
+            items.push({
+              id: "desktop-mode/folder-zip-download",
+              label: "Download as .zip",
+              icon: "dashicons-download",
+              sort: 45,
+              onClick: () => {
+                navigateToDownload(getFolderZipUrl(folderId));
+              }
+            });
+          }
+          return items;
+        }
+        const fileId = uploadFileId(placement);
+        if (fileId === null) {
+          return items;
+        }
+        items.push({
+          id: "desktop-mode/upload-download",
+          label: "Download",
+          icon: "dashicons-download",
+          sort: 40,
+          onClick: () => {
+            navigateToDownload(getUploadDownloadUrl(fileId));
+          }
+        });
+        const ownerId = Number(
+          placement.file.ownerId ?? 0
+        );
+        const viewer = viewerId();
+        if (ownerId === viewer && sharingEnabled()) {
+          items.push({
+            id: "desktop-mode/upload-share",
+            label: "Share file…",
+            icon: "dashicons-share",
+            sort: 30,
+            onClick: () => {
+              void Promise.resolve().then(() => shareSettingsModal).then((mod) => {
+                void mod.openFileShareModal({
+                  fileId,
+                  fileName: placement.file.title || `File ${fileId}`
+                });
+              });
+            }
+          });
+        } else if (ownerId > 0 && ownerId !== viewer && placement.parentId === 0) {
+          items.push({
+            id: "desktop-mode/upload-leave",
+            label: "Leave shared file",
+            icon: "dashicons-exit",
+            sort: 80,
+            danger: true,
+            onClick: async () => {
+              const ok = await wpdConfirm$1({
+                title: "Leave this shared file?",
+                message: "The file will be removed from your desktop. The owner keeps the original.",
+                confirmLabel: "Leave",
+                danger: true
+              });
+              if (!ok) {
+                return;
+              }
+              try {
+                await leaveFileShare(fileId);
+                removePlacement(placement.id);
+                try {
+                  const res = await listPlacements(0);
+                  setFolderPlacements(0, res.placements);
+                } catch (_e) {
+                }
+                showToast({ message: "You left the shared file." });
+              } catch (err) {
+                showToast({
+                  message: `Could not leave: ${err.message}`
+                });
+              }
+            }
+          });
+        }
+        return items;
+      }
+    );
+    addFilter(
+      "desktop-mode.wallpaper-context-menu",
+      "desktop-mode/uploads",
+      (items) => {
+        if (!storageConfig().canUpload) {
+          return items;
+        }
+        items.push({
+          id: "desktop-mode/upload-files",
+          label: "Upload files…",
+          icon: "dashicons-upload",
+          sort: 15,
+          onClick: () => openFilePicker(false)
+        });
+        items.push({
+          id: "desktop-mode/upload-folder",
+          label: "Upload folder…",
+          icon: "dashicons-portfolio",
+          sort: 16,
+          onClick: () => openFilePicker(true)
+        });
+        return items;
+      }
+    );
+  }
+  function openFilePicker(directory) {
+    const input = document.createElement("input");
+    input.type = "file";
+    if (directory) {
+      input.setAttribute("webkitdirectory", "");
+    } else {
+      input.multiple = true;
+    }
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", () => {
+      const files = input.files ? Array.from(input.files) : [];
+      input.remove();
+      if (files.length === 0) {
+        return;
+      }
+      void routePickedFiles(files, directory);
+    });
+    input.click();
+  }
+  async function routePickedFiles(files, directory) {
+    const config = window.desktopModeConfig;
+    const dropConfig = config?.dropConfig ?? {
+      enabled: false,
+      allowedMimes: [],
+      maxSize: 0
+    };
+    const manager$1 = await Promise.resolve().then(() => manager);
+    const { accepted, rejected } = manager$1.partitionByPolicy(files, dropConfig);
+    if (rejected.length > 0) {
+      showToast({
+        message: rejected.length === 1 ? rejected[0].message : `${rejected.length} files can't be uploaded.`
+      });
+    }
+    if (accepted.length === 0) {
+      return;
+    }
+    const entries = accepted.map(({ file, mime }) => ({
+      file,
+      mime,
+      fields: manager$1.defaultFields(file, mime),
+      // `webkitRelativePath` is populated by directory picks (and
+      // ONLY by them — drag-drops leave it empty).
+      relativePath: directory ? file.webkitRelativePath ?? "" : ""
+    }));
+    const dialog$1 = await Promise.resolve().then(() => dialog);
+    await dialog$1.openUploadDialog({
+      entries,
+      // Root-targeted picker: desktop destination default, server
+      // picks free grid slots (no coords on non-wallpaper surfaces).
+      context: { surface: "folder", folderId: 0, x: 0, y: 0 },
+      mediaUrl: config?.mediaUrl ?? "",
+      restNonce: config?.restNonce ?? "",
+      filesUrl: config?.filesUrl,
+      storage: config?.desktopStorage,
+      forceDesktop: directory,
+      // These pickers live in the desktop's own menu — their whole
+      // point is desktop storage, media-kind files included.
+      preferDesktop: true,
+      mediaMaxBytes: dropConfig.maxSize
+    });
+  }
   registerBuiltInFileTypes();
   registerBuiltInFileOpeners();
   installEmbedPersistence();
   registerFileAssociationsTab();
   installShareMenuItems();
+  installUploadMenuItems();
   const seededPending = window.desktopModeConfig?.serverPendingShares;
   if (Array.isArray(seededPending) && seededPending.length > 0) {
     ingestPendingInvites(seededPending);
@@ -28024,24 +30053,24 @@ ${content}`;
     });
     return out;
   }
-  const SUBSCRIBE_FIELD = "desktop_mode_sticky_notes_subscribe";
-  const RESPONSE_FIELD = "desktop_mode_sticky_notes";
-  let started$3 = false;
-  let target = null;
+  const SUBSCRIBE_FIELD$1 = "desktop_mode_sticky_notes_subscribe";
+  const RESPONSE_FIELD$1 = "desktop_mode_sticky_notes";
+  let started$4 = false;
+  let target$1 = null;
   function startStickyNotesHeartbeat(nextTarget) {
-    target = nextTarget;
-    if (started$3) {
+    target$1 = nextTarget;
+    if (started$4) {
       return;
     }
-    started$3 = true;
+    started$4 = true;
     heartbeat.contribute(
-      SUBSCRIBE_FIELD,
-      () => target?.getHeartbeatSubscription()
+      SUBSCRIBE_FIELD$1,
+      () => target$1?.getHeartbeatSubscription()
     );
     heartbeat.subscribe(
-      RESPONSE_FIELD,
+      RESPONSE_FIELD$1,
       (payload) => {
-        target?.applyHeartbeatPayload(payload);
+        target$1?.applyHeartbeatPayload(payload);
       }
     );
   }
@@ -28051,7 +30080,7 @@ ${content}`;
   const MIN_WIDTH = 180;
   const MIN_HEIGHT = 128;
   const EDGE_PADDING = 16;
-  const SAVE_DEBOUNCE_MS = 1e3;
+  const SAVE_DEBOUNCE_MS$1 = 1e3;
   class StickyNotesLayer {
     constructor(options) {
       this.root = null;
@@ -28574,7 +30603,7 @@ ${content}`;
       this.saveTimer = window.setTimeout(() => {
         this.saveTimer = null;
         void this.save();
-      }, SAVE_DEBOUNCE_MS);
+      }, SAVE_DEBOUNCE_MS$1);
     }
     flushSave() {
       if (this.saveTimer !== null) {
@@ -28807,6 +30836,2003 @@ ${content}`;
       return min;
     }
     return Math.min(max, Math.max(min, value));
+  }
+  const avatarStyles = css`:host{display:inline-flex;position:relative;width:var( --wpd-avatar-size,32px );height:var( --wpd-avatar-size,32px );flex:0 0 auto;vertical-align:middle;line-height:0;perspective:calc( var( --wpd-avatar-size,32px ) * 8 );--wpd-avatar-tilt-x:0deg;--wpd-avatar-tilt-y:0deg;--wpd-avatar-hover:0;--wpd-avatar-glare-x:50%;--wpd-avatar-glare-y:50%}:host( [ hidden ] ){display:none}.wpd-avatar__tile{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;background:var( --desktop-mode-window-bg,#f0f0f1 );color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:calc( var( --wpd-avatar-size,32px ) * 0.48 );line-height:1;letter-spacing:0;font-feature-settings:'tnum' 1;user-select:none;transform-style:preserve-3d;transform:rotateX( var( --wpd-avatar-tilt-x ) ) rotateY( var( --wpd-avatar-tilt-y ) ) scale( calc( 1 + var( --wpd-avatar-hover ) * 0.07 ) );transition:transform 220ms cubic-bezier( 0.2,0.8,0.2,1 ),box-shadow 220ms cubic-bezier( 0.2,0.8,0.2,1 );box-shadow:inset 0 0 0 1px rgba( 255,255,255,calc( 0.18 + 0.22 * var( --wpd-avatar-hover ) ) ),inset 0 0 0 calc( 1px + var( --wpd-avatar-hover ) * 1px ) rgba( 0,0,0,calc( 0.08 + 0.04 * var( --wpd-avatar-hover ) ) ),0 calc( 1px + var( --wpd-avatar-hover ) * 8px ) calc( 6px + var( --wpd-avatar-hover ) * 18px ) rgba( 0,0,0,calc( 0.08 + 0.18 * var( --wpd-avatar-hover ) ) )}.wpd-avatar__tile::after{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient( circle at var( --wpd-avatar-glare-x ) var( --wpd-avatar-glare-y ),rgba( 255,255,255,0.55 ) 0%,rgba( 255,255,255,0 ) 55% );opacity:var( --wpd-avatar-hover );mix-blend-mode:overlay;pointer-events:none;transition:opacity 220ms cubic-bezier( 0.2,0.8,0.2,1 )}.wpd-avatar__tile::before{content:'';position:absolute;inset:calc( var( --wpd-avatar-hover ) * -3px );border-radius:50%;background:radial-gradient( circle at var( --wpd-avatar-glare-x ) var( --wpd-avatar-glare-y ),rgba( 99,102,241,calc( 0.35 * var( --wpd-avatar-hover ) ) ) 0%,rgba( 99,102,241,0 ) 70% );filter:blur( 4px );pointer-events:none;z-index:-1;transition:inset 220ms cubic-bezier( 0.2,0.8,0.2,1 ),background 220ms}.wpd-avatar__tile img{width:100%;height:100%;object-fit:cover;display:block;transform:translateZ( 1px )}.wpd-avatar__dot{position:absolute;bottom:0;inset-inline-end:0;width:calc( var( --wpd-avatar-size,32px ) * 0.32 );height:calc( var( --wpd-avatar-size,32px ) * 0.32 );min-width:8px;min-height:8px;border-radius:50%;box-sizing:border-box;border:2px solid var( --wpd-avatar-dot-ring,var( --desktop-mode-window-bg,#fff ) );background:var( --wpd-avatar-dot-color,transparent );z-index:2}.wpd-avatar__dot--online{background:var( --desktop-mode-success,#00a32a )}.wpd-avatar__dot--inactive{background:var( --desktop-mode-warning,#dba617 )}.wpd-avatar__dot--offline{background:var( --desktop-mode-muted,#8c8f94 )}@media ( prefers-reduced-motion:reduce ){.wpd-avatar__tile{transform:none;transition:box-shadow 200ms}.wpd-avatar__tile::after,.wpd-avatar__tile::before{display:none}}`;
+  const SIZE_MAP = {
+    xs: 20,
+    sm: 24,
+    md: 40,
+    lg: 64,
+    xl: 96
+  };
+  const VALID_PRESENCE = /* @__PURE__ */ new Set(["online", "inactive", "offline"]);
+  const _WpdAvatar = class _WpdAvatar extends Component {
+    constructor() {
+      super(...arguments);
+      this._presenceHandler = null;
+      this._imgFailed = false;
+      this._onPointerMove = null;
+      this._onPointerEnter = null;
+      this._onPointerLeave = null;
+      this._tiltRaf = 0;
+      this._pendingTiltX = "0deg";
+      this._pendingTiltY = "0deg";
+      this._pendingGlareX = "50%";
+      this._pendingGlareY = "50%";
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      this._maybeAttachPresenceListener();
+      this._attachHoverEffect();
+    }
+    disconnectedCallback() {
+      if (this._presenceHandler) {
+        document.removeEventListener(
+          "desktop-mode-presence-changed",
+          this._presenceHandler
+        );
+        this._presenceHandler = null;
+      }
+      this._detachHoverEffect();
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+      super.attributeChangedCallback(name, oldValue, newValue);
+      if (name === "src") {
+        this._imgFailed = false;
+      }
+      if (name === "user-id" || name === "presence") {
+        this._maybeAttachPresenceListener();
+      }
+    }
+    render() {
+      const src = this._attr("src");
+      const name = this._attr("name") || "";
+      const altRaw = this._attr("alt");
+      const alt = altRaw !== null ? altRaw : name;
+      const sizeRaw = this._attr("size");
+      const size = this._resolveSize(sizeRaw);
+      const presence = this._presenceForRender();
+      const clickable = this._attr("clickable") !== null;
+      this.style.setProperty("--wpd-avatar-size", `${size}px`);
+      const initialsBg = src && !this._imgFailed ? "" : this._initialsBg(name);
+      const inner = src && !this._imgFailed ? html`<img
+					src=${src}
+					alt=${alt}
+					@error=${() => this._onImgError()}
+					loading="lazy"
+				/>` : this._initials(name);
+      const dot = presence ? html`<span
+					class=${`wpd-avatar__dot wpd-avatar__dot--${presence}`}
+					aria-label=${this._presenceLabel(presence)}
+				></span>` : html``;
+      if (clickable) {
+        return html`
+				<button
+					type="button"
+					class="wpd-avatar__tile"
+					aria-label=${alt || "User"}
+					style=${initialsBg ? `background:${initialsBg};` : ""}
+					@click=${(e) => this._onClick(e)}
+				>${inner}</button>
+				${dot}
+			`;
+      }
+      return html`
+			<div
+				class="wpd-avatar__tile"
+				role="img"
+				aria-label=${alt || "User"}
+				style=${initialsBg ? `background:${initialsBg};` : ""}
+			>${inner}</div>
+			${dot}
+		`;
+    }
+    _attr(name) {
+      return this.getAttribute(name);
+    }
+    _resolveSize(raw) {
+      if (!raw) {
+        return 32;
+      }
+      if (raw in SIZE_MAP) {
+        return SIZE_MAP[raw];
+      }
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : 32;
+    }
+    _initials(name) {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        return "?";
+      }
+      return Array.from(trimmed)[0]?.toUpperCase() ?? "?";
+    }
+    _initialsBg(name) {
+      const hue = hashTitleToHue(name);
+      return `linear-gradient(135deg, hsl(${hue} 62% 55%), hsl(${(hue + 24) % 360} 58% 42%))`;
+    }
+    _presenceForRender() {
+      const raw = this._attr("presence");
+      if (raw && VALID_PRESENCE.has(raw)) {
+        return raw;
+      }
+      return null;
+    }
+    _presenceLabel(p) {
+      switch (p) {
+        case "online":
+          return "Online";
+        case "inactive":
+          return "Inactive";
+        case "offline":
+          return "Offline";
+      }
+    }
+    _onImgError() {
+      this._imgFailed = true;
+      this.requestUpdate();
+    }
+    _onClick(e) {
+      const userId = this._attr("user-id");
+      const detail = {
+        userId: userId !== null ? Number(userId) || null : null,
+        originalEvent: e
+      };
+      this.emit("wpd-avatar-click", detail);
+    }
+    /**
+     * Wire up the pointer-driven tilt + glare. Listens on the host so
+     * one set of bindings covers both the clickable `<button>` and
+     * the decorative `<div>` rendering branches. The actual math
+     * runs in `_handlePointerMove`; this method just owns the
+     * bind/unbind plumbing.
+     *
+     * Bails entirely when `prefers-reduced-motion: reduce` is set —
+     * the CSS has its own `@media` guard for the visual layer, but
+     * skipping the JS too saves the per-event work for users who
+     * won't benefit from it.
+     */
+    _attachHoverEffect() {
+      const reduceMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      if (reduceMotion) {
+        return;
+      }
+      this._onPointerEnter = () => {
+        this.style.setProperty("--wpd-avatar-hover", "1");
+      };
+      this._onPointerLeave = () => {
+        this.style.setProperty("--wpd-avatar-hover", "0");
+        this._pendingTiltX = "0deg";
+        this._pendingTiltY = "0deg";
+        this._pendingGlareX = "50%";
+        this._pendingGlareY = "50%";
+        this._flushTilt();
+      };
+      this._onPointerMove = (e) => {
+        const rect = this.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+          return;
+        }
+        const nx = (e.clientX - rect.left) / rect.width - 0.5;
+        const ny = (e.clientY - rect.top) / rect.height - 0.5;
+        const MAX = 14;
+        this._pendingTiltY = `${(nx * MAX).toFixed(2)}deg`;
+        this._pendingTiltX = `${(-ny * MAX).toFixed(2)}deg`;
+        const gx = Math.max(0, Math.min(100, (nx + 0.5) * 100));
+        const gy = Math.max(0, Math.min(100, (ny + 0.5) * 100));
+        this._pendingGlareX = `${gx.toFixed(1)}%`;
+        this._pendingGlareY = `${gy.toFixed(1)}%`;
+        if (!this._tiltRaf) {
+          this._tiltRaf = requestAnimationFrame(() => this._flushTilt());
+        }
+      };
+      this.addEventListener("pointerenter", this._onPointerEnter);
+      this.addEventListener("pointerleave", this._onPointerLeave);
+      this.addEventListener("pointermove", this._onPointerMove);
+    }
+    _flushTilt() {
+      this._tiltRaf = 0;
+      this.style.setProperty("--wpd-avatar-tilt-x", this._pendingTiltX);
+      this.style.setProperty("--wpd-avatar-tilt-y", this._pendingTiltY);
+      this.style.setProperty("--wpd-avatar-glare-x", this._pendingGlareX);
+      this.style.setProperty("--wpd-avatar-glare-y", this._pendingGlareY);
+    }
+    _detachHoverEffect() {
+      if (this._onPointerMove) {
+        this.removeEventListener("pointermove", this._onPointerMove);
+        this._onPointerMove = null;
+      }
+      if (this._onPointerEnter) {
+        this.removeEventListener("pointerenter", this._onPointerEnter);
+        this._onPointerEnter = null;
+      }
+      if (this._onPointerLeave) {
+        this.removeEventListener("pointerleave", this._onPointerLeave);
+        this._onPointerLeave = null;
+      }
+      if (this._tiltRaf) {
+        cancelAnimationFrame(this._tiltRaf);
+        this._tiltRaf = 0;
+      }
+    }
+    _maybeAttachPresenceListener() {
+      const userId = this._attr("user-id");
+      const explicit = this._attr("presence");
+      const wantsListener = !!userId && !explicit;
+      if (wantsListener && !this._presenceHandler) {
+        this._presenceHandler = (e) => {
+          const detail = e.detail;
+          if (!detail) {
+            return;
+          }
+          if (String(detail.userId) !== String(userId)) {
+            return;
+          }
+          if (detail.newStatus && VALID_PRESENCE.has(detail.newStatus)) {
+            this.setAttribute("presence", detail.newStatus);
+          }
+        };
+        document.addEventListener(
+          "desktop-mode-presence-changed",
+          this._presenceHandler
+        );
+      } else if (!wantsListener && this._presenceHandler) {
+        document.removeEventListener(
+          "desktop-mode-presence-changed",
+          this._presenceHandler
+        );
+        this._presenceHandler = null;
+      }
+    }
+  };
+  _WpdAvatar.props = ["src", "alt", "name", "size", "presence", "userId", "clickable"];
+  _WpdAvatar.styles = [avatarStyles];
+  _WpdAvatar.help = {
+    title: "Avatar",
+    summary: "Image-or-initials user tile with an optional presence dot. Falls back to a deterministic-hue letter tile when src is empty. Set user-id to auto-subscribe the dot to desktop-mode-presence-changed.",
+    status: "stable",
+    since: "0.6.0",
+    props: [
+      { name: "src", type: "string", description: "Image URL. Falls back to initials when empty or load fails." },
+      { name: "alt", type: "string", description: "Alt text for the image. Defaults to `name` when omitted." },
+      { name: "name", type: "string", description: "Used for initials + hue fallback when no src." },
+      {
+        name: "size",
+        type: 'number | "xs" | "sm" | "md" | "lg" | "xl"',
+        description: "Pixel size or named preset. Default 32 (sm-ish). Sets --wpd-avatar-size."
+      },
+      {
+        name: "presence",
+        type: '"online" | "inactive" | "offline"',
+        description: "Presence dot color. Omit for no dot."
+      },
+      {
+        name: "user-id",
+        type: "number",
+        description: "When set AND presence is unset, auto-subscribes to desktop-mode-presence-changed and updates the dot."
+      },
+      {
+        name: "clickable",
+        type: "boolean attribute",
+        description: "Renders the tile as a focusable button that emits wpd-avatar-click. Omit for a decorative tile that lets clicks pass through to the surrounding row."
+      }
+    ],
+    events: [
+      {
+        name: "wpd-avatar-click",
+        description: "Fires on click when the `clickable` attribute is set. Detail carries userId when set.",
+        detail: "{ userId: number | null }"
+      }
+    ],
+    cssProps: [
+      { name: "--wpd-avatar-size", description: "Tile size in any CSS length. Set automatically by the size attribute." },
+      { name: "--wpd-avatar-dot-ring", description: "Background color used as the dot ring (matches surrounding panel by default)." }
+    ],
+    example: html`
+			<wpd-avatar name="Daniel" size="40" presence="online"></wpd-avatar>
+		`
+  };
+  let WpdAvatar = _WpdAvatar;
+  defineComponent("wpd-avatar", WpdAvatar);
+  const NOTE_COLORS = [
+    "butter",
+    "blush",
+    "sky",
+    "mint",
+    "lilac",
+    "peach"
+  ];
+  function normalizeNoteColor(color) {
+    return NOTE_COLORS.includes(color) ? color : NOTE_COLORS[0];
+  }
+  function sanitizeNoteColorSlug(color) {
+    const slug = color.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    return slug || NOTE_COLORS[0];
+  }
+  function nextNoteColor(color) {
+    const index2 = NOTE_COLORS.indexOf(
+      normalizeNoteColor(color)
+    );
+    return NOTE_COLORS[(index2 + 1) % NOTE_COLORS.length];
+  }
+  const EASE_GLIDE = "cubic-bezier(0.2, 0.7, 0.2, 1)";
+  const EASE_FALL = "cubic-bezier(0.5, 0, 0.9, 0.4)";
+  const EASE_OVERSHOOT = "cubic-bezier(0.2, 0.7, 0.3, 1.15)";
+  function prefersReducedMotion() {
+    return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+  function animate(el, keyframes, options) {
+    if (typeof el.animate !== "function") {
+      return Promise.resolve();
+    }
+    return el.animate(keyframes, options).finished.then(() => void 0).catch(() => void 0);
+  }
+  async function playPinInsertion(parts) {
+    const rot = parts.restRotation ?? 0;
+    if (prefersReducedMotion()) {
+      spawnRipple(parts.rippleHost, 400);
+      return;
+    }
+    const tempo = parts.tempo ?? 1;
+    const fall = parts.fallDistance ?? 30;
+    await animate(
+      parts.pin,
+      [
+        {
+          opacity: 0,
+          transform: `translate(8px, ${-fall}px) rotate(${rot - 16}deg) scale(1.9)`
+        },
+        { opacity: 1, offset: 0.35 },
+        {
+          opacity: 1,
+          transform: `translate(0, 0) rotate(${rot}deg) scale(0.92)`
+        }
+      ],
+      { duration: 170 * tempo, easing: EASE_FALL, fill: "forwards" }
+    );
+    spawnRipple(parts.rippleHost, 420 * tempo);
+    const paperSettle = animate(
+      parts.paper,
+      [
+        { transform: "scale(1) translateY(0) skewX(0)" },
+        {
+          transform: "scale(0.982) translateY(2px) skewX(0)",
+          offset: 0.08
+        },
+        {
+          transform: "scale(1.01) translateY(0) skewX(0.6deg)",
+          offset: 0.32
+        },
+        {
+          transform: "scale(0.996) translateY(0) skewX(-0.4deg)",
+          offset: 0.55
+        },
+        { transform: "scale(1) translateY(0) skewX(0)" }
+      ],
+      { duration: 370 * tempo, easing: "linear" }
+    );
+    const pinSettle = animate(
+      parts.pin,
+      [
+        { transform: `rotate(${rot}deg) scale(0.92)` },
+        { transform: `rotate(${rot + 1.5}deg) scale(1.07)`, offset: 0.25 },
+        { transform: `rotate(${rot - 1}deg) scale(0.98)`, offset: 0.5 },
+        { transform: `rotate(${rot}deg) scale(1)` }
+      ],
+      { duration: 370 * tempo, easing: EASE_GLIDE, fill: "forwards" }
+    );
+    await Promise.all([paperSettle, pinSettle]);
+  }
+  function spawnRipple(host, duration) {
+    const ripple = document.createElement("span");
+    ripple.className = "desktop-mode-pinned-note__ripple";
+    ripple.setAttribute("aria-hidden", "true");
+    host.appendChild(ripple);
+    void animate(
+      ripple,
+      [
+        { boxShadow: "0 0 0 0 rgba(0, 0, 0, 0.28)", opacity: 0.35 },
+        { boxShadow: "0 0 0 26px rgba(0, 0, 0, 0)", opacity: 0 }
+      ],
+      { duration, easing: "ease-out" }
+    ).then(() => ripple.remove());
+    window.setTimeout(() => ripple.remove(), duration + 100);
+  }
+  function startPendulum(swingEl) {
+    if (prefersReducedMotion()) {
+      return {
+        onPointerMove: () => void 0,
+        setBias: () => void 0,
+        stop: () => void 0
+      };
+    }
+    const C = 14;
+    let angle = 0;
+    let velocity = 0;
+    let target2 = 0;
+    let bias = 0;
+    let lastX = null;
+    let lastMoveTime = 0;
+    let emaVx = 0;
+    let raf = 0;
+    let lastFrame = 0;
+    let running = true;
+    const frame = (now) => {
+      if (!running) {
+        return;
+      }
+      const dt = Math.min(0.05, lastFrame ? (now - lastFrame) / 1e3 : 0.016);
+      lastFrame = now;
+      if (now - lastMoveTime > 80) {
+        emaVx *= 0.85;
+      }
+      target2 = Math.max(-14, Math.min(14, -emaVx * 0.055)) + bias;
+      velocity += (-120 * (angle - target2) - C * velocity) * dt;
+      angle += velocity * dt;
+      swingEl.style.transform = `rotate(${angle.toFixed(2)}deg)`;
+      raf = window.requestAnimationFrame(frame);
+    };
+    raf = window.requestAnimationFrame(frame);
+    return {
+      onPointerMove(clientX) {
+        const now = performance.now();
+        if (lastX !== null && now > lastMoveTime) {
+          const instVx = (clientX - lastX) / (now - lastMoveTime) * 16.7;
+          emaVx = emaVx * 0.7 + instVx * 0.3;
+        }
+        lastX = clientX;
+        lastMoveTime = now;
+      },
+      setBias(deg) {
+        bias = deg;
+      },
+      stop() {
+        running = false;
+        window.cancelAnimationFrame(raf);
+        swingEl.style.transform = "";
+      }
+    };
+  }
+  async function playSnapBack(parts) {
+    if (prefersReducedMotion()) {
+      await animate(parts.flyback, [{ opacity: 1 }, { opacity: 0 }], {
+        duration: 120,
+        easing: "linear",
+        fill: "forwards"
+      });
+      return;
+    }
+    const yank = parts.swing ? animate(
+      parts.swing,
+      [
+        { transform: "rotate(0deg)" },
+        { transform: "rotate(9deg)", offset: 0.35 },
+        { transform: "rotate(-4deg)", offset: 0.7 },
+        { transform: "rotate(0deg)" }
+      ],
+      { duration: 330, easing: "linear", fill: "forwards" }
+    ) : Promise.resolve();
+    const fly = animate(
+      parts.flyback,
+      [
+        {
+          left: `${parts.flyback.offsetLeft}px`,
+          top: `${parts.flyback.offsetTop}px`
+        },
+        { left: `${parts.homeX}px`, top: `${parts.homeY}px` }
+      ],
+      { duration: 330, easing: EASE_OVERSHOOT, fill: "forwards" }
+    );
+    await Promise.all([fly, yank]);
+  }
+  async function playCrumpleIntoBin(parts) {
+    if (prefersReducedMotion()) {
+      await animate(parts.clone, [{ opacity: 1 }, { opacity: 0 }], {
+        duration: 150,
+        easing: "linear",
+        fill: "forwards"
+      });
+      return;
+    }
+    if (parts.pin) {
+      void animate(
+        parts.pin,
+        [
+          { transform: "translate(0, 0) rotate(0deg)", opacity: 1 },
+          { transform: "translate(2px, -16px) rotate(-30deg)", opacity: 0 }
+        ],
+        { duration: 200, easing: EASE_GLIDE, fill: "forwards" }
+      );
+    }
+    const rect = parts.clone.getBoundingClientRect();
+    const dx = parts.binX - (rect.left + rect.width / 2);
+    const dy = parts.binY - (rect.top + rect.height / 2);
+    const rough1 = "polygon(4% 8%, 38% 2%, 68% 7%, 96% 3%, 98% 42%, 92% 71%, 97% 94%, 60% 98%, 30% 93%, 3% 97%, 6% 62%, 2% 34%)";
+    const rough2 = "polygon(10% 14%, 42% 6%, 64% 12%, 90% 8%, 94% 38%, 86% 66%, 92% 88%, 58% 94%, 34% 86%, 10% 92%, 14% 58%, 8% 36%)";
+    await animate(
+      parts.paper,
+      [
+        {
+          transform: "translate(0, 0) scale(0.88) rotate(0deg)",
+          borderRadius: "2px",
+          opacity: 1
+        },
+        {
+          transform: `translate(${dx * 0.3}px, ${dy * 0.3}px) scale(0.6) rotate(12deg)`,
+          clipPath: rough1,
+          offset: 0.3
+        },
+        {
+          transform: `translate(${dx * 0.6}px, ${dy * 0.6}px) scale(0.34) rotate(24deg)`,
+          clipPath: rough2,
+          offset: 0.6,
+          opacity: 1
+        },
+        {
+          transform: `translate(${dx}px, ${dy}px) scale(0.12) rotate(38deg)`,
+          borderRadius: "50%",
+          clipPath: rough2,
+          opacity: 0
+        }
+      ],
+      { duration: 400, easing: EASE_FALL, delay: 60, fill: "forwards" }
+    );
+  }
+  function hashNoteSeed(text) {
+    let hash2 = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      hash2 ^= text.charCodeAt(i);
+      hash2 = Math.imul(hash2, 16777619) >>> 0;
+    }
+    const seed2 = hash2 >>> 1 || 1;
+    return seed2;
+  }
+  function noteJitter(seed2) {
+    let hash2 = 2166136261;
+    const key = `wpd-note-${seed2}`;
+    for (let i = 0; i < key.length; i++) {
+      hash2 ^= key.charCodeAt(i);
+      hash2 = Math.imul(hash2, 16777619) >>> 0;
+    }
+    const shifted3 = hash2 >>> 3;
+    const shifted5 = hash2 >>> 5;
+    return {
+      rotation: (hash2 % 45 - 22) / 10,
+      // ±2.2°
+      pinOffsetX: shifted3 % 21 - 10,
+      // ±10 px
+      pinRotation: shifted5 % 17 - 8
+      // ±8°
+    };
+  }
+  const PIN_TIP_X = 0.57;
+  const PIN_TIP_Y = 0.525;
+  const PIN_WIDTH = 56;
+  const PIN_HEIGHT = 52;
+  function pushpinUrl(pluginUrl) {
+    return `${pluginUrl.replace(/\/$/, "")}/assets/images/pushpin.svg`;
+  }
+  function buildPinImage(pluginUrl) {
+    const img = document.createElement("img");
+    img.src = pushpinUrl(pluginUrl);
+    img.alt = "";
+    img.width = PIN_WIDTH;
+    img.height = PIN_HEIGHT;
+    img.draggable = false;
+    img.className = "desktop-mode-pinned-note__pin-img";
+    return img;
+  }
+  let deps = null;
+  function installNotesRestDeps(next) {
+    deps = next;
+  }
+  function ensureDeps() {
+    if (!deps) {
+      throw new Error(
+        "[desktop-mode] notes REST client called before installNotesRestDeps()."
+      );
+    }
+    return deps;
+  }
+  function liveNonce(installed2) {
+    const cfg = window.desktopModeConfig;
+    return typeof cfg?.restNonce === "string" && cfg.restNonce ? cfg.restNonce : installed2;
+  }
+  class NotesConflictError extends Error {
+    constructor(current) {
+      super("Note was changed by another session.");
+      this.status = 409;
+      this.name = "NotesConflictError";
+      this.current = current;
+    }
+  }
+  function isNotesConflict(err) {
+    return err instanceof NotesConflictError;
+  }
+  async function call(path, init2) {
+    const { baseUrl, nonce } = ensureDeps();
+    const url = path ? joinRestUrl(baseUrl, path) : baseUrl;
+    const headers = new Headers(init2.headers ?? {});
+    headers.set("X-WP-Nonce", liveNonce(nonce));
+    if (init2.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    const res = await trackedFetch$1(
+      url,
+      { ...init2, headers, credentials: "same-origin" },
+      { source: "desktop-mode/notes" }
+    );
+    const text = await res.text();
+    let body = null;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = null;
+      }
+    }
+    if (!res.ok) {
+      if (res.status === 409) {
+        const current = body?.data?.current;
+        throw new NotesConflictError(current ?? null);
+      }
+      const err = body;
+      throw new Error(
+        `[desktop-mode] notes REST ${res.status}: ${err?.code ?? ""} ${err?.message ?? ""}`.trim()
+      );
+    }
+    if (null === body) {
+      throw new Error(
+        `[desktop-mode] notes REST ${res.status}: empty or unparseable body.`
+      );
+    }
+    return body;
+  }
+  function listNotes() {
+    return call("", { method: "GET" });
+  }
+  function createNote(body) {
+    return call("", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  }
+  function updateNote(id, body) {
+    return call(`/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    });
+  }
+  function deleteNote(id) {
+    return call(`/${id}`, {
+      method: "DELETE"
+    });
+  }
+  function restoreNote(id) {
+    return call(`/${id}/restore`, { method: "POST" });
+  }
+  function convertNote(id) {
+    return call(`/${id}/convert`, { method: "POST" });
+  }
+  const SUBSCRIBE_FIELD = "desktop_mode_notes_subscribe";
+  const RESPONSE_FIELD = "desktop_mode_notes";
+  let started$3 = false;
+  let target = null;
+  function startNotesHeartbeat(nextTarget) {
+    target = nextTarget;
+    if (started$3) {
+      return;
+    }
+    started$3 = true;
+    heartbeat.contribute(
+      SUBSCRIBE_FIELD,
+      () => target?.getHeartbeatSubscription()
+    );
+    heartbeat.subscribe(RESPONSE_FIELD, (payload) => {
+      target?.applyHeartbeatPayload(payload);
+    });
+  }
+  function getToastApi() {
+    const api = window.wp?.desktop;
+    return api && typeof api.showToast === "function" ? api : null;
+  }
+  async function trashNoteWithUndo(note, callbacks) {
+    callbacks.onEvict(note.id);
+    try {
+      await deleteNote(note.id);
+      getToastApi()?.showToast?.({
+        message: __("Note moved to Trash", "desktop-mode"),
+        duration: 6e3,
+        action: {
+          label: __("Undo", "desktop-mode"),
+          onClick: () => {
+            void restoreNote(note.id).then((restored) => callbacks.onRestore(restored)).catch((err) => {
+              console.error(
+                "[desktop-mode] notes: restore failed:",
+                err
+              );
+            });
+          }
+        }
+      });
+    } catch (err) {
+      console.error("[desktop-mode] notes: trash failed:", err);
+      callbacks.onRestore(note);
+      getToastApi()?.showToast?.({
+        message: __("Could not move the note to the Trash.", "desktop-mode"),
+        duration: 5e3
+      });
+    }
+  }
+  function getDesktopApi() {
+    return window.wp?.desktop ?? null;
+  }
+  function openDraftEditor(url) {
+    const api = getDesktopApi();
+    if (!api?.windowManager?.open || !api.deriveWindowId) {
+      window.location.href = url;
+      return null;
+    }
+    const id = api.deriveWindowId(url);
+    api.windowManager.open({
+      id,
+      baseId: id,
+      url,
+      title: __("Edit draft", "desktop-mode"),
+      icon: "dashicons-admin-post"
+    });
+    return id;
+  }
+  async function convertNoteToPost(note, callbacks) {
+    callbacks.onEvict(note.id);
+    try {
+      const result = await convertNote(note.id);
+      const editorWindowId = openDraftEditor(result.editUrl);
+      getDesktopApi()?.showToast?.({
+        message: __("Note converted to a draft post", "desktop-mode"),
+        duration: 6e3,
+        action: {
+          label: __("Undo", "desktop-mode"),
+          onClick: () => {
+            if (editorWindowId) {
+              getDesktopApi()?.windowManager?.getById?.(editorWindowId)?.close?.();
+            }
+            void restoreNote(note.id).then((restored) => callbacks.onRestore(restored)).catch((err) => {
+              console.error(
+                "[desktop-mode] notes: convert undo failed:",
+                err
+              );
+            });
+          }
+        }
+      });
+    } catch (err) {
+      console.error("[desktop-mode] notes: convert failed:", err);
+      callbacks.onRestore(note);
+      getDesktopApi()?.showToast?.({
+        message: __("Could not convert the note to a post.", "desktop-mode"),
+        duration: 5e3
+      });
+    }
+  }
+  const NOTE_DRAFT_PAYLOAD_TYPE = "note-draft";
+  const NOTE_PAYLOAD_TYPE = "note";
+  const NOTE_CREATED_EVENT = "desktop-mode-note-created";
+  const NOTE_WIDTH = 208;
+  const SAVE_DEBOUNCE_MS = 1e3;
+  const Z_SAVE_DEBOUNCE_MS = 800;
+  const KEYBOARD_STEP_PX = 10;
+  const KEYBOARD_FINE_STEP_PX = 1;
+  function getDragManager$1() {
+    const api = window.wp?.desktop?.dragManager;
+    return api ?? null;
+  }
+  function jitterSeed(note) {
+    return note.seed || Math.abs(note.id) || 1;
+  }
+  const ICON_POST = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="m7.3 9.7 1.4 1.4c.2-.2.3-.3.4-.5 0 0 0-.1.1-.1.3-.5.4-1.1.3-1.6L12 7 9 4 7.2 6.5c-.6-.1-1.1 0-1.6.3 0 0-.1 0-.1.1-.3.1-.4.2-.6.4l1.4 1.4L4 11v1h1l2.3-2.3zM4 20h9v-1.5H4V20zm0-5.5V16h16v-1.5H4z" /></svg>`;
+  class NotesLayer {
+    constructor(options) {
+      this.root = null;
+      this.liveRegion = null;
+      this.controllers = /* @__PURE__ */ new Map();
+      this.zCounter = 1;
+      this.highWaterMs = 0;
+      this.tempIdCounter = 0;
+      this.host = options.host;
+      this.pluginUrl = options.pluginUrl;
+      this.canCreatePosts = options.canCreatePosts ?? false;
+      this.onError = options.onError;
+    }
+    async boot() {
+      try {
+        const { notes } = await listNotes();
+        notes.forEach((note) => {
+          this.bumpHighWater(note.updatedAtMs);
+          this.upsertNote(note, { animate: "none" });
+        });
+        startNotesHeartbeat(this);
+      } catch (error) {
+        if (error instanceof Error) {
+          console.debug("[desktop-mode] Pinned notes unavailable:", error.message);
+        }
+      }
+    }
+    /**
+     * Insert or update a note on the wall.
+     */
+    upsertNote(note, options = { animate: "none" }) {
+      this.ensureRoot();
+      this.zCounter = Math.max(this.zCounter, note.z);
+      const existing = this.controllers.get(note.id);
+      if (existing) {
+        existing.replace(note);
+        return existing;
+      }
+      const controller = new NoteController({ layer: this, note });
+      this.controllers.set(note.id, controller);
+      this.root?.appendChild(controller.element);
+      if (options.animate !== "none") {
+        void controller.playInsertion(options.animate === "thunk" ? 1 : 0.7);
+      }
+      return controller;
+    }
+    removeNote(noteId) {
+      const controller = this.controllers.get(noteId);
+      if (!controller) {
+        return;
+      }
+      this.controllers.delete(noteId);
+      controller.dispose();
+      controller.element.remove();
+    }
+    /** Rebind a controller after a temp (optimistic) id resolves. */
+    rekeyNote(oldId, controller) {
+      this.controllers.delete(oldId);
+      this.controllers.set(controller.note.id, controller);
+    }
+    has(noteId) {
+      return this.controllers.has(noteId);
+    }
+    get(noteId) {
+      return this.controllers.get(noteId);
+    }
+    nextTempId() {
+      this.tempIdCounter -= 1;
+      return this.tempIdCounter;
+    }
+    bringToFront(controller) {
+      this.zCounter += 1;
+      controller.setZ(this.zCounter);
+    }
+    bumpHighWater(updatedAtMs) {
+      if (Number.isFinite(updatedAtMs) && updatedAtMs > this.highWaterMs) {
+        this.highWaterMs = updatedAtMs;
+      }
+    }
+    hostSize() {
+      return {
+        width: Math.max(1, this.host.clientWidth),
+        height: Math.max(1, this.host.clientHeight)
+      };
+    }
+    /** Clamp a normalized position so the note stays reachable. */
+    clampPosition(x, y) {
+      const { width, height } = this.hostSize();
+      const maxX = Math.max(0, 1 - NOTE_WIDTH / width);
+      const maxY = Math.max(0, 1 - 120 / height);
+      return {
+        x: Math.min(maxX, Math.max(0, x)),
+        y: Math.min(maxY, Math.max(0, y))
+      };
+    }
+    announce(message) {
+      this.ensureRoot();
+      if (this.liveRegion) {
+        this.liveRegion.textContent = message;
+      }
+    }
+    notifyError(message) {
+      this.onError?.(message);
+    }
+    trashNote(note) {
+      void trashNoteWithUndo(note, {
+        onEvict: (noteId) => this.removeNote(noteId),
+        onRestore: (restored) => {
+          this.bumpHighWater(restored.updatedAtMs);
+          this.upsertNote(restored, { animate: "move" });
+        }
+      });
+    }
+    /**
+     * Convert a note to a draft post: evict optimistically, auto-open
+     * the draft editor, Undo restores the note (and discards the draft).
+     */
+    convertNote(note) {
+      if (!this.canCreatePosts || !note.canEdit) {
+        return;
+      }
+      void convertNoteToPost(note, {
+        onEvict: (noteId) => this.removeNote(noteId),
+        onRestore: (restored) => {
+          this.bumpHighWater(restored.updatedAtMs);
+          this.upsertNote(restored, { animate: "move" });
+        }
+      });
+    }
+    // ------------------------------------------------------------------
+    // Heartbeat
+    // ------------------------------------------------------------------
+    getHeartbeatSubscription() {
+      return {
+        knownIds: Array.from(this.controllers.keys()).filter((id) => id > 0),
+        sinceMs: this.highWaterMs
+      };
+    }
+    applyHeartbeatPayload(payload) {
+      for (const note of payload.notes ?? []) {
+        this.bumpHighWater(note.updatedAtMs);
+        const existing = this.controllers.get(note.id);
+        if (existing) {
+          if (existing.shouldReplaceFromRemote(note)) {
+            existing.replace(note);
+          }
+        } else {
+          this.upsertNote(note, { animate: "move" });
+        }
+      }
+      for (const id of payload.removed ?? []) {
+        this.removeNote(id);
+      }
+      if (typeof payload.serverTimeMs === "number" && Number.isFinite(payload.serverTimeMs)) {
+        this.bumpHighWater(payload.serverTimeMs);
+      }
+      if (payload.truncated) {
+        void this.reloadFromServer();
+      }
+    }
+    /** Full re-hydration — the Heartbeat delta overflowed its cap. */
+    async reloadFromServer() {
+      try {
+        const { notes } = await listNotes();
+        const alive = /* @__PURE__ */ new Set();
+        for (const note of notes) {
+          alive.add(note.id);
+          this.bumpHighWater(note.updatedAtMs);
+          const existing = this.controllers.get(note.id);
+          if (existing) {
+            if (existing.shouldReplaceFromRemote(note)) {
+              existing.replace(note);
+            }
+          } else {
+            this.upsertNote(note, { animate: "move" });
+          }
+        }
+        for (const id of Array.from(this.controllers.keys())) {
+          if (id > 0 && !alive.has(id)) {
+            this.removeNote(id);
+          }
+        }
+      } catch {
+      }
+    }
+    ensureRoot() {
+      if (this.root) {
+        return this.root;
+      }
+      const root = document.createElement("section");
+      root.className = "desktop-mode-notes";
+      root.setAttribute("aria-label", __("Pinned notes", "desktop-mode"));
+      const live = document.createElement("div");
+      live.className = "desktop-mode-notes__live screen-reader-text";
+      live.setAttribute("aria-live", "polite");
+      root.appendChild(live);
+      this.host.appendChild(root);
+      this.root = root;
+      this.liveRegion = live;
+      return root;
+    }
+  }
+  class NoteController {
+    constructor(options) {
+      this.editor = null;
+      this.statusEl = null;
+      this.colorDot = null;
+      this.visibilityBtn = null;
+      this.saveTimer = null;
+      this.zTimer = null;
+      this.patchChain = Promise.resolve();
+      this.pendingText = null;
+      this.disposed = false;
+      this.moveMode = false;
+      this.moveOrigin = null;
+      this.dragCleanup = null;
+      this.lastPointer = null;
+      this.layer = options.layer;
+      this.note = options.note;
+      this.jitter = noteJitter(jitterSeed(options.note));
+      this.element = document.createElement("article");
+      this.paperEl = document.createElement("div");
+      this.pinEl = document.createElement(
+        this.note.canEdit ? "button" : "span"
+      );
+      this.paint();
+      this.applyPosition();
+      this.setZ(this.note.z);
+      this.element.addEventListener(
+        "pointerdown",
+        () => this.layer.bringToFront(this),
+        { capture: true }
+      );
+    }
+    // ------------------------------------------------------------------
+    // DOM
+    // ------------------------------------------------------------------
+    paint() {
+      const note = this.note;
+      this.element.className = "desktop-mode-pinned-note";
+      this.element.dataset.noteId = String(note.id);
+      this.element.dataset.noteColor = sanitizeNoteColorSlug(note.color);
+      this.element.dataset.owner = note.canEdit ? "me" : "other";
+      this.element.setAttribute(
+        "role",
+        note.canEdit ? "group" : "note"
+      );
+      this.element.setAttribute(
+        "aria-label",
+        note.canEdit ? __("Pinned note", "desktop-mode") : sprintf(
+          /* translators: %s: note author display name. */
+          __("Note by %s", "desktop-mode"),
+          note.ownerName
+        )
+      );
+      this.element.style.setProperty("--dm-note-rot", `${this.jitter.rotation}deg`);
+      this.element.style.setProperty("--dm-pin-dx", `${this.jitter.pinOffsetX}px`);
+      this.element.style.setProperty("--dm-pin-rot", `${this.jitter.pinRotation}deg`);
+      this.pinEl.className = "desktop-mode-pinned-note__pin";
+      this.pinEl.appendChild(buildPinImage(this.layer.pluginUrl));
+      if (note.canEdit) {
+        this.pinEl.setAttribute("type", "button");
+        this.pinEl.setAttribute("aria-pressed", "false");
+        this.pinEl.setAttribute(
+          "aria-label",
+          __(
+            "Move note. Drag the pin, or press Enter then use the arrow keys.",
+            "desktop-mode"
+          )
+        );
+        this.pinEl.addEventListener(
+          "pointerdown",
+          (event) => this.startDrag(event)
+        );
+        this.pinEl.addEventListener("click", (event) => {
+          if (event.detail === 0 && !this.moveMode) {
+            this.toggleMoveMode();
+          }
+        });
+        this.pinEl.addEventListener(
+          "keydown",
+          (event) => this.onPinKeydown(event)
+        );
+        this.pinEl.addEventListener("blur", () => this.exitMoveMode(false));
+      } else {
+        this.pinEl.setAttribute("aria-hidden", "true");
+      }
+      this.paperEl.className = "desktop-mode-pinned-note__paper";
+      if (note.canEdit) {
+        this.paintOwnerPaper();
+      } else {
+        this.paintViewerPaper();
+      }
+      this.element.append(this.pinEl, this.paperEl);
+    }
+    paintOwnerPaper() {
+      const meta = document.createElement("div");
+      meta.className = "desktop-mode-pinned-note__meta";
+      const colorDot = document.createElement("button");
+      colorDot.type = "button";
+      colorDot.className = "desktop-mode-pinned-note__color-dot";
+      this.colorDot = colorDot;
+      this.refreshColorDot();
+      colorDot.addEventListener("click", () => this.cycleColor());
+      const visibility = document.createElement("wpd-window-button");
+      visibility.className = "desktop-mode-pinned-note__visibility";
+      this.visibilityBtn = visibility;
+      this.refreshVisibility();
+      visibility.addEventListener(
+        "wpd-button-activate",
+        () => this.togglePublic()
+      );
+      meta.append(colorDot, visibility);
+      if (this.layer.canCreatePosts) {
+        const convert = document.createElement("wpd-window-button");
+        convert.className = "desktop-mode-pinned-note__convert";
+        convert.innerHTML = ICON_POST;
+        const convertLabel = __("Convert to a draft post", "desktop-mode");
+        convert.setAttribute("title", convertLabel);
+        convert.setAttribute("aria-label", convertLabel);
+        convert.addEventListener(
+          "wpd-button-activate",
+          () => this.layer.convertNote(this.note)
+        );
+        meta.append(convert);
+      }
+      const editor = document.createElement("wpd-textarea");
+      editor.className = "desktop-mode-pinned-note__editor";
+      editor.setAttribute("aria-label", __("Note text", "desktop-mode"));
+      editor.setAttribute("rows", "5");
+      editor.setAttribute("auto-grow", "");
+      editor.setAttribute("max-rows", "10");
+      editor.setAttribute("value", this.note.text);
+      ["keydown", "keypress", "keyup"].forEach((eventName) => {
+        editor.addEventListener(eventName, (event) => event.stopPropagation());
+      });
+      editor.addEventListener("wpd-input-change", (event) => {
+        const detail = event.detail;
+        this.pendingText = detail.value;
+        this.setPhase("pending");
+        this.scheduleSave();
+      });
+      editor.addEventListener("wpd-input-commit", () => this.flushSave());
+      this.editor = editor;
+      const footer = document.createElement("div");
+      footer.className = "desktop-mode-pinned-note__footer";
+      const status = document.createElement("wpd-save-status");
+      status.setAttribute("mode", "icon");
+      status.setAttribute("phase", "idle");
+      status.className = "desktop-mode-pinned-note__status";
+      this.statusEl = status;
+      footer.appendChild(status);
+      this.paperEl.append(meta, editor, footer);
+    }
+    paintViewerPaper() {
+      const body = document.createElement("div");
+      body.className = "desktop-mode-pinned-note__body";
+      body.textContent = this.note.text;
+      const chip = document.createElement("div");
+      chip.className = "desktop-mode-pinned-note__attribution";
+      chip.title = sprintf(
+        /* translators: %s: note author display name. */
+        __("Pinned by %s", "desktop-mode"),
+        this.note.ownerName
+      );
+      const avatar = document.createElement("wpd-avatar");
+      avatar.setAttribute("size", "20");
+      avatar.setAttribute("name", this.note.ownerName);
+      if (this.note.ownerAvatar) {
+        avatar.setAttribute("src", this.note.ownerAvatar);
+      }
+      const name = document.createElement("span");
+      name.className = "desktop-mode-pinned-note__attribution-name";
+      name.textContent = this.note.ownerName;
+      chip.append(avatar, name);
+      this.paperEl.append(body, chip);
+    }
+    refreshColorDot() {
+      if (!this.colorDot) {
+        return;
+      }
+      const next = nextNoteColor(this.note.color);
+      this.colorDot.style.setProperty(
+        "--dm-note-next-paper",
+        `var(--dm-note-${next})`
+      );
+      this.colorDot.setAttribute(
+        "aria-label",
+        sprintf(
+          /* translators: %s: next paper color name. */
+          __("Change paper color (next: %s)", "desktop-mode"),
+          next
+        )
+      );
+    }
+    refreshVisibility() {
+      if (!this.visibilityBtn) {
+        return;
+      }
+      const isPublic = this.note.public;
+      this.visibilityBtn.innerHTML = "";
+      const icon = document.createElement("span");
+      icon.className = `dashicons ${isPublic ? "dashicons-admin-site-alt3" : "dashicons-lock"}`;
+      icon.setAttribute("aria-hidden", "true");
+      this.visibilityBtn.appendChild(icon);
+      this.visibilityBtn.setAttribute(
+        "title",
+        isPublic ? __("Public note — everyone can see it. Click to make private.", "desktop-mode") : __("Private note. Click to share with every desktop user.", "desktop-mode")
+      );
+      this.visibilityBtn.classList.toggle("is-public", isPublic);
+    }
+    // ------------------------------------------------------------------
+    // State
+    // ------------------------------------------------------------------
+    replace(note) {
+      const idChanged = note.id !== this.note.id;
+      const seedChanged = jitterSeed(note) !== jitterSeed(this.note);
+      const colorChanged = note.color !== this.note.color;
+      const positionChanged = note.x !== this.note.x || note.y !== this.note.y;
+      const zChanged = note.z !== this.note.z;
+      this.note = note;
+      if (zChanged) {
+        this.element.style.zIndex = String(note.z);
+      }
+      if (idChanged) {
+        this.element.dataset.noteId = String(note.id);
+      }
+      if (seedChanged) {
+        this.jitter = noteJitter(jitterSeed(note));
+        this.element.style.setProperty("--dm-note-rot", `${this.jitter.rotation}deg`);
+        this.element.style.setProperty("--dm-pin-dx", `${this.jitter.pinOffsetX}px`);
+        this.element.style.setProperty("--dm-pin-rot", `${this.jitter.pinRotation}deg`);
+      }
+      if (colorChanged) {
+        this.element.dataset.noteColor = sanitizeNoteColorSlug(note.color);
+        this.refreshColorDot();
+      }
+      if (positionChanged) {
+        this.applyPosition();
+      }
+      if (this.note.canEdit) {
+        if (this.pendingText === null) {
+          this.editor?.setAttribute("value", note.text);
+        }
+        this.refreshVisibility();
+      } else {
+        const body = this.paperEl.querySelector(
+          ".desktop-mode-pinned-note__body"
+        );
+        if (body) {
+          body.textContent = note.text;
+        }
+      }
+    }
+    /**
+     * Remote copies never clobber local unsaved edits; otherwise
+     * accept anything newer than what we render.
+     */
+    shouldReplaceFromRemote(note) {
+      if (this.pendingText !== null || this.saveTimer !== null) {
+        return false;
+      }
+      return note.updatedAtMs >= this.note.updatedAtMs;
+    }
+    setZ(z) {
+      this.element.style.zIndex = String(z);
+      if (z === this.note.z || !this.note.canEdit) {
+        return;
+      }
+      this.note = { ...this.note, z };
+      if (this.note.id <= 0) {
+        return;
+      }
+      if (this.zTimer !== null) {
+        window.clearTimeout(this.zTimer);
+      }
+      this.zTimer = window.setTimeout(() => {
+        this.zTimer = null;
+        this.queuePatch({ z: this.note.z });
+      }, Z_SAVE_DEBOUNCE_MS);
+    }
+    applyPosition() {
+      this.element.style.left = `${(this.note.x * 100).toFixed(3)}%`;
+      this.element.style.top = `${(this.note.y * 100).toFixed(3)}%`;
+    }
+    /** Optimistically move + persist. Used by drop handler and keyboard. */
+    moveTo(x, y) {
+      const clamped = this.layer.clampPosition(x, y);
+      this.note = { ...this.note, x: clamped.x, y: clamped.y };
+      this.applyPosition();
+      if (this.note.id > 0) {
+        this.queuePatch({ x: clamped.x, y: clamped.y });
+      }
+    }
+    playInsertion(tempo = 1) {
+      return playPinInsertion({
+        pin: this.pinEl,
+        paper: this.paperEl,
+        rippleHost: this.element,
+        restRotation: this.jitter.pinRotation,
+        fallDistance: tempo >= 1 ? 30 : 12,
+        tempo
+      });
+    }
+    focusEditor() {
+      window.setTimeout(() => this.editor?.focusInput?.(), 0);
+    }
+    dispose() {
+      this.disposed = true;
+      if (this.saveTimer !== null) {
+        window.clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
+      if (this.zTimer !== null) {
+        window.clearTimeout(this.zTimer);
+        this.zTimer = null;
+      }
+      this.dragCleanup?.();
+      this.dragCleanup = null;
+    }
+    // ------------------------------------------------------------------
+    // Autosave
+    // ------------------------------------------------------------------
+    setPhase(phase) {
+      this.statusEl?.setAttribute("phase", phase);
+    }
+    scheduleSave() {
+      if (this.saveTimer !== null) {
+        window.clearTimeout(this.saveTimer);
+      }
+      this.saveTimer = window.setTimeout(() => {
+        this.saveTimer = null;
+        this.flushSave();
+      }, SAVE_DEBOUNCE_MS);
+    }
+    /**
+     * Persist edits typed while the note was still optimistic (its
+     * create POST in flight). Called by the drop handler once the
+     * server id lands — without it, a save debounce that fired on the
+     * temp id would strand `pendingText` forever (text lost on reload
+     * AND remote replacement blocked, since `shouldReplaceFromRemote`
+     * refuses while local edits are pending).
+     */
+    flushPendingEdits() {
+      this.flushSave();
+    }
+    flushSave() {
+      if (this.saveTimer !== null) {
+        window.clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
+      if (this.pendingText === null || this.note.id <= 0) {
+        return;
+      }
+      const text = this.pendingText;
+      this.pendingText = null;
+      this.note = { ...this.note, text };
+      this.setPhase("saving");
+      this.queuePatch({ text });
+    }
+    cycleColor() {
+      const color = nextNoteColor(this.note.color);
+      this.note = { ...this.note, color };
+      this.element.dataset.noteColor = color;
+      this.refreshColorDot();
+      if (this.note.id > 0) {
+        this.queuePatch({ color });
+      }
+    }
+    togglePublic() {
+      const isPublic = !this.note.public;
+      this.note = { ...this.note, public: isPublic };
+      this.refreshVisibility();
+      if (isPublic && !prefersReducedMotion() && this.visibilityBtn) {
+        this.visibilityBtn.animate?.(
+          [
+            { transform: "scale(1)" },
+            { transform: "scale(1.25)" },
+            { transform: "scale(1)" }
+          ],
+          { duration: 300, easing: "ease-out" }
+        );
+      }
+      this.layer.announce(
+        isPublic ? __("Note is now public.", "desktop-mode") : __("Note is now private.", "desktop-mode")
+      );
+      if (this.note.id > 0) {
+        this.queuePatch({ public: isPublic });
+      }
+    }
+    /**
+     * All PATCHes flow through one chain so the concurrency token is
+     * always the latest server-issued one, even when a text save and
+     * a position save race.
+     */
+    queuePatch(body) {
+      this.patchChain = this.patchChain.then(async () => {
+        if (this.disposed || this.note.id <= 0) {
+          return;
+        }
+        try {
+          const saved = await updateNote(this.note.id, {
+            ...body,
+            updatedAtMs: this.note.updatedAtMs
+          });
+          if (this.disposed) {
+            return;
+          }
+          this.note = {
+            ...this.note,
+            updatedAtMs: saved.updatedAtMs,
+            public: saved.public
+          };
+          this.setPhase("saved");
+        } catch (err) {
+          if (this.disposed) {
+            return;
+          }
+          if (isNotesConflict(err) && err.current) {
+            this.pendingText = null;
+            this.replace(err.current);
+            this.setPhase("idle");
+            this.layer.notifyError(
+              __("This note was changed in another session — showing the latest version.", "desktop-mode")
+            );
+            return;
+          }
+          this.setPhase("failed");
+          console.error("[desktop-mode] notes: save failed:", err);
+        }
+      });
+    }
+    // ------------------------------------------------------------------
+    // Drag (owner only)
+    // ------------------------------------------------------------------
+    startDrag(event) {
+      if (!this.note.canEdit || this.note.id <= 0) {
+        return;
+      }
+      const dragManager = getDragManager$1();
+      if (!dragManager) {
+        return;
+      }
+      event.preventDefault();
+      this.element.ownerDocument.defaultView?.getSelection()?.removeAllRanges();
+      const ghost = this.buildGhost();
+      const noteRect = this.element.getBoundingClientRect();
+      const data = {
+        noteId: this.note.id,
+        canEdit: this.note.canEdit,
+        updatedAtMs: this.note.updatedAtMs
+      };
+      const session = dragManager.start({
+        payload: {
+          type: NOTE_PAYLOAD_TYPE,
+          source: this.element,
+          data,
+          ghost: {
+            element: ghost.root,
+            // The needle tip rides exactly under the cursor —
+            // the user is holding the pin.
+            offsetX: ghost.tipX,
+            offsetY: ghost.tipY,
+            hint: {
+              neutral: __("Drop on the desktop to pin", "desktop-mode"),
+              accept: __("Pin here", "desktop-mode"),
+              reject: __("Can’t pin here", "desktop-mode")
+            }
+          }
+        },
+        origin: event,
+        onClickOnly: () => {
+          this.teardownDragListeners();
+          this.toggleMoveMode();
+        },
+        onCancel: () => {
+          this.teardownDragListeners();
+          void this.snapBack(noteRect);
+        },
+        onCommit: () => {
+          this.teardownDragListeners();
+          if (this.layer.has(this.note.id)) {
+            void this.playInsertion(0.7);
+          }
+        }
+      });
+      if (!session) {
+        return;
+      }
+      this.installDragListeners(ghost);
+    }
+    buildGhost() {
+      const noteRect = this.element.getBoundingClientRect();
+      const pinImg = this.pinEl.querySelector("img");
+      const pinRect = (pinImg ?? this.pinEl).getBoundingClientRect();
+      const tipX = pinRect.left - noteRect.left + pinRect.width * PIN_TIP_X;
+      const tipY = pinRect.top - noteRect.top + pinRect.height * PIN_TIP_Y;
+      const root = document.createElement("div");
+      root.className = "desktop-mode-pinned-note-ghost";
+      root.style.width = `${noteRect.width}px`;
+      root.style.height = `${noteRect.height}px`;
+      const swing = document.createElement("div");
+      swing.className = "desktop-mode-pinned-note-ghost__swing";
+      swing.style.transformOrigin = `${tipX}px ${tipY}px`;
+      const pin = this.pinEl.cloneNode(true);
+      pin.removeAttribute("aria-pressed");
+      pin.setAttribute("aria-hidden", "true");
+      const paper = this.paperEl.cloneNode(true);
+      paper.classList.add("desktop-mode-pinned-note-ghost__paper");
+      swing.dataset.noteColor = this.element.dataset.noteColor ?? "";
+      swing.append(pin, paper);
+      root.appendChild(swing);
+      return { root, swing, pin, paper, tipX, tipY };
+    }
+    installDragListeners(ghost) {
+      this.teardownDragListeners();
+      let pendulum = null;
+      const onStart = (ev) => {
+        const detail = ev.detail;
+        if (detail?.payload?.data?.noteId !== this.note.id) {
+          return;
+        }
+        pendulum = startPendulum(ghost.swing);
+      };
+      const onMove = (ev) => {
+        const detail = ev.detail;
+        this.lastPointer = { x: detail.clientX, y: detail.clientY };
+        pendulum?.onPointerMove(detail.clientX);
+      };
+      const onEnter = (ev) => {
+        const detail = ev.detail;
+        if (detail?.targetId?.startsWith("recycle-bin")) {
+          ghost.root.classList.add("desktop-mode-pinned-note-ghost--doom");
+          pendulum?.setBias(6);
+        }
+      };
+      const onLeave = (ev) => {
+        const detail = ev.detail;
+        if (detail?.targetId?.startsWith("recycle-bin")) {
+          ghost.root.classList.remove("desktop-mode-pinned-note-ghost--doom");
+          pendulum?.setBias(0);
+        }
+      };
+      document.addEventListener(DRAG_EVENTS.START, onStart);
+      document.addEventListener(DRAG_EVENTS.MOVE, onMove);
+      document.addEventListener(DRAG_EVENTS.ENTER, onEnter);
+      document.addEventListener(DRAG_EVENTS.LEAVE, onLeave);
+      this.dragCleanup = () => {
+        pendulum?.stop();
+        pendulum = null;
+        document.removeEventListener(DRAG_EVENTS.START, onStart);
+        document.removeEventListener(DRAG_EVENTS.MOVE, onMove);
+        document.removeEventListener(DRAG_EVENTS.ENTER, onEnter);
+        document.removeEventListener(DRAG_EVENTS.LEAVE, onLeave);
+      };
+    }
+    teardownDragListeners() {
+      this.dragCleanup?.();
+      this.dragCleanup = null;
+    }
+    async snapBack(homeRect) {
+      if (!this.lastPointer || prefersReducedMotion()) {
+        void this.playInsertion(0.63);
+        return;
+      }
+      const flyback = this.buildGhost();
+      flyback.root.classList.add("desktop-mode-pinned-note-ghost--flyback");
+      flyback.root.style.position = "fixed";
+      flyback.root.style.left = `${this.lastPointer.x - flyback.tipX}px`;
+      flyback.root.style.top = `${this.lastPointer.y - flyback.tipY}px`;
+      flyback.root.style.zIndex = "2147483647";
+      flyback.root.style.pointerEvents = "none";
+      document.body.appendChild(flyback.root);
+      try {
+        await playSnapBack({
+          flyback: flyback.root,
+          swing: flyback.swing,
+          homeX: homeRect.left,
+          homeY: homeRect.top
+        });
+      } finally {
+        flyback.root.remove();
+      }
+      void this.playInsertion(0.63);
+    }
+    /** Crumple visual played by the bin drop handler at the release point. */
+    async playCrumpleAt(clientX, clientY) {
+      const ghost = this.buildGhost();
+      ghost.root.classList.add("desktop-mode-pinned-note-ghost--flyback");
+      ghost.root.style.position = "fixed";
+      ghost.root.style.left = `${clientX - ghost.tipX}px`;
+      ghost.root.style.top = `${clientY - ghost.tipY}px`;
+      ghost.root.style.zIndex = "2147483647";
+      ghost.root.style.pointerEvents = "none";
+      document.body.appendChild(ghost.root);
+      try {
+        await playCrumpleIntoBin({
+          clone: ghost.root,
+          pin: ghost.pin,
+          paper: ghost.paper,
+          binX: clientX,
+          binY: clientY + 24
+        });
+      } finally {
+        ghost.root.remove();
+      }
+    }
+    // ------------------------------------------------------------------
+    // Keyboard move mode
+    // ------------------------------------------------------------------
+    toggleMoveMode() {
+      if (this.moveMode) {
+        this.exitMoveMode(true);
+      } else {
+        this.enterMoveMode();
+      }
+    }
+    enterMoveMode() {
+      if (!this.note.canEdit) {
+        return;
+      }
+      this.moveMode = true;
+      this.moveOrigin = { x: this.note.x, y: this.note.y };
+      this.element.classList.add("desktop-mode-pinned-note--move-mode");
+      this.pinEl.setAttribute("aria-pressed", "true");
+      this.layer.announce(
+        __(
+          "Moving note. Arrow keys to move, Enter to place, Escape to cancel, Delete to move to the Recycle Bin.",
+          "desktop-mode"
+        )
+      );
+    }
+    exitMoveMode(commit) {
+      if (!this.moveMode) {
+        return;
+      }
+      this.moveMode = false;
+      this.element.classList.remove("desktop-mode-pinned-note--move-mode");
+      this.pinEl.setAttribute("aria-pressed", "false");
+      if (commit) {
+        this.moveTo(this.note.x, this.note.y);
+        this.layer.announce(__("Note placed.", "desktop-mode"));
+        void this.playInsertion(0.7);
+      } else if (this.moveOrigin) {
+        this.note = { ...this.note, ...this.moveOrigin };
+        this.applyPosition();
+      }
+      this.moveOrigin = null;
+    }
+    onPinKeydown(event) {
+      if (!this.moveMode) {
+        return;
+      }
+      const { width, height } = this.layer.hostSize();
+      const step = event.shiftKey ? KEYBOARD_FINE_STEP_PX : KEYBOARD_STEP_PX;
+      const dx = step / width;
+      const dy = step / height;
+      switch (event.key) {
+        case "ArrowLeft":
+          this.nudge(-dx, 0);
+          break;
+        case "ArrowRight":
+          this.nudge(dx, 0);
+          break;
+        case "ArrowUp":
+          this.nudge(0, -dy);
+          break;
+        case "ArrowDown":
+          this.nudge(0, dy);
+          break;
+        case "Enter":
+        case " ":
+          this.exitMoveMode(true);
+          break;
+        case "Escape":
+          this.exitMoveMode(false);
+          this.layer.announce(__("Move cancelled.", "desktop-mode"));
+          break;
+        case "Delete":
+        case "Backspace":
+          this.exitMoveMode(false);
+          void wpdConfirm({
+            title: __("Move note to the Recycle Bin?", "desktop-mode"),
+            message: __("You can restore it from the Recycle Bin later.", "desktop-mode"),
+            confirmLabel: __("Move to Trash", "desktop-mode"),
+            danger: true
+          }).then((confirmed) => {
+            if (confirmed) {
+              this.layer.trashNote(this.note);
+            }
+          });
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    nudge(dx, dy) {
+      const clamped = this.layer.clampPosition(this.note.x + dx, this.note.y + dy);
+      this.note = { ...this.note, ...clamped };
+      this.applyPosition();
+    }
+  }
+  const handlers = /* @__PURE__ */ new Map();
+  function registerRecycleBinPayloadHandler(type, handler) {
+    handlers.set(type, handler);
+    return () => {
+      if (handlers.get(type) === handler) {
+        handlers.delete(type);
+      }
+    };
+  }
+  function recycleBinPayloadAccepts(payload) {
+    const handler = handlers.get(payload.type);
+    return handler ? handler.accept(payload.data) : false;
+  }
+  function recycleBinPayloadDrop(session, ev) {
+    const handler = handlers.get(session.payload.type);
+    if (!handler) {
+      return false;
+    }
+    handler.onDrop(session, ev);
+    return true;
+  }
+  function normalizedDropPosition(layer, session, ev) {
+    const rect = layer.host.getBoundingClientRect();
+    const offsetX = session.payload.ghost?.offsetX ?? 0;
+    const offsetY = session.payload.ghost?.offsetY ?? 0;
+    const { width, height } = layer.hostSize();
+    return layer.clampPosition(
+      (ev.clientX - offsetX - rect.left) / width,
+      (ev.clientY - offsetY - rect.top) / height
+    );
+  }
+  function handleDraftDrop(layer, session, ev) {
+    const data = session.payload.data;
+    const text = String(data.text ?? "");
+    if (!text.trim()) {
+      return;
+    }
+    const { x, y } = normalizedDropPosition(layer, session, ev);
+    const color = sanitizeNoteColorSlug(String(data.color ?? ""));
+    const isPublic = data.isPublic === true;
+    const seed2 = hashNoteSeed(text);
+    const tempId = layer.nextTempId();
+    const optimistic = {
+      id: tempId,
+      text,
+      color,
+      x,
+      y,
+      z: 1,
+      public: isPublic,
+      seed: seed2,
+      ownerId: 0,
+      ownerName: "",
+      ownerAvatar: "",
+      canEdit: true,
+      updatedAtMs: 0
+    };
+    const controller = layer.upsertNote(optimistic, { animate: "thunk" });
+    layer.bringToFront(controller);
+    void createNote({ text, color, x, y, public: isPublic, seed: seed2 }).then((note) => {
+      layer.bumpHighWater(note.updatedAtMs);
+      controller.replace(note);
+      layer.rekeyNote(tempId, controller);
+      controller.flushPendingEdits();
+    }).catch((err) => {
+      layer.removeNote(tempId);
+      layer.notifyError(
+        __("Could not pin the note. Please try again.", "desktop-mode")
+      );
+      console.error("[desktop-mode] notes: create failed:", err);
+    });
+  }
+  function handleNoteDrop(layer, session, ev) {
+    const data = session.payload.data;
+    const controller = layer.get(data.noteId);
+    if (!controller) {
+      return;
+    }
+    const { x, y } = normalizedDropPosition(layer, session, ev);
+    controller.moveTo(x, y);
+  }
+  function installNoteDropHandlers(layer) {
+    const deregisters = [];
+    const canvasCtxOk = (ctx) => ctx.folderId === 0;
+    deregisters.push(
+      registerCanvasPayloadHandler(NOTE_DRAFT_PAYLOAD_TYPE, {
+        accept: (data, ctx) => canvasCtxOk(ctx) && Boolean(String(data.text ?? "").trim()),
+        onDrop: (session, ev) => handleDraftDrop(layer, session, ev)
+      })
+    );
+    deregisters.push(
+      registerCanvasPayloadHandler(NOTE_PAYLOAD_TYPE, {
+        accept: (data, ctx) => canvasCtxOk(ctx) && data.canEdit === true,
+        onDrop: (session, ev) => handleNoteDrop(layer, session, ev)
+      })
+    );
+    deregisters.push(
+      registerRecycleBinPayloadHandler(NOTE_PAYLOAD_TYPE, {
+        accept: (data) => data.canEdit === true,
+        onDrop: (session, ev) => {
+          const data = session.payload.data;
+          const controller = layer.get(data.noteId);
+          if (!controller) {
+            return;
+          }
+          const note = controller.note;
+          void controller.playCrumpleAt(ev.clientX, ev.clientY);
+          layer.trashNote(note);
+        }
+      })
+    );
+    return () => {
+      deregisters.forEach((deregister) => deregister());
+    };
+  }
+  const DROP_ACTIVE_ATTR = "data-desktop-mode-posts-drop-active";
+  const POSTS_WINDOW_ID = "desktop-mode-posts";
+  const POSTS_DOCK_SELECTOR = '.desktop-mode-dock__item[data-menu-slug="menu-posts"],.desktop-mode-dock__item[data-menu-slug="editphp"]';
+  const POSTS_WINDOW_SELECTOR = "[data-desktop-mode-posts-root]";
+  function getDragManager() {
+    return window.wp?.desktop?.dragManager ?? null;
+  }
+  function isNotePayload(payload) {
+    if (payload.type !== NOTE_PAYLOAD_TYPE) {
+      return false;
+    }
+    const data = payload.data;
+    return data.canEdit === true;
+  }
+  function isPostsUrl(url) {
+    if (!url) {
+      return false;
+    }
+    let path = url;
+    let search = "";
+    try {
+      const parsed = new URL(url, window.location.origin);
+      path = parsed.pathname;
+      search = parsed.search;
+    } catch {
+    }
+    const onPostsScreen = /(?:^|\/)(?:edit\.php|post-new\.php)$/.test(path) || !path.includes("/") && (path === "edit.php" || path === "post-new.php");
+    if (!onPostsScreen) {
+      return false;
+    }
+    const postType = new URLSearchParams(search).get("post_type");
+    return !postType || postType === "post";
+  }
+  function isPostsShortcutTile(ctx) {
+    const file = ctx.placement.file;
+    if (!file || file.type !== "shortcut") {
+      return false;
+    }
+    const url = typeof file.shortcutUrl === "string" ? file.shortcutUrl : "";
+    return isPostsUrl(url);
+  }
+  function convertDraggedNote(layer, session) {
+    if (session.payload.type !== NOTE_PAYLOAD_TYPE) {
+      return;
+    }
+    const data = session.payload.data;
+    if (typeof data.noteId !== "number") {
+      return;
+    }
+    const controller = layer.get(data.noteId);
+    if (controller) {
+      layer.convertNote(controller.note);
+    }
+  }
+  let _installed$1 = false;
+  let _dockDeregister$1 = null;
+  let _windowDeregister$1 = null;
+  let _mutationObserver = null;
+  function registerOn$1(dragManager, layer, id, el) {
+    return dragManager.registerDropTarget({
+      id,
+      element: el,
+      acceptLabel: __("Convert to post", "desktop-mode"),
+      accept: (payload) => isNotePayload(payload),
+      onEnter: () => {
+        el.setAttribute(DROP_ACTIVE_ATTR, "");
+      },
+      onLeave: () => {
+        el.removeAttribute(DROP_ACTIVE_ATTR);
+      },
+      onDrop: (session) => {
+        el.removeAttribute(DROP_ACTIVE_ATTR);
+        convertDraggedNote(layer, session);
+      }
+    });
+  }
+  function registeredElement(dragManager, id) {
+    const t = dragManager.debug().listTargets().find((target2) => target2.id === id);
+    return t ? t.element : null;
+  }
+  function installNotesPostsDropTarget(layer) {
+    if (_installed$1 || !layer.canCreatePosts) {
+      return;
+    }
+    const dragManager = getDragManager();
+    if (!dragManager) {
+      return;
+    }
+    _installed$1 = true;
+    registerTilePayloadHandler(NOTE_PAYLOAD_TYPE, {
+      appliesTo: (ctx) => isPostsShortcutTile(ctx),
+      acceptLabel: __("Convert to post", "desktop-mode"),
+      accept: (data) => data.canEdit === true,
+      onDrop: (session) => convertDraggedNote(layer, session)
+    });
+    const reprobeTile = () => {
+      const el = document.querySelector(POSTS_DOCK_SELECTOR);
+      if (!(el instanceof HTMLElement)) {
+        _dockDeregister$1?.();
+        _dockDeregister$1 = null;
+        return;
+      }
+      if (_dockDeregister$1 && registeredElement(dragManager, "notes-convert-dock") === el) {
+        return;
+      }
+      _dockDeregister$1?.();
+      _dockDeregister$1 = registerOn$1(dragManager, layer, "notes-convert-dock", el);
+    };
+    reprobeTile();
+    addAction(
+      HOOKS.DOCK_AFTER_RENDER,
+      "desktop-mode/notes/convert-dock-target",
+      reprobeTile
+    );
+    if (typeof MutationObserver !== "undefined") {
+      _mutationObserver = new MutationObserver(() => {
+        reprobeTile();
+      });
+      _mutationObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
+    addAction(
+      HOOKS.WINDOW_OPENED,
+      "desktop-mode/notes/convert-window-target",
+      (detail) => {
+        if (detail.windowId !== POSTS_WINDOW_ID) {
+          return;
+        }
+        _windowDeregister$1?.();
+        _windowDeregister$1 = null;
+        const el = document.querySelector(POSTS_WINDOW_SELECTOR);
+        if (el instanceof HTMLElement) {
+          _windowDeregister$1 = registerOn$1(
+            dragManager,
+            layer,
+            "notes-convert-window",
+            el
+          );
+        }
+      }
+    );
+    addAction(
+      HOOKS.WINDOW_CLOSED,
+      "desktop-mode/notes/convert-window-cleanup",
+      (detail) => {
+        if (detail.windowId !== POSTS_WINDOW_ID) {
+          return;
+        }
+        _windowDeregister$1?.();
+        _windowDeregister$1 = null;
+      }
+    );
+  }
+  function bootNotes(options) {
+    const notesUrl = options.config.notesUrl;
+    if (typeof notesUrl !== "string" || !notesUrl) {
+      return null;
+    }
+    installNotesRestDeps({
+      baseUrl: notesUrl,
+      nonce: options.config.restNonce ?? ""
+    });
+    const layer = new NotesLayer({
+      host: options.host,
+      pluginUrl: options.config.pluginUrl ?? "",
+      canCreatePosts: options.config.canCreatePosts ?? false,
+      onError: options.onError
+    });
+    installNoteDropHandlers(layer);
+    installNotesPostsDropTarget(layer);
+    document.addEventListener(NOTE_CREATED_EVENT, (ev) => {
+      const note = ev.detail?.note;
+      if (note && typeof note.id === "number") {
+        layer.bumpHighWater(note.updatedAtMs);
+        const controller = layer.upsertNote(note, { animate: "thunk" });
+        layer.bringToFront(controller);
+        controller.focusEditor();
+      }
+    });
+    void layer.boot();
+    return layer;
   }
   const clock = {
     id: "clock",
@@ -29325,6 +33351,38 @@ ${content}`;
       }
     });
   }
+  function maybeShowNotices(deps2) {
+    const { notices, openUrl, keyPrefix = "core-notice" } = deps2;
+    if (!Array.isArray(notices)) {
+      return;
+    }
+    for (const notice of notices) {
+      if (!notice || typeof notice.id !== "string" || !notice.id || typeof notice.message !== "string" || !notice.message) {
+        continue;
+      }
+      const dismissKey = `desktop-mode/${keyPrefix}:${notice.id}`;
+      if (isNoticeDismissed(dismissKey)) {
+        continue;
+      }
+      const label = notice.actionLabel;
+      const actionUrl = notice.actionUrl;
+      const windowTitle = notice.title || label || "";
+      let action;
+      if (label && actionUrl) {
+        action = {
+          label,
+          onClick: () => openUrl({ url: actionUrl, title: windowTitle })
+        };
+      }
+      showToast({
+        message: notice.message,
+        persistent: true,
+        dismissible: true,
+        onDismiss: () => markNoticeDismissed(dismissKey),
+        action
+      });
+    }
+  }
   const STARTER_WIDGET_ID = "desktop-mode/starter";
   const FILTER_NAMESPACE = "desktop-mode/dev-mode-gate";
   let _started = false;
@@ -29781,7 +33839,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
           const data = payload.data;
           return isTrashableShortcut(data);
         }
-        return false;
+        return recycleBinPayloadAccepts(payload);
       },
       onEnter: () => {
         el.setAttribute(TRASH_DROP_ACTIVE_ATTR, "");
@@ -29789,11 +33847,14 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       onLeave: () => {
         el.removeAttribute(TRASH_DROP_ACTIVE_ATTR);
       },
-      onDrop: (session) => {
+      onDrop: (session, ev) => {
         el.removeAttribute(TRASH_DROP_ACTIVE_ATTR);
         if (isDesktopFilePayload(session)) {
           const placement = session.payload.data.placement;
           void trashByFileType(placement);
+          return;
+        }
+        if (session.payload.type !== "shortcut" && recycleBinPayloadDrop(session, ev)) {
           return;
         }
         if (isShortcutPayload(session)) {
@@ -30498,7 +34559,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     if (!desktopArea) {
       return;
     }
-    const manager = new WindowManager(desktopArea);
+    const manager2 = new WindowManager(desktopArea);
     const wallpaperEl = document.getElementById("desktop-mode-wallpaper");
     const pluginUrl = config.pluginUrl || "";
     let wallpaperLayer = null;
@@ -30541,7 +34602,13 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         // Progress streaming is on by default now that the per-user
         // transport picker is gone; the assistant falls back gracefully
         // if the host drops the SSE connection.
-        getTransport: () => "sse"
+        getTransport: () => "sse",
+        // AI mode is usable when the APIs are present and a provider is
+        // configured; the Commands palette works regardless. Read live so
+        // connecting a provider or flipping the "AI assistant" toggle takes
+        // effect on the next open — no reload.
+        isAiAvailable: () => config.aiAssistant?.available === true && config.aiAssistant?.assistantProviderConfigured === true,
+        isOverrideEnabled: () => osSettings.getOsSettingsSnapshot().ai.enabled !== false
       },
       config.aiAssistantBundleUrl ?? ""
     );
@@ -30551,7 +34618,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         fallbackContext: () => ({
           close: () => aiAssistant.close(),
           openInWindow: (url, title, icon) => {
-            manager.open({
+            manager2.open({
               url,
               title,
               icon: icon ?? "dashicons-admin-generic"
@@ -30581,7 +34648,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       dragBridge.end();
     });
     scheduleIdleBoot(() => installIframeDropTargets(dragManager));
-    scheduleIdleBoot(() => installFocusWindowOnDragHover(manager));
+    scheduleIdleBoot(() => installFocusWindowOnDragHover(manager2));
     window.addEventListener("message", (e) => {
       if (e.origin !== window.location.origin) {
         return;
@@ -30594,51 +34661,42 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         message: "Could not insert into the editor."
       });
     });
-    const aiAvailable = config.aiAssistant?.available === true;
-    const isAiAssistantActive = () => aiAvailable && config.aiAssistant?.assistantProviderConfigured === true && osSettings.getOsSettingsSnapshot().ai.enabled !== false;
-    let unregisterAiPalette = null;
-    const syncAiAssistant = () => {
-      const active2 = isAiAssistantActive();
-      document.body.classList.toggle("desktop-mode-ai-enabled", active2);
-      if (active2 && !unregisterAiPalette) {
-        unregisterAiPalette = registerPalette({
-          id: "desktop-mode-ai-assistant",
-          label: "AI Assistant",
-          open: () => aiAssistant.open(),
-          close: () => aiAssistant.close(),
-          isOpen: () => aiAssistant.isOpen
-        });
-      } else if (!active2 && unregisterAiPalette) {
-        aiAssistant.close();
-        unregisterAiPalette();
-        unregisterAiPalette = null;
-      }
-    };
-    syncAiAssistant();
-    osSettings.subscribeOsSettings(() => syncAiAssistant());
-    document.addEventListener(
-      "desktop-mode-ai-status-changed",
-      () => syncAiAssistant()
-    );
+    registerPalette({
+      id: "desktop-mode-ai-assistant",
+      label: "AI Assistant",
+      open: () => aiAssistant.open(),
+      close: () => aiAssistant.close(),
+      isOpen: () => aiAssistant.isOpen
+    });
     installPaletteShortcut();
-    installWindowSwitcherShortcut(manager);
-    installDesktopArrowShortcuts(manager);
+    installWindowSwitcherShortcut(manager2);
+    installDesktopArrowShortcuts(manager2);
     scheduleIdleBoot(() => {
       new IframeCommandBridge({
-        manager,
+        manager: manager2,
         adminUrl: config.adminUrl
       }).install();
       new ShellCommandHarvester({
-        manager,
+        manager: manager2,
         adminUrl: config.adminUrl
       }).install();
     });
     document.addEventListener("desktop-mode-open-ai", () => {
-      if (!isAiAssistantActive()) {
-        return;
-      }
       openPaletteOnly("desktop-mode-ai-assistant");
     });
+    document.addEventListener(
+      "click",
+      (e) => {
+        const target2 = e.target;
+        if (!(target2 instanceof Element) || !target2.closest("#wp-admin-bar-command-palette")) {
+          return;
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        openPaletteOnly("desktop-mode-ai-assistant");
+      },
+      true
+    );
     const bottomDockEl = document.getElementById("desktop-mode-dock");
     const shellEl = document.getElementById("desktop-mode-shell");
     const shellBody = shellEl?.querySelector(
@@ -30646,7 +34704,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     );
     let layoutDispatcher = null;
     const nativeWindows = createNativeWindowSync({
-      manager,
+      manager: manager2,
       appendSystemTile: (item) => layoutDispatcher?.appendSystemTile(item),
       removeSystemTile: (id) => layoutDispatcher?.removeSystemTile(id)
     });
@@ -30694,7 +34752,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       adminUrl: config.adminUrl,
       deriveSlug: (url) => deriveWindowId(url, config.adminUrl),
       openWindow: (windowConfig) => {
-        void manager.open(windowConfig);
+        void manager2.open(windowConfig);
       },
       findDockEntry: findDockEntryForUrl2
     });
@@ -30778,7 +34836,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       const renderIcons2 = (icons) => {
         renderDesktopIcons(desktopArea, icons, {
           openWindow: nativeWindows.openById,
-          manager,
+          manager: manager2,
           deriveWindowId: (url) => deriveWindowId(url, config.adminUrl)
         });
       };
@@ -30788,7 +34846,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
           shellBody,
           bottomDockEl,
           desktopArea,
-          windowManager: manager,
+          windowManager: manager2,
           adminUrl: config.adminUrl,
           renderIcons: renderIcons2,
           getSettings: () => {
@@ -30812,11 +34870,11 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
           // active desktop." OS Settings on another desktop
           // shouldn't paint the dot on the active view.
           isOpen: () => {
-            const win = manager.getById(OS_SETTINGS_WINDOW_ID);
+            const win = manager2.getById(OS_SETTINGS_WINDOW_ID);
             if (!win) {
               return false;
             }
-            return (win.config.desktopId || manager.getActiveDesktopId()) === manager.getActiveDesktopId();
+            return (win.config.desktopId || manager2.getActiveDesktopId()) === manager2.getActiveDesktopId();
           },
           onOpen: openOsSettings
         },
@@ -30853,7 +34911,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       if (opts.tabId) {
         osSettings.activeTabId = opts.tabId;
       }
-      void manager.open({
+      void manager2.open({
         id: OS_SETTINGS_WINDOW_ID,
         baseId: OS_SETTINGS_WINDOW_ID,
         url: "#os-settings",
@@ -30871,7 +34929,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       }
     }
     function openBugReport() {
-      void manager.open({
+      void manager2.open({
         id: BUG_REPORT_WINDOW_ID,
         baseId: BUG_REPORT_WINDOW_ID,
         url: `#${BUG_REPORT_WINDOW_ID}`,
@@ -30895,11 +34953,11 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
           title: "Report a bug",
           icon: "dashicons-buddicons-replies",
           isOpen: () => {
-            const win = manager.getById(BUG_REPORT_WINDOW_ID);
+            const win = manager2.getById(BUG_REPORT_WINDOW_ID);
             if (!win) {
               return false;
             }
-            return (win.config.desktopId || manager.getActiveDesktopId()) === manager.getActiveDesktopId();
+            return (win.config.desktopId || manager2.getActiveDesktopId()) === manager2.getActiveDesktopId();
           },
           onOpen: openBugReport
         },
@@ -30915,7 +34973,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       Array.isArray(config.nativeWindows) ? config.nativeWindows : []
     );
     const hasSession = hasRestorableSession(config.session);
-    const sessionRestore = hasSession ? restoreSession(manager, config, desktopArea).catch((err) => {
+    const sessionRestore = hasSession ? restoreSession(manager2, config, desktopArea).catch((err) => {
       if (typeof console !== "undefined") {
         console.error("[desktop-mode] session restore failed:", err);
       }
@@ -30931,19 +34989,19 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       isNativeDefault
     })) {
       void sessionRestore.then(
-        () => openCurrentPage(manager, config).catch((err) => {
+        () => openCurrentPage(manager2, config).catch((err) => {
           if (typeof console !== "undefined") {
             console.error("[desktop-mode] openCurrentPage failed:", err);
           }
         })
       );
     }
-    const saveSession = createSessionSaver(manager, config);
+    const saveSession = createSessionSaver(manager2, config);
     wireSessionEvents(saveSession);
     const setDefaultWindow = async (url) => {
       try {
         const response = await trackedFetch(
-          manager,
+          manager2,
           config.defaultWindowUrl,
           {
             method: "POST",
@@ -30976,7 +35034,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         }
       }
     };
-    manager.onToggleStartupRequested = (win) => {
+    manager2.onToggleStartupRequested = (win) => {
       const currentPref = config.defaultWindow;
       const isNative = !!win.config.native;
       const winValue = isNative ? `native:${win.id}` : win.getCurrentUrl();
@@ -31009,6 +35067,10 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     void syncServerWallpapers(
       Array.isArray(config.serverWallpapers) ? config.serverWallpapers : []
     );
+    const syncServerGames = createGamesRegistrySync();
+    void syncServerGames(
+      Array.isArray(config.serverGames) ? config.serverGames : []
+    );
     const syncServerCommands = createCommandRegistrySync();
     void syncServerCommands(
       Array.isArray(config.serverCommandScripts) ? config.serverCommandScripts : [],
@@ -31031,9 +35093,22 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     void syncServerWindowLinkRenderers(
       Array.isArray(config.serverWindowLinkRendererScripts) ? config.serverWindowLinkRendererScripts : []
     );
-    startUnfocusEngine({ manager, osSettings });
-    startWindowLinksEngine({ manager });
-    startWindowLinkRenderHost({ manager, osSettings });
+    startUnfocusEngine({ manager: manager2, osSettings });
+    startWindowLinksEngine({ manager: manager2 });
+    startWindowLinkRenderHost({ manager: manager2, osSettings });
+    bootRelatedEntities({
+      manager: manager2,
+      openUrl: (item) => {
+        const relatedId = deriveWindowId(item.url, config.adminUrl);
+        void manager2.open({
+          id: relatedId,
+          baseId: relatedId,
+          url: item.url,
+          title: item.label,
+          icon: item.icon || "dashicons-admin-links"
+        });
+      }
+    });
     const syncServerDockRailRenderers = createDockRailRendererSync();
     void syncServerDockRailRenderers(
       Array.isArray(config.serverDockRailRendererScripts) ? config.serverDockRailRendererScripts : []
@@ -31062,8 +35137,8 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       Array.isArray(config.serverWindowChromeScripts) ? config.serverWindowChromeScripts : [],
       Array.isArray(config.serverWindowChromes) ? config.serverWindowChromes : []
     );
-    const connectionBridge = createConnectionBridge(manager);
-    attachBroadcastBus(manager);
+    const connectionBridge = createConnectionBridge(manager2);
+    attachBroadcastBus(manager2);
     scheduleIdleBoot(() => installBroadcastReceiver());
     installWindowLoadingTransitions();
     addAction(
@@ -31100,7 +35175,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         connectionBridge.onIframeReady(e.windowId);
       }
     });
-    const registerWindow = createRegisterWindow(manager);
+    const registerWindow = createRegisterWindow(manager2);
     const renderIcons = (icons) => {
       if (layoutDispatcher) {
         layoutDispatcher.applyDesktopIcons(icons);
@@ -31108,7 +35183,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       }
       renderDesktopIcons(desktopArea, icons, {
         openWindow: nativeWindows.openById,
-        manager,
+        manager: manager2,
         deriveWindowId: (url) => deriveWindowId(url, config.adminUrl)
       });
     };
@@ -31125,6 +35200,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       syncServerUnfocusEffects,
       syncServerWindowLinkRenderers,
       syncServerDockRailRenderers,
+      syncServerGames,
       renderIcons,
       syncShortcuts: () => {
         const snapshot = osSettings.getOsSettingsSnapshot();
@@ -31161,7 +35237,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     );
     setCurrentLayout(osSettings.getOsSettingsSnapshot().desktopLayout);
     const desktopApi = buildPublicApi({
-      manager,
+      manager: manager2,
       dock,
       layoutDispatcher,
       osSettings,
@@ -31181,12 +35257,26 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       dragManager,
       connect: connectionBridge.connect,
       getConnection: connectionBridge.getConnection,
+      wallpaperSuspend: {
+        suspend: (reason) => wallpaperLayer?.suspend(reason),
+        resume: (reason) => wallpaperLayer?.resume(reason),
+        isSuspended: () => wallpaperLayer?.isSuspended() ?? false
+      },
       config
     });
     installPublicApi(desktopApi);
     scheduleIdleBoot(() => installRecycleBinDropTargets(dragManager));
     bootHeartbeatBus();
+    bootGamesChallenges({
+      currentUserId: Number(config.currentUserId) || 0
+    });
+    scheduleIdleBoot(() => bootContentChangesHeartbeat());
     scheduleIdleBoot(() => bootNonceRefresh());
+    scheduleIdleBoot(
+      () => bootAuthRecovery({
+        currentUserId: Number(config.currentUserId) || 0
+      })
+    );
     bootStickyNotes({
       host: desktopArea,
       config,
@@ -31195,10 +35285,10 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       // flag is `undefined` on shells older than the one that added it
       // → the layer treats that as available (boot and swallow).
       available: config.stickyNotes?.available,
-      getActiveDesktopId: () => manager.getActiveDesktopId(),
+      getActiveDesktopId: () => manager2.getActiveDesktopId(),
       openArtifact: (url, title) => {
         const id = deriveWindowId(url, config.adminUrl);
-        void manager.open({
+        void manager2.open({
           id,
           baseId: id,
           url,
@@ -31210,12 +35300,19 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         showToast({ message });
       }
     });
+    bootNotes({
+      host: desktopArea,
+      config,
+      onError: (message) => {
+        showToast({ message });
+      }
+    });
     installOpenDeps({
       openUrl: ({ id, url, title, icon }) => {
         if (tryNativeUrlRemap(url)) {
           return true;
         }
-        void manager.open({ id, baseId: id, url, title, icon });
+        void manager2.open({ id, baseId: id, url, title, icon });
         return true;
       },
       openNativeWindow: (id) => nativeWindows.openById(id),
@@ -31230,7 +35327,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         if (tryNativeUrlRemap(url)) {
           return;
         }
-        void manager.open({
+        void manager2.open({
           id: "update-core",
           baseId: "update-core",
           url,
@@ -31238,6 +35335,25 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
           icon: "dashicons-update"
         });
       }
+    });
+    const openNoticeUrl = ({ url, title }) => {
+      if (tryNativeUrlRemap(url)) {
+        return;
+      }
+      const baseId = deriveWindowId(url, config.adminUrl);
+      void manager2.open({
+        id: baseId,
+        baseId,
+        url,
+        title,
+        icon: "dashicons-info"
+      });
+    };
+    maybeShowNotices({ notices: config.coreNotices, openUrl: openNoticeUrl });
+    maybeShowNotices({
+      notices: config.pluginNotices,
+      openUrl: openNoticeUrl,
+      keyPrefix: "plugin-notice"
     });
     if (typeof config.filesUrl === "string" && config.filesUrl) {
       installRestDeps({
@@ -31300,7 +35416,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       widgetLayer?.disposeAll();
     });
     bindShellLifecycle();
-    bindTopWindowLinkInterceptor(manager, config);
+    bindTopWindowLinkInterceptor(manager2, config);
     const relayoutRoot = (transform, persist2 = true) => {
       const root = filesApi.store.getState().placementsByFolder.get(0) ?? [];
       const ordered = transform(root);
@@ -31328,7 +35444,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
           y: cell.y,
           sortOrder: i
         });
-        if (!persist2) {
+        if (!persist2 || isSyntheticPlacement(p)) {
           continue;
         }
         void updatePlacement(p.id, {
@@ -31437,7 +35553,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       if (dragManager.recentlyEndedDrag()) {
         return;
       }
-      manager.toggleShowDesktop();
+      manager2.toggleShowDesktop();
     });
     desktopArea.addEventListener("contextmenu", (e) => {
       if (e.target !== desktopArea) {
@@ -31507,7 +35623,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
             "New URL",
             "Opens the URL in a new browser tab."
           ),
-          toggleShowDesktop: () => manager.toggleShowDesktop(),
+          toggleShowDesktop: () => manager2.toggleShowDesktop(),
           openOsSettings: () => openOsSettings(),
           sortIcons: (mode) => {
             setRootSortMode(mode);
@@ -31539,7 +35655,9 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       mod.bootOsFileDrop({
         config: config.dropConfig,
         mediaUrl: config.mediaUrl,
-        restNonce: config.restNonce
+        restNonce: config.restNonce,
+        filesUrl: config.filesUrl,
+        storage: config.desktopStorage
       });
     });
     document.dispatchEvent(
@@ -31554,70 +35672,6 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
   } else {
     init();
   }
-  const _initial = {
-    tab: null,
-    requestedAt: 0
-  };
-  let _store = null;
-  function getStore() {
-    if (_store) {
-      return _store;
-    }
-    const w = window;
-    const factory = w.wp?.desktop?.createSharedStore;
-    if (typeof factory !== "function") {
-      return null;
-    }
-    _store = factory(
-      "desktop-mode/plugins-window/tab-target",
-      () => ({ ..._initial })
-    );
-    return _store;
-  }
-  function setPluginsWindowTab(tab) {
-    const store2 = getStore();
-    if (store2) {
-      store2.state.tab = tab;
-      store2.state.requestedAt = Date.now();
-      store2.notify();
-      return;
-    }
-    const w = window;
-    w._wpdPluginsWindowTab = { tab, requestedAt: Date.now() };
-  }
-  function consumePluginsWindowTab() {
-    const store2 = getStore();
-    if (store2) {
-      const tab = store2.state.tab;
-      if (tab !== null) {
-        store2.state.tab = null;
-        store2.state.requestedAt = 0;
-        store2.notify();
-      }
-      return tab;
-    }
-    const w = window;
-    const prev = w._wpdPluginsWindowTab;
-    if (prev) {
-      w._wpdPluginsWindowTab = { tab: null, requestedAt: 0 };
-      return prev.tab;
-    }
-    return null;
-  }
-  function subscribePluginsWindowTab(cb) {
-    const store2 = getStore();
-    if (!store2) {
-      return () => {
-      };
-    }
-    return store2.subscribe((state2) => cb({ ...state2 }));
-  }
-  const tabTarget = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-    __proto__: null,
-    consumePluginsWindowTab,
-    setPluginsWindowTab,
-    subscribePluginsWindowTab
-  }, Symbol.toStringTag, { value: "Module" }));
   const FILE_DROP_HOOKS = {
     /**
      * Filter — fires once per drop, after the manager has parsed
@@ -31721,6 +35775,93 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
      */
     UPLOAD_FAILED: "desktop-mode.drop.upload-failed"
   };
+  const MAX_DEPTH = 32;
+  function snapshotEntries(items) {
+    if (!items) {
+      return [];
+    }
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind !== "file") {
+        continue;
+      }
+      const entry = typeof item.webkitGetAsEntry === "function" ? item.webkitGetAsEntry() : null;
+      if (entry) {
+        out.push(entry);
+      }
+    }
+    return out;
+  }
+  function readAllEntries(dir) {
+    const reader = dir.createReader();
+    return new Promise((resolve2, reject) => {
+      const out = [];
+      const step = () => {
+        reader.readEntries((batch) => {
+          if (batch.length === 0) {
+            resolve2(out);
+            return;
+          }
+          out.push(...batch);
+          step();
+        }, reject);
+      };
+      step();
+    });
+  }
+  function entryFile(entry) {
+    return new Promise((resolve2, reject) => {
+      entry.file(resolve2, reject);
+    });
+  }
+  async function collectDroppedTree(entries) {
+    const collection = {
+      files: [],
+      emptyDirs: [],
+      hadDirectory: false
+    };
+    for (const entry of entries) {
+      await collectEntry(entry, "", collection, 0);
+    }
+    return collection;
+  }
+  async function collectEntry(entry, prefix, collection, depth) {
+    if (depth > MAX_DEPTH) {
+      return;
+    }
+    if (entry.isFile) {
+      try {
+        const file = await entryFile(entry);
+        collection.files.push({
+          file,
+          // `File.webkitRelativePath` is EMPTY for drag-dropped
+          // files — the path must come from the entry walk.
+          relativePath: prefix ? `${prefix}${file.name}` : ""
+        });
+      } catch {
+      }
+      return;
+    }
+    if (!entry.isDirectory) {
+      return;
+    }
+    collection.hadDirectory = true;
+    const dirPath = `${prefix}${entry.name}`;
+    let children = [];
+    try {
+      children = await readAllEntries(entry);
+    } catch {
+      children = [];
+    }
+    if (children.length === 0) {
+      collection.emptyDirs.push(dirPath);
+      return;
+    }
+    for (const child of children) {
+      await collectEntry(child, `${dirPath}/`, collection, depth + 1);
+    }
+  }
   const IFRAME_PASSTHROUGH_SELECTORS = [
     ".components-drop-zone",
     "[data-drop-zone]",
@@ -31746,6 +35887,14 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     }
     return false;
   }
+  function windowIdFromElement(el) {
+    const root = el?.closest?.(".desktop-mode-window");
+    if (!root) {
+      return void 0;
+    }
+    const m = /^wp-window-(.+)$/.exec(root.id || "");
+    return m ? m[1] : void 0;
+  }
   function resolveWindowIdFromSource(source) {
     if (!source) {
       return void 0;
@@ -31753,6 +35902,10 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     const iframes = document.querySelectorAll("iframe");
     for (const f of Array.from(iframes)) {
       if (f.contentWindow === source) {
+        const fromRoot = windowIdFromElement(f);
+        if (fromRoot) {
+          return fromRoot;
+        }
         const host = f.closest("[data-window-id]");
         return host?.getAttribute("data-window-id") || void 0;
       }
@@ -31823,11 +35976,16 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       }
       ev.preventDefault();
       resetOverlay();
+      const entries = snapshotEntries(ev.dataTransfer?.items);
+      const ctx = classifyDropTarget(ev);
+      if (entries.some((e) => e.isDirectory)) {
+        void handleTreeDrop(entries, ctx, opts);
+        return;
+      }
       const files = ev.dataTransfer?.files ? Array.from(ev.dataTransfer.files) : [];
       if (files.length === 0) {
         return;
       }
-      const ctx = classifyDropTarget(ev);
       void handleFiles(files, ctx, opts);
     };
     const onDragEnd2 = () => resetOverlay();
@@ -31873,7 +36031,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onDragEnd2);
     window.addEventListener("message", onIframeMessage);
-    const manager = {
+    const manager2 = {
       dispose: () => {
         window.removeEventListener("dragenter", onDragEnter);
         window.removeEventListener("dragover", onDragOver);
@@ -31890,8 +36048,8 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         delete window.__desktopModeOsFileDropMounted;
       }
     };
-    host.__desktopModeOsFileDropMounted = manager;
-    return manager;
+    host.__desktopModeOsFileDropMounted = manager2;
+    return manager2;
   }
   function ensureDropOverlay() {
     const existing = document.querySelector(".desktop-mode-os-drop-overlay");
@@ -31946,42 +36104,59 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     window.addEventListener("dragover", cancel);
     window.addEventListener("drop", cancel);
     const host = window;
-    const manager = {
+    const manager2 = {
       dispose: () => {
         window.removeEventListener("dragover", cancel);
         window.removeEventListener("drop", cancel);
         delete host.__desktopModeOsFileDropMounted;
       }
     };
-    host.__desktopModeOsFileDropMounted = manager;
-    return manager;
+    host.__desktopModeOsFileDropMounted = manager2;
+    return manager2;
   }
   function classifyDropTarget(ev) {
     const x = ev.clientX;
     const y = ev.clientY;
     let node = ev.target;
     while (node && node !== document.body) {
-      if (node.tagName === "IFRAME") {
-        const id = node.closest(
-          "[data-window-id]"
+      if (node.classList.contains("desktop-mode-file-tile") && node.dataset.fileType === "folder") {
+        const tileRef = Number(
+          node.dataset.fileRef ?? 0
         );
+        if (Number.isFinite(tileRef) && tileRef > 0) {
+          return { surface: "folder", folderId: tileRef, x, y };
+        }
+      }
+      if (node.tagName === "IFRAME") {
         return {
           surface: "iframe",
-          windowId: id?.getAttribute("data-window-id") || void 0,
+          windowId: windowIdFromElement(node),
           x,
           y
         };
       }
-      if (node.hasAttribute("data-window-id")) {
-        return {
-          surface: "window",
-          windowId: node.getAttribute("data-window-id") || void 0,
-          x,
-          y
-        };
+      if (node.classList.contains("desktop-mode-window") || node.hasAttribute("data-window-id")) {
+        const windowId = windowIdFromElement(node) ?? (node.getAttribute("data-window-id") || void 0);
+        const folderMatch = windowId ? /^desktop-mode-folder-(\d+)/.exec(windowId) : null;
+        if (folderMatch) {
+          return {
+            surface: "folder",
+            folderId: Number(folderMatch[1]),
+            windowId,
+            x,
+            y
+          };
+        }
+        return { surface: "window", windowId, x, y };
       }
-      if (node.classList.contains("desktop-mode-folder-grid")) {
-        return { surface: "folder", x, y };
+      if (node.dataset?.folderId !== void 0) {
+        const folderId = Number(
+          node.dataset.folderId
+        );
+        if (Number.isFinite(folderId) && folderId > 0) {
+          return { surface: "folder", folderId, x, y };
+        }
+        return { surface: "wallpaper", x, y };
       }
       if (node.id === "desktop-mode-wallpaper" || node.classList.contains("desktop-mode-wallpaper") || node.classList.contains("desktop-mode-desktop")) {
         return { surface: "wallpaper", x, y };
@@ -32033,6 +36208,55 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     });
     await opts.openDialog(entries, ctx);
   }
+  async function handleTreeDrop(entries, ctx, opts) {
+    if (!opts.storage?.canUpload || !opts.filesUrl) {
+      showToast({
+        message: "Folder uploads need desktop storage, which is not available for your account."
+      });
+      return;
+    }
+    const tree = await collectDroppedTree(entries);
+    const detected = applyFilters(
+      FILE_DROP_HOOKS.FILES_DETECTED,
+      tree.files.map((t) => t.file),
+      ctx
+    );
+    if (!Array.isArray(detected)) {
+      return;
+    }
+    const detectedSet = new Set(detected);
+    const kept = tree.files.filter((t) => detectedSet.has(t.file));
+    if (kept.length === 0 && tree.emptyDirs.length === 0) {
+      return;
+    }
+    const { accepted, rejected } = partitionByPolicy(
+      kept.map((t) => t.file),
+      opts.config
+    );
+    if (rejected.length > 0) {
+      doAction(FILE_DROP_HOOKS.FILES_REJECTED, {
+        rejections: rejected,
+        context: ctx
+      });
+      showToast({
+        message: rejected.length === 1 ? rejected[0].message : `${rejected.length} files couldn't be uploaded.`
+      });
+    }
+    const relByFile = new Map(kept.map((t) => [t.file, t.relativePath]));
+    const entriesForDialog = accepted.map(({ file, mime }) => ({
+      file,
+      mime,
+      fields: defaultFields(file, mime),
+      relativePath: relByFile.get(file) ?? ""
+    }));
+    if (entriesForDialog.length === 0 && tree.emptyDirs.length === 0) {
+      return;
+    }
+    await opts.openDialog(entriesForDialog, ctx, {
+      forceDesktop: true,
+      emptyDirs: tree.emptyDirs
+    });
+  }
   function partitionByPolicy(files, config) {
     const accepted = [];
     const rejected = [];
@@ -32049,7 +36273,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
         rejected.push({
           file,
           reason: "size",
-          message: `“${file.name}” exceeds the ${formatBytes$1(
+          message: `“${file.name}” exceeds the ${formatBytes(
             config.maxSize
           )} upload limit.`
         });
@@ -32146,7 +36370,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     }
     return spaced.charAt(0).toUpperCase() + spaced.slice(1);
   }
-  function formatBytes$1(bytes) {
+  function formatBytes(bytes) {
     if (bytes >= 1024 * 1024) {
       return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
     }
@@ -32155,488 +36379,20 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     }
     return `${bytes} B`;
   }
-  function formatBytes(bytes) {
-    if (!Number.isFinite(bytes) || bytes <= 0) {
-      return "0 B";
-    }
-    const units = ["B", "KB", "MB", "GB", "TB"];
-    let v = bytes;
-    let i = 0;
-    while (v >= 1024 && i < units.length - 1) {
-      v /= 1024;
-      i++;
-    }
-    const decimals = v >= 100 || i === 0 ? 0 : 1;
-    return `${v.toFixed(decimals)} ${units[i]}`;
-  }
-  const styles = css`:host{display:block;--wpd-progress-track-bg:var( --desktop-mode-control-bg,rgba( 0,0,0,0.08 ) );--wpd-progress-fill:var( --wp-admin-theme-color,#2271b1 );--wpd-progress-height:6px;--wpd-progress-radius:999px;--wpd-progress-label-color:inherit;--wpd-progress-label-size:12px;--wpd-progress-label-gap:4px;width:100%;font:inherit;color:var( --wpd-progress-label-color )}:host( [ hidden ] ){display:none}.header{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:var( --wpd-progress-label-gap );font-size:var( --wpd-progress-label-size );line-height:1.3}.label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.percent{font-variant-numeric:tabular-nums;opacity:0.75;flex-shrink:0}.track{position:relative;width:100%;height:var( --wpd-progress-height );background:var( --wpd-progress-track-bg );border-radius:var( --wpd-progress-radius );overflow:hidden}.fill{position:absolute;inset-block:0;inset-inline-start:0;width:0;background:var( --wpd-progress-fill );border-radius:inherit;transition:width 0.18s ease-out}:host( [ tone='success' ] ){--wpd-progress-fill:var( --desktop-mode-status-success,#3a8a3a )}:host( [ tone='warning' ] ){--wpd-progress-fill:var( --desktop-mode-status-warning,#dba617 )}:host( [ tone='danger' ] ){--wpd-progress-fill:var( --desktop-mode-status-danger,#d63638 )}:host( [ indeterminate ] ) .fill{width:33%;animation:wpd-progress-sweep 1.1s linear infinite;transition:none}@keyframes wpd-progress-sweep{0%{transform:translateX( -120% )}100%{transform:translateX( 320% )}}@media ( prefers-reduced-motion:reduce ){.fill{transition:none}:host( [ indeterminate ] ) .fill{animation:none;width:100%;opacity:0.6}}`;
-  const _WpdProgressBar = class _WpdProgressBar extends Component {
-    constructor() {
-      super(...arguments);
-      this._ownedAriaLabel = null;
-    }
-    render() {
-      return html`<div class="root" part="root">
-			<div class="header" part="header" hidden>
-				<span class="label" part="label"></span>
-				<span class="percent" part="percent"></span>
-			</div>
-			<div class="track" part="track">
-				<div class="fill" part="fill"></div>
-			</div>
-		</div>`;
-    }
-    requestUpdate() {
-      super.requestUpdate();
-      queueMicrotask(() => this._paint());
-    }
-    connectedCallback() {
-      super.connectedCallback();
-      queueMicrotask(() => this._paint());
-    }
-    _paint() {
-      const root = this.shadowRoot;
-      if (!root) {
-        return;
-      }
-      const max = this._readMax();
-      const indeterminate = this.hasAttribute("indeterminate") || max <= 0;
-      const value = indeterminate ? 0 : this._readValue(max);
-      const ratio = indeterminate ? 0 : value / max;
-      const percent = Math.round(ratio * 100);
-      const label = this.getAttribute("label") ?? "";
-      const showPercent = this.hasAttribute("show-percent");
-      const fill = root.querySelector(".fill");
-      if (fill && !indeterminate) {
-        fill.style.width = `${(ratio * 100).toFixed(2)}%`;
-      } else if (fill && indeterminate) {
-        fill.style.removeProperty("width");
-      }
-      const header = root.querySelector(".header");
-      const labelEl = root.querySelector(".label");
-      const percentEl = root.querySelector(".percent");
-      if (header && labelEl && percentEl) {
-        const visible = label || showPercent && !indeterminate;
-        header.hidden = !visible;
-        labelEl.textContent = label;
-        percentEl.hidden = !(showPercent && !indeterminate);
-        percentEl.textContent = `${percent}%`;
-      }
-      this._syncAria(max, value, indeterminate, label);
-      const track = root.querySelector(".track");
-      if (track) {
-        track.setAttribute("role", "progressbar");
-        track.setAttribute("aria-valuemin", "0");
-        if (indeterminate) {
-          track.removeAttribute("aria-valuenow");
-          track.removeAttribute("aria-valuemax");
-        } else {
-          track.setAttribute("aria-valuemax", String(max));
-          track.setAttribute("aria-valuenow", String(value));
-        }
-        if (label) {
-          track.setAttribute("aria-label", label);
-        } else {
-          track.removeAttribute("aria-label");
-        }
-      }
-    }
-    _syncAria(max, value, indeterminate, label) {
-      this.setAttribute("role", "progressbar");
-      this.setAttribute("aria-valuemin", "0");
-      if (indeterminate) {
-        this.removeAttribute("aria-valuenow");
-        this.removeAttribute("aria-valuemax");
-      } else {
-        this.setAttribute("aria-valuemax", String(max));
-        this.setAttribute("aria-valuenow", String(value));
-      }
-      const existing = this.getAttribute("aria-label");
-      if (label) {
-        if (existing === null || existing === this._ownedAriaLabel) {
-          this.setAttribute("aria-label", label);
-          this._ownedAriaLabel = label;
-        }
-      } else if (existing !== null && existing === this._ownedAriaLabel) {
-        this.removeAttribute("aria-label");
-        this._ownedAriaLabel = null;
-      }
-    }
-    _readMax() {
-      const attr = this.getAttribute("max");
-      if (attr === null) {
-        return 100;
-      }
-      const raw = parseFloat(attr);
-      return Number.isFinite(raw) ? raw : 100;
-    }
-    _readValue(max) {
-      const raw = parseFloat(this.getAttribute("value") ?? "0");
-      if (!Number.isFinite(raw)) {
-        return 0;
-      }
-      if (raw < 0) {
-        return 0;
-      }
-      if (raw > max) {
-        return max;
-      }
-      return raw;
-    }
-  };
-  _WpdProgressBar.props = [
-    "value",
-    "max",
-    "indeterminate",
-    "tone",
-    "label",
-    "showPercent"
-  ];
-  _WpdProgressBar.styles = [styles];
-  _WpdProgressBar.help = {
-    title: "Progress bar",
-    summary: "Linear progress indicator. Determinate mode shows `value/max` as a fill width; indeterminate mode sweeps across the track. Supports tone tinting, an optional inline label + percent header, and full CSS-variable theming.",
-    status: "experimental",
-    since: "0.31.0",
-    props: [
-      {
-        name: "value",
-        type: "number",
-        default: "0",
-        description: "Current progress. Clamped to `[0, max]`."
-      },
-      {
-        name: "max",
-        type: "number",
-        default: "100",
-        description: "Maximum value. Setting `max <= 0` forces indeterminate."
-      },
-      {
-        name: "indeterminate",
-        type: "boolean",
-        description: "Show the sweeping indeterminate animation instead of a value-driven fill. The `value` attribute is ignored while this is set."
-      },
-      {
-        name: "tone",
-        type: '"default" | "success" | "warning" | "danger"',
-        default: "default",
-        description: "Tints the fill from the shared status palette."
-      },
-      {
-        name: "label",
-        type: "string",
-        description: "Optional inline label rendered above the track. Also wired into `aria-label` when set."
-      },
-      {
-        name: "show-percent",
-        type: "boolean",
-        description: "Render a right-aligned percent readout next to the label. Only meaningful in determinate mode."
-      }
-    ],
-    cssProps: [
-      {
-        name: "--wpd-progress-track-bg",
-        default: "var(--desktop-mode-control-bg, rgba(0,0,0,0.08))"
-      },
-      {
-        name: "--wpd-progress-fill",
-        default: "var(--wp-admin-theme-color, #2271b1)"
-      },
-      { name: "--wpd-progress-height", default: "6px" },
-      { name: "--wpd-progress-radius", default: "999px" },
-      { name: "--wpd-progress-label-color", default: "inherit" },
-      { name: "--wpd-progress-label-size", default: "12px" },
-      { name: "--wpd-progress-label-gap", default: "4px" }
-    ],
-    example: html`<wpd-progress-bar
-			value="42"
-			label="Uploading hero.jpg"
-			show-percent
-		></wpd-progress-bar>`
-  };
-  let WpdProgressBar = _WpdProgressBar;
-  defineComponent("wpd-progress-bar", WpdProgressBar);
-  const ROWS = /* @__PURE__ */ new Map();
-  let panel = null;
-  function mountUploadProgressHud() {
-    if (document.body.hasAttribute("data-desktop-mode-suppress-upload-hud")) {
-      return;
-    }
-    if (window.__wpdUploadHud) {
-      return;
-    }
-    window.__wpdUploadHud = true;
-    const ns = "desktop-mode/os-file-drop-hud";
-    addAction(
-      FILE_DROP_HOOKS.UPLOAD_STARTED,
-      ns,
-      (payload) => onStarted(payload.file, payload.fields, payload.abort)
-    );
-    addAction(
-      FILE_DROP_HOOKS.UPLOAD_PROGRESS,
-      ns,
-      (payload) => onProgress(
-        payload.file,
-        payload.loaded,
-        payload.total,
-        payload.indeterminate
-      )
-    );
-    addAction(
-      FILE_DROP_HOOKS.AFTER_UPLOAD,
-      ns,
-      (payload) => onComplete(payload.file, payload.fields, payload.result)
-    );
-    addAction(
-      FILE_DROP_HOOKS.UPLOAD_FAILED,
-      ns,
-      (payload) => onFailed(payload.file, payload.error)
-    );
-  }
-  function onStarted(file, fields, abort) {
-    const p = ensurePanel();
-    const row = document.createElement("div");
-    row.className = "desktop-mode-upload-hud__row";
-    const meta = document.createElement("div");
-    meta.className = "desktop-mode-upload-hud__meta";
-    const name = document.createElement("div");
-    name.className = "desktop-mode-upload-hud__name";
-    name.textContent = fields.filename || file.name;
-    name.title = fields.filename || file.name;
-    const statusEl = document.createElement("div");
-    statusEl.className = "desktop-mode-upload-hud__status";
-    statusEl.textContent = "Uploading…";
-    meta.append(name, statusEl);
-    const bar = document.createElement("wpd-progress-bar");
-    bar.setAttribute("indeterminate", "");
-    bar.setAttribute("show-percent", "");
-    const actions = document.createElement("div");
-    actions.className = "desktop-mode-upload-hud__actions";
-    const cancelBtn = document.createElement("wpd-button");
-    cancelBtn.setAttribute("variant", "tertiary");
-    cancelBtn.setAttribute("size", "small");
-    cancelBtn.textContent = "Cancel";
-    cancelBtn.addEventListener("click", () => {
-      const r = ROWS.get(file);
-      if (!r) {
-        return;
-      }
-      if (r.state === "running") {
-        r.statusEl.textContent = "Cancelling…";
-        r.cancelBtn.disabled = true;
-        r.abort();
-      } else {
-        dismissRow(r);
-      }
-    });
-    actions.appendChild(cancelBtn);
-    row.append(meta, bar, actions);
-    p.querySelector(".desktop-mode-upload-hud__list").appendChild(row);
-    ROWS.set(file, {
-      file,
-      abort,
-      root: row,
-      bar,
-      statusEl,
-      cancelBtn,
-      state: "running",
-      lingerTimer: null
-    });
-    updateHeader();
-  }
-  function onProgress(file, loaded, total, indeterminate) {
-    const r = ROWS.get(file);
-    if (!r || r.state !== "running") {
-      return;
-    }
-    if (indeterminate || total <= 0) {
-      r.bar.setAttribute("indeterminate", "");
-      r.statusEl.textContent = `${formatBytes(loaded)} sent`;
-    } else {
-      r.bar.removeAttribute("indeterminate");
-      r.bar.setAttribute("max", String(total));
-      r.bar.setAttribute("value", String(loaded));
-      r.statusEl.textContent = `${formatBytes(loaded)} / ${formatBytes(total)}`;
-    }
-  }
-  function onComplete(file, fields, result) {
-    const r = ROWS.get(file);
-    if (!r) {
-      return;
-    }
-    r.state = "success";
-    r.bar.removeAttribute("indeterminate");
-    r.bar.setAttribute("value", "100");
-    r.bar.setAttribute("max", "100");
-    r.bar.setAttribute("tone", "success");
-    r.statusEl.textContent = "Uploaded";
-    r.cancelBtn.textContent = "Dismiss";
-    r.lingerTimer = setTimeout(() => dismissRow(r), 2500);
-    updateHeader();
-    activity.publish("desktop-mode/upload-hud-complete", {
-      filename: fields.filename || result.filename,
-      attachmentId: result.id
-    });
-  }
-  function onFailed(file, error) {
-    const r = ROWS.get(file);
-    if (!r) {
-      return;
-    }
-    r.bar.removeAttribute("indeterminate");
-    r.bar.setAttribute("tone", "danger");
-    r.cancelBtn.textContent = "Dismiss";
-    r.cancelBtn.disabled = false;
-    if (error.name === "UploadAbortedError") {
-      r.state = "aborted";
-      r.statusEl.textContent = "Cancelled";
-    } else {
-      r.state = "failed";
-      r.statusEl.textContent = error.message || "Upload failed";
-    }
-    updateHeader();
-  }
-  function dismissRow(r) {
-    if (r.lingerTimer) {
-      clearTimeout(r.lingerTimer);
-    }
-    ROWS.delete(r.file);
-    r.root.remove();
-    updateHeader();
-    if (ROWS.size === 0 && panel) {
-      panel.hidden = true;
-    }
-  }
-  function ensurePanel() {
-    if (panel && panel.isConnected) {
-      panel.hidden = false;
-      return panel;
-    }
-    const p = document.createElement("div");
-    p.className = "desktop-mode-upload-hud";
-    p.setAttribute("role", "region");
-    p.setAttribute("aria-label", "Uploads");
-    const header = document.createElement("div");
-    header.className = "desktop-mode-upload-hud__header";
-    const title = document.createElement("div");
-    title.className = "desktop-mode-upload-hud__title";
-    title.textContent = "Uploads";
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "desktop-mode-upload-hud__close";
-    closeBtn.setAttribute("aria-label", "Hide upload panel");
-    closeBtn.textContent = "×";
-    closeBtn.addEventListener("click", () => {
-      for (const r of [...ROWS.values()]) {
-        if (r.state !== "running") {
-          dismissRow(r);
-        }
-      }
-      if (ROWS.size === 0) {
-        p.hidden = true;
-      }
-    });
-    header.append(title, closeBtn);
-    const list2 = document.createElement("div");
-    list2.className = "desktop-mode-upload-hud__list";
-    p.append(header, list2);
-    document.body.appendChild(p);
-    panel = p;
-    return p;
-  }
-  function updateHeader() {
-    if (!panel) {
-      return;
-    }
-    const title = panel.querySelector(
-      ".desktop-mode-upload-hud__title"
-    );
-    if (!title) {
-      return;
-    }
-    const total = ROWS.size;
-    const running = [...ROWS.values()].filter((r) => r.state === "running").length;
-    if (running > 0) {
-      title.textContent = running === total ? `Uploading ${running} file${running === 1 ? "" : "s"}…` : `${running} of ${total} uploading…`;
-    } else if (total > 0) {
-      title.textContent = `Uploads (${total})`;
-    } else {
-      title.textContent = "Uploads";
-    }
-  }
-  function mountMediaLibraryRefresher() {
-    if (document.body.hasAttribute(
-      "data-desktop-mode-suppress-media-library-refresh"
-    )) {
-      return;
-    }
-    const sentinel = window;
-    if (sentinel.__wpdMediaLibraryRefresher) {
-      return;
-    }
-    sentinel.__wpdMediaLibraryRefresher = true;
-    addAction(
-      FILE_DROP_HOOKS.AFTER_UPLOAD,
-      "desktop-mode/os-file-drop-library-refresh",
-      () => refreshOpenLibraries()
-    );
-  }
-  function refreshOpenLibraries() {
-    const iframes = document.querySelectorAll("iframe");
-    for (const frame of Array.from(iframes)) {
-      if (!isMediaLibraryUrl(resolveIframeUrl(frame))) {
-        continue;
-      }
-      try {
-        frame.contentWindow?.location.reload();
-      } catch {
-        const reloadHref = resolveIframeUrl(frame);
-        if (reloadHref) {
-          frame.setAttribute("src", reloadHref);
-        }
-      }
-    }
-  }
-  function resolveIframeUrl(frame) {
-    try {
-      return frame.contentWindow?.location.href ?? frame.src ?? "";
-    } catch {
-      return frame.src ?? "";
-    }
-  }
-  function isMediaLibraryUrl(url) {
-    if (!url) {
-      return false;
-    }
-    return /\/wp-admin\/upload\.php(?:[?#]|$)/.test(url);
-  }
-  function bootOsFileDrop(args) {
-    const config = args.config || {
-      enabled: false,
-      allowedMimes: [],
-      maxSize: 0
-    };
-    mountUploadProgressHud();
-    mountMediaLibraryRefresher();
-    mountOsFileDropManager({
-      config,
-      mediaUrl: args.mediaUrl,
-      restNonce: args.restNonce,
-      openDialog: async (entries, ctx) => {
-        const { openUploadDialog: openUploadDialog2 } = await Promise.resolve().then(() => dialog);
-        await openUploadDialog2({
-          entries,
-          context: ctx,
-          mediaUrl: args.mediaUrl,
-          restNonce: args.restNonce
-        });
-      }
-    });
-  }
-  const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  const manager = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
-    FILE_DROP_HOOKS,
-    bootOsFileDrop
+    IFRAME_PASSTHROUGH_SELECTORS,
+    classifyDropTarget,
+    defaultFields,
+    dragHasFiles,
+    handleFiles,
+    handleTreeDrop,
+    humanize,
+    mountOsFileDropManager,
+    partitionByPolicy,
+    resolveAllowedMime,
+    sanitizeFilename,
+    windowIdFromElement
   }, Symbol.toStringTag, { value: "Module" }));
   const textFieldStyles = css`:host{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var( --desktop-mode-text,#1d2327 );min-width:0}:host( [ hidden ] ){display:none}.wpd-text-field__label{font-size:12px;color:var( --desktop-mode-muted,#646970 )}.wpd-text-field__row{position:relative;display:flex;align-items:center;width:100%}input{appearance:none;-webkit-appearance:none;display:block;width:100%;min-width:0;box-sizing:border-box;padding:7px 10px;background:var( --desktop-mode-window-bg,#fff );border:1px solid var( --desktop-mode-border,#dcdcde );border-radius:6px;font:inherit;font-size:13px;color:var( --desktop-mode-text,#1d2327 );transition:border-color 0.12s ease,box-shadow 0.12s ease}.wpd-text-field__suffix{position:absolute;inset-inline-end:10px;top:50%;transform:translateY( -50% );pointer-events:none;font-size:12px;color:var( --desktop-mode-muted,#646970 )}.wpd-text-field__row--has-reveal input{padding-inline-end:36px}.wpd-text-field__reveal{position:absolute;inset-inline-end:0;top:0;bottom:0;width:34px;display:flex;align-items:center;justify-content:center;padding:0;border:none;background:transparent;color:var( --desktop-mode-muted,#646970 );cursor:pointer;border-radius:0 6px 6px 0;transition:color 0.12s ease}.wpd-text-field__reveal:hover{color:var( --wp-admin-theme-color,#2271b1 )}.wpd-text-field__reveal:focus-visible{outline:2px solid var( --wp-admin-theme-color,#2271b1 );outline-offset:-2px;border-radius:0 6px 6px 0}.wpd-text-field__reveal:disabled{opacity:0.45;cursor:not-allowed}.wpd-text-field__input--masked{-webkit-text-security:disc;text-security:disc}@supports not ( ( -webkit-text-security:disc ) or ( text-security:disc ) ){.wpd-text-field__input--masked{font-family:text-security-disc,"password",monospace;letter-spacing:0.2em}}input:hover{border-color:var( --desktop-mode-muted,#8c8f94 )}input:focus-visible{outline:none;border-color:var( --wp-admin-theme-color,#2271b1 );box-shadow:0 0 0 1px var( --wp-admin-theme-color,#2271b1 )}input:disabled{opacity:0.55;cursor:not-allowed;background:rgba( 0,0,0,0.03 )}input[ aria-invalid='true' ]{border-color:#d63638}input[ aria-invalid='true' ]:focus-visible{box-shadow:0 0 0 1px #d63638}input[ type='number' ]::-webkit-inner-spin-button,input[ type='number' ]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[ type='number' ]{-moz-appearance:textfield}`;
   const _WpdTextField = class _WpdTextField extends Component {
@@ -33096,23 +36852,236 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     }
     return fallback;
   }
+  async function uploadFileToDesktop(args) {
+    const initial = {
+      file: args.file,
+      mime: args.mime,
+      fields: args.fields
+    };
+    const filtered = applyFilters(
+      FILE_DROP_HOOKS.BEFORE_UPLOAD,
+      initial,
+      args.context
+    );
+    if (!filtered) {
+      throw new UploadCancelledError();
+    }
+    const body = new FormData();
+    const renamed = filtered.fields.filename !== filtered.file.name ? new File([filtered.file], filtered.fields.filename, {
+      type: filtered.mime || filtered.file.type
+    }) : filtered.file;
+    body.append("file", renamed);
+    body.append("parentId", String(args.parentId));
+    if (args.relativePath) {
+      body.append("relativePath", args.relativePath);
+    }
+    if (args.coords) {
+      body.append("x", String(args.coords.x));
+      body.append("y", String(args.coords.y));
+    }
+    const url = `${args.filesUrl.replace(/\/$/, "")}/uploads`;
+    return new Promise((resolve2, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url, true);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("X-WP-Nonce", args.restNonce);
+      xhr.responseType = "text";
+      let aborted = false;
+      const abort = () => {
+        aborted = true;
+        try {
+          xhr.abort();
+        } catch {
+        }
+      };
+      doAction(FILE_DROP_HOOKS.UPLOAD_STARTED, {
+        file: filtered.file,
+        fields: filtered.fields,
+        context: args.context,
+        abort
+      });
+      xhr.upload.addEventListener("progress", (e) => {
+        doAction(FILE_DROP_HOOKS.UPLOAD_PROGRESS, {
+          file: filtered.file,
+          fields: filtered.fields,
+          context: args.context,
+          loaded: e.loaded,
+          total: e.lengthComputable ? e.total : 0,
+          indeterminate: !e.lengthComputable
+        });
+      });
+      const fail = (error) => {
+        doAction(FILE_DROP_HOOKS.UPLOAD_FAILED, {
+          file: filtered.file,
+          error,
+          context: args.context
+        });
+        reject(error);
+      };
+      xhr.addEventListener("error", () => {
+        if (!aborted) {
+          fail(new Error("Network error during upload."));
+        }
+      });
+      xhr.addEventListener("abort", () => fail(new UploadAbortedError()));
+      xhr.addEventListener("load", () => {
+        if (aborted) {
+          return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          fail(new Error(extractMessage(xhr, filtered.file.name)));
+          return;
+        }
+        let data;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch {
+          fail(new Error("Could not parse server response."));
+          return;
+        }
+        if (!data.placement || typeof data.storedFileId !== "number") {
+          fail(new Error("Unexpected server response."));
+          return;
+        }
+        upsertPlacement(data.placement, "local");
+        const result = {
+          placement: data.placement,
+          storedFileId: data.storedFileId
+        };
+        doAction(FILE_DROP_HOOKS.AFTER_UPLOAD, {
+          file: filtered.file,
+          result,
+          fields: filtered.fields,
+          context: args.context
+        });
+        resolve2(result);
+      });
+      xhr.send(body);
+    });
+  }
+  function extractMessage(xhr, fileName) {
+    if (xhr.status === 413) {
+      return `“${fileName}” is larger than this server accepts.`;
+    }
+    const fallback = `Upload failed (HTTP ${xhr.status}).`;
+    const text = xhr.responseText;
+    if (!text) {
+      return fallback;
+    }
+    try {
+      const data = JSON.parse(text);
+      if (data && typeof data.message === "string" && data.message) {
+        return data.message;
+      }
+    } catch {
+    }
+    return fallback;
+  }
+  function snapToGrid(x, y) {
+    const col = Math.max(0, Math.round((x - 16) / 96));
+    const row = Math.max(0, Math.round((y - 16) / 110));
+    return { x: 16 + col * 96, y: 16 + row * 110 };
+  }
+  const MEDIA_KIND_RE = /^(image|video|audio)\//;
+  function resolveDefaultDestination(opts) {
+    if (!opts.desktopAllowed) {
+      return "media";
+    }
+    if (opts.forceDesktop || opts.preferDesktop) {
+      return "desktop";
+    }
+    if (opts.surface === "window" || opts.surface === "iframe") {
+      return "media";
+    }
+    if ((opts.folderId ?? 0) > 0) {
+      return "desktop";
+    }
+    const allMedia = opts.mimes.length > 0 && opts.mimes.every((m) => MEDIA_KIND_RE.test(m));
+    return allMedia ? "media" : "desktop";
+  }
+  let activeDialog = null;
   async function openUploadDialog(args) {
-    if (args.entries.length === 0) {
+    if (args.entries.length === 0 && !args.emptyDirs?.length) {
       return;
     }
+    if (activeDialog) {
+      activeDialog.replace(args);
+      return;
+    }
+    const desktopAllowed = !!(args.storage?.canUpload && args.filesUrl);
+    let destination = resolveDefaultDestination({
+      desktopAllowed,
+      surface: args.context.surface,
+      folderId: args.context.folderId,
+      forceDesktop: args.forceDesktop,
+      preferDesktop: args.preferDesktop,
+      mimes: args.entries.map((e) => e.mime)
+    });
     const modal = document.createElement("wpd-modal");
     modal.setAttribute("open", "");
     modal.setAttribute("size", "md");
-    modal.setAttribute(
-      "title",
-      args.entries.length === 1 ? "Upload to Media Library" : `Upload ${args.entries.length} files to Media Library`
-    );
     document.body.appendChild(modal);
+    const syncTitle = () => {
+      const count = args.entries.length;
+      let target2 = "Media Library";
+      if (destination === "desktop") {
+        target2 = (args.context.folderId ?? 0) > 0 ? "this folder" : "Desktop";
+      }
+      let title = `Upload ${count} files to ${target2}`;
+      if (count === 0) {
+        title = (args.context.folderId ?? 0) > 0 ? "Create folders in this folder" : "Create folders on Desktop";
+      } else if (count === 1) {
+        title = `Upload to ${target2}`;
+      }
+      modal.setAttribute("title", title);
+    };
+    syncTitle();
     const draft = args.entries.map((entry) => ({
       ...entry.fields
     }));
     const renderBody = () => {
       modal.innerHTML = "";
+      if (desktopAllowed && !args.forceDesktop) {
+        const destWrap = document.createElement("div");
+        destWrap.style.cssText = "display:flex;align-items:center;gap:10px;margin-bottom:14px;";
+        const destLabel = document.createElement("span");
+        destLabel.textContent = "Upload to";
+        destLabel.style.cssText = "font-weight:600;";
+        destWrap.appendChild(destLabel);
+        const segmented = document.createElement("wpd-segmented");
+        segmented.setAttribute("value", destination);
+        segmented.setAttribute("label", "Destination");
+        segmented.style.setProperty("--wpd-segmented-bg", "rgba(255,255,255,0.06)");
+        const segDesktop = document.createElement("wpd-segment");
+        segDesktop.setAttribute("value", "desktop");
+        segDesktop.textContent = "Desktop";
+        segmented.appendChild(segDesktop);
+        const segMedia = document.createElement("wpd-segment");
+        segMedia.setAttribute("value", "media");
+        segMedia.textContent = "Media Library";
+        segmented.appendChild(segMedia);
+        segmented.addEventListener("wpd-pick", (e) => {
+          const detail = e.detail;
+          destination = detail.value;
+          syncTitle();
+          renderBody();
+        });
+        destWrap.appendChild(segmented);
+        modal.appendChild(destWrap);
+      } else if (args.forceDesktop) {
+        const note = document.createElement("div");
+        note.style.cssText = "opacity:0.7;font-size:12px;margin-bottom:14px;";
+        note.textContent = "Folder uploads land in your desktop storage, preserving the folder structure.";
+        modal.appendChild(note);
+      }
+      const maxBytes = destination === "desktop" ? args.storage?.maxBytes ?? 0 : args.mediaMaxBytes ?? 0;
+      if (maxBytes > 0) {
+        const cap = document.createElement("div");
+        cap.className = "desktop-mode-upload-dialog__max-size";
+        cap.style.cssText = "opacity:0.6;font-size:12px;margin-bottom:14px;";
+        cap.textContent = `Maximum file size: ${formatBytes$1(maxBytes)}`;
+        modal.appendChild(cap);
+      }
       const list2 = document.createElement("div");
       list2.style.cssText = "display:flex;flex-direction:column;gap:18px;max-height:60vh;overflow:auto;padding-right:6px;";
       args.entries.forEach((entry, i) => {
@@ -33130,7 +37099,11 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       });
       const upload = document.createElement("wpd-button");
       upload.setAttribute("variant", "primary");
-      upload.textContent = args.entries.length === 1 ? "Upload" : `Upload ${args.entries.length} files`;
+      if (args.entries.length === 0) {
+        upload.textContent = "Create folders";
+      } else {
+        upload.textContent = args.entries.length === 1 ? "Upload" : `Upload ${args.entries.length} files`;
+      }
       upload.addEventListener("click", () => {
         void runUploads(upload, cancel);
       });
@@ -33150,7 +37123,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       fname.textContent = entry.file.name;
       fname.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
       const size = document.createElement("span");
-      size.textContent = `${entry.mime || "unknown"} · ${formatBytes(
+      size.textContent = `${entry.mime || "unknown"} · ${formatBytes$1(
         entry.file.size
       )}`;
       size.style.cssText = "opacity:0.6;font-size:12px;";
@@ -33158,6 +37131,18 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       heading.appendChild(fname);
       heading.appendChild(size);
       wrap.appendChild(heading);
+      if (destination === "desktop") {
+        if (entry.relativePath) {
+          const path = document.createElement("div");
+          path.textContent = entry.relativePath;
+          path.style.cssText = "opacity:0.55;font-size:12px;";
+          wrap.appendChild(path);
+        }
+        wrap.appendChild(
+          textField("Filename", fields.filename, (v) => fields.filename = v)
+        );
+        return wrap;
+      }
       wrap.appendChild(textField("Title", fields.title, (v) => fields.title = v));
       wrap.appendChild(textField("Filename", fields.filename, (v) => fields.filename = v));
       if (entry.mime.startsWith("image/")) {
@@ -33172,6 +37157,9 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       return wrap;
     };
     const runUploads = async (uploadBtn, cancelBtn) => {
+      if (activeDialog === handle) {
+        activeDialog = null;
+      }
       uploadBtn.disabled = true;
       cancelBtn.disabled = true;
       uploadBtn.textContent = "Uploading…";
@@ -33180,17 +37168,38 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
       let failures = 0;
       let cancelled = 0;
       const failureDetails = [];
+      const parentId = args.context.folderId ?? 0;
+      let firstFlatPlaced = false;
       for (let i = 0; i < total; i++) {
         const entry = args.entries[i];
         try {
-          await uploadFile({
-            file: entry.file,
-            mime: entry.mime,
-            fields: draft[i],
-            context: args.context,
-            mediaUrl: args.mediaUrl,
-            restNonce: args.restNonce
-          });
+          if (destination === "desktop" && args.filesUrl) {
+            const isFlat = !entry.relativePath;
+            const coords = isFlat && !firstFlatPlaced && args.context.surface === "wallpaper" ? snapToGrid(args.context.x, args.context.y) : void 0;
+            if (coords) {
+              firstFlatPlaced = true;
+            }
+            await uploadFileToDesktop({
+              file: entry.file,
+              mime: entry.mime,
+              fields: draft[i],
+              context: args.context,
+              filesUrl: args.filesUrl,
+              restNonce: args.restNonce,
+              parentId,
+              relativePath: entry.relativePath ?? "",
+              coords
+            });
+          } else {
+            await uploadFile({
+              file: entry.file,
+              mime: entry.mime,
+              fields: draft[i],
+              context: args.context,
+              mediaUrl: args.mediaUrl,
+              restNonce: args.restNonce
+            });
+          }
           successes++;
         } catch (err) {
           if (err instanceof UploadCancelledError) {
@@ -33206,25 +37215,65 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
           failureDetails.push(`“${entry.file.name}” — ${message}`);
         }
       }
+      if (destination === "desktop" && args.emptyDirs?.length) {
+        for (const dir of args.emptyDirs) {
+          try {
+            await ensureUploadPath(parentId, dir);
+          } catch {
+          }
+        }
+      }
       modal.remove();
       showBatchSummaryToast({
         total,
         successes,
         failures,
         cancelled,
-        failureDetails
+        failureDetails,
+        destination
       });
     };
+    const handle = {
+      replace: (next) => {
+        args.entries = next.entries;
+        args.emptyDirs = next.emptyDirs;
+        args.forceDesktop = next.forceDesktop;
+        args.preferDesktop = next.preferDesktop;
+        args.context = next.context;
+        args.mediaMaxBytes = next.mediaMaxBytes ?? args.mediaMaxBytes;
+        draft.length = 0;
+        for (const entry of next.entries) {
+          draft.push({ ...entry.fields });
+        }
+        destination = resolveDefaultDestination({
+          desktopAllowed,
+          surface: next.context.surface,
+          folderId: next.context.folderId,
+          forceDesktop: next.forceDesktop,
+          preferDesktop: next.preferDesktop,
+          mimes: next.entries.map((e) => e.mime)
+        });
+        syncTitle();
+        renderBody();
+      }
+    };
+    activeDialog = handle;
     renderBody();
     await new Promise((resolve2) => {
+      const finish = () => {
+        if (activeDialog === handle) {
+          activeDialog = null;
+        }
+        resolve2();
+      };
       modal.addEventListener("wpd-modal-cancel", () => {
         modal.remove();
-        resolve2();
+        finish();
       });
       const observer = new MutationObserver(() => {
         if (!modal.isConnected) {
           observer.disconnect();
-          resolve2();
+          finish();
         }
       });
       observer.observe(document.body, { childList: true, subtree: true });
@@ -33257,12 +37306,16 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
   }
   function showBatchSummaryToast(args) {
     const { total, successes, failures, cancelled, failureDetails } = args;
+    const target2 = args.destination === "desktop" ? "your desktop" : "Media Library";
     if (total === 0) {
+      if (args.destination === "desktop") {
+        showToast({ message: "Folder created on your desktop." });
+      }
       return;
     }
     if (total === 1) {
       if (successes === 1) {
-        showToast({ message: "Uploaded to Media Library." });
+        showToast({ message: `Uploaded to ${target2}.` });
       } else if (failures === 1 && failureDetails[0]) {
         showToast({ message: failureDetails[0] });
       } else if (cancelled === 1) {
@@ -33272,7 +37325,7 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
     }
     if (successes === total) {
       showToast({
-        message: `Uploaded ${successes} files to Media Library.`
+        message: `Uploaded ${successes} files to ${target2}.`
       });
       return;
     }
@@ -33302,7 +37355,548 @@ See 'src/ui/components/index.ts' (or docs/components-reference.md) for the canon
   }
   const dialog = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
-    openUploadDialog
+    openUploadDialog,
+    resolveDefaultDestination
+  }, Symbol.toStringTag, { value: "Module" }));
+  const _initial = {
+    tab: null,
+    requestedAt: 0
+  };
+  let _store = null;
+  function getStore() {
+    if (_store) {
+      return _store;
+    }
+    const w = window;
+    const factory = w.wp?.desktop?.createSharedStore;
+    if (typeof factory !== "function") {
+      return null;
+    }
+    _store = factory(
+      "desktop-mode/plugins-window/tab-target",
+      () => ({ ..._initial })
+    );
+    return _store;
+  }
+  function setPluginsWindowTab(tab) {
+    const store2 = getStore();
+    if (store2) {
+      store2.state.tab = tab;
+      store2.state.requestedAt = Date.now();
+      store2.notify();
+      return;
+    }
+    const w = window;
+    w._wpdPluginsWindowTab = { tab, requestedAt: Date.now() };
+  }
+  function consumePluginsWindowTab() {
+    const store2 = getStore();
+    if (store2) {
+      const tab = store2.state.tab;
+      if (tab !== null) {
+        store2.state.tab = null;
+        store2.state.requestedAt = 0;
+        store2.notify();
+      }
+      return tab;
+    }
+    const w = window;
+    const prev = w._wpdPluginsWindowTab;
+    if (prev) {
+      w._wpdPluginsWindowTab = { tab: null, requestedAt: 0 };
+      return prev.tab;
+    }
+    return null;
+  }
+  function subscribePluginsWindowTab(cb) {
+    const store2 = getStore();
+    if (!store2) {
+      return () => {
+      };
+    }
+    return store2.subscribe((state2) => cb({ ...state2 }));
+  }
+  const tabTarget = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    consumePluginsWindowTab,
+    setPluginsWindowTab,
+    subscribePluginsWindowTab
+  }, Symbol.toStringTag, { value: "Module" }));
+  const styles = css`:host{display:block;--wpd-progress-track-bg:var( --desktop-mode-control-bg,rgba( 0,0,0,0.08 ) );--wpd-progress-fill:var( --wp-admin-theme-color,#2271b1 );--wpd-progress-height:6px;--wpd-progress-radius:999px;--wpd-progress-label-color:inherit;--wpd-progress-label-size:12px;--wpd-progress-label-gap:4px;width:100%;font:inherit;color:var( --wpd-progress-label-color )}:host( [ hidden ] ){display:none}.header{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:var( --wpd-progress-label-gap );font-size:var( --wpd-progress-label-size );line-height:1.3}.label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.percent{font-variant-numeric:tabular-nums;opacity:0.75;flex-shrink:0}.track{position:relative;width:100%;height:var( --wpd-progress-height );background:var( --wpd-progress-track-bg );border-radius:var( --wpd-progress-radius );overflow:hidden}.fill{position:absolute;inset-block:0;inset-inline-start:0;width:0;background:var( --wpd-progress-fill );border-radius:inherit;transition:width 0.18s ease-out}:host( [ tone='success' ] ){--wpd-progress-fill:var( --desktop-mode-status-success,#3a8a3a )}:host( [ tone='warning' ] ){--wpd-progress-fill:var( --desktop-mode-status-warning,#dba617 )}:host( [ tone='danger' ] ){--wpd-progress-fill:var( --desktop-mode-status-danger,#d63638 )}:host( [ indeterminate ] ) .fill{width:33%;animation:wpd-progress-sweep 1.1s linear infinite;transition:none}@keyframes wpd-progress-sweep{0%{transform:translateX( -120% )}100%{transform:translateX( 320% )}}@media ( prefers-reduced-motion:reduce ){.fill{transition:none}:host( [ indeterminate ] ) .fill{animation:none;width:100%;opacity:0.6}}`;
+  const _WpdProgressBar = class _WpdProgressBar extends Component {
+    constructor() {
+      super(...arguments);
+      this._ownedAriaLabel = null;
+    }
+    render() {
+      return html`<div class="root" part="root">
+			<div class="header" part="header" hidden>
+				<span class="label" part="label"></span>
+				<span class="percent" part="percent"></span>
+			</div>
+			<div class="track" part="track">
+				<div class="fill" part="fill"></div>
+			</div>
+		</div>`;
+    }
+    requestUpdate() {
+      super.requestUpdate();
+      queueMicrotask(() => this._paint());
+    }
+    connectedCallback() {
+      super.connectedCallback();
+      queueMicrotask(() => this._paint());
+    }
+    _paint() {
+      const root = this.shadowRoot;
+      if (!root) {
+        return;
+      }
+      const max = this._readMax();
+      const indeterminate = this.hasAttribute("indeterminate") || max <= 0;
+      const value = indeterminate ? 0 : this._readValue(max);
+      const ratio = indeterminate ? 0 : value / max;
+      const percent = Math.round(ratio * 100);
+      const label = this.getAttribute("label") ?? "";
+      const showPercent = this.hasAttribute("show-percent");
+      const fill = root.querySelector(".fill");
+      if (fill && !indeterminate) {
+        fill.style.width = `${(ratio * 100).toFixed(2)}%`;
+      } else if (fill && indeterminate) {
+        fill.style.removeProperty("width");
+      }
+      const header = root.querySelector(".header");
+      const labelEl = root.querySelector(".label");
+      const percentEl = root.querySelector(".percent");
+      if (header && labelEl && percentEl) {
+        const visible = label || showPercent && !indeterminate;
+        header.hidden = !visible;
+        labelEl.textContent = label;
+        percentEl.hidden = !(showPercent && !indeterminate);
+        percentEl.textContent = `${percent}%`;
+      }
+      this._syncAria(max, value, indeterminate, label);
+      const track = root.querySelector(".track");
+      if (track) {
+        track.setAttribute("role", "progressbar");
+        track.setAttribute("aria-valuemin", "0");
+        if (indeterminate) {
+          track.removeAttribute("aria-valuenow");
+          track.removeAttribute("aria-valuemax");
+        } else {
+          track.setAttribute("aria-valuemax", String(max));
+          track.setAttribute("aria-valuenow", String(value));
+        }
+        if (label) {
+          track.setAttribute("aria-label", label);
+        } else {
+          track.removeAttribute("aria-label");
+        }
+      }
+    }
+    _syncAria(max, value, indeterminate, label) {
+      this.setAttribute("role", "progressbar");
+      this.setAttribute("aria-valuemin", "0");
+      if (indeterminate) {
+        this.removeAttribute("aria-valuenow");
+        this.removeAttribute("aria-valuemax");
+      } else {
+        this.setAttribute("aria-valuemax", String(max));
+        this.setAttribute("aria-valuenow", String(value));
+      }
+      const existing = this.getAttribute("aria-label");
+      if (label) {
+        if (existing === null || existing === this._ownedAriaLabel) {
+          this.setAttribute("aria-label", label);
+          this._ownedAriaLabel = label;
+        }
+      } else if (existing !== null && existing === this._ownedAriaLabel) {
+        this.removeAttribute("aria-label");
+        this._ownedAriaLabel = null;
+      }
+    }
+    _readMax() {
+      const attr = this.getAttribute("max");
+      if (attr === null) {
+        return 100;
+      }
+      const raw = parseFloat(attr);
+      return Number.isFinite(raw) ? raw : 100;
+    }
+    _readValue(max) {
+      const raw = parseFloat(this.getAttribute("value") ?? "0");
+      if (!Number.isFinite(raw)) {
+        return 0;
+      }
+      if (raw < 0) {
+        return 0;
+      }
+      if (raw > max) {
+        return max;
+      }
+      return raw;
+    }
+  };
+  _WpdProgressBar.props = [
+    "value",
+    "max",
+    "indeterminate",
+    "tone",
+    "label",
+    "showPercent"
+  ];
+  _WpdProgressBar.styles = [styles];
+  _WpdProgressBar.help = {
+    title: "Progress bar",
+    summary: "Linear progress indicator. Determinate mode shows `value/max` as a fill width; indeterminate mode sweeps across the track. Supports tone tinting, an optional inline label + percent header, and full CSS-variable theming.",
+    status: "experimental",
+    since: "0.31.0",
+    props: [
+      {
+        name: "value",
+        type: "number",
+        default: "0",
+        description: "Current progress. Clamped to `[0, max]`."
+      },
+      {
+        name: "max",
+        type: "number",
+        default: "100",
+        description: "Maximum value. Setting `max <= 0` forces indeterminate."
+      },
+      {
+        name: "indeterminate",
+        type: "boolean",
+        description: "Show the sweeping indeterminate animation instead of a value-driven fill. The `value` attribute is ignored while this is set."
+      },
+      {
+        name: "tone",
+        type: '"default" | "success" | "warning" | "danger"',
+        default: "default",
+        description: "Tints the fill from the shared status palette."
+      },
+      {
+        name: "label",
+        type: "string",
+        description: "Optional inline label rendered above the track. Also wired into `aria-label` when set."
+      },
+      {
+        name: "show-percent",
+        type: "boolean",
+        description: "Render a right-aligned percent readout next to the label. Only meaningful in determinate mode."
+      }
+    ],
+    cssProps: [
+      {
+        name: "--wpd-progress-track-bg",
+        default: "var(--desktop-mode-control-bg, rgba(0,0,0,0.08))"
+      },
+      {
+        name: "--wpd-progress-fill",
+        default: "var(--wp-admin-theme-color, #2271b1)"
+      },
+      { name: "--wpd-progress-height", default: "6px" },
+      { name: "--wpd-progress-radius", default: "999px" },
+      { name: "--wpd-progress-label-color", default: "inherit" },
+      { name: "--wpd-progress-label-size", default: "12px" },
+      { name: "--wpd-progress-label-gap", default: "4px" }
+    ],
+    example: html`<wpd-progress-bar
+			value="42"
+			label="Uploading hero.jpg"
+			show-percent
+		></wpd-progress-bar>`
+  };
+  let WpdProgressBar = _WpdProgressBar;
+  defineComponent("wpd-progress-bar", WpdProgressBar);
+  const ROWS = /* @__PURE__ */ new Map();
+  let panel = null;
+  function mountUploadProgressHud() {
+    if (document.body.hasAttribute("data-desktop-mode-suppress-upload-hud")) {
+      return;
+    }
+    if (window.__wpdUploadHud) {
+      return;
+    }
+    window.__wpdUploadHud = true;
+    const ns = "desktop-mode/os-file-drop-hud";
+    addAction(
+      FILE_DROP_HOOKS.UPLOAD_STARTED,
+      ns,
+      (payload) => onStarted(payload.file, payload.fields, payload.abort)
+    );
+    addAction(
+      FILE_DROP_HOOKS.UPLOAD_PROGRESS,
+      ns,
+      (payload) => onProgress(
+        payload.file,
+        payload.loaded,
+        payload.total,
+        payload.indeterminate
+      )
+    );
+    addAction(
+      FILE_DROP_HOOKS.AFTER_UPLOAD,
+      ns,
+      (payload) => onComplete(payload.file, payload.fields, payload.result)
+    );
+    addAction(
+      FILE_DROP_HOOKS.UPLOAD_FAILED,
+      ns,
+      (payload) => onFailed(payload.file, payload.error)
+    );
+  }
+  function onStarted(file, fields, abort) {
+    const p = ensurePanel();
+    const row = document.createElement("div");
+    row.className = "desktop-mode-upload-hud__row";
+    const meta = document.createElement("div");
+    meta.className = "desktop-mode-upload-hud__meta";
+    const name = document.createElement("div");
+    name.className = "desktop-mode-upload-hud__name";
+    name.textContent = fields.filename || file.name;
+    name.title = fields.filename || file.name;
+    const statusEl = document.createElement("div");
+    statusEl.className = "desktop-mode-upload-hud__status";
+    statusEl.textContent = "Uploading…";
+    meta.append(name, statusEl);
+    const bar = document.createElement("wpd-progress-bar");
+    bar.setAttribute("indeterminate", "");
+    bar.setAttribute("show-percent", "");
+    const actions = document.createElement("div");
+    actions.className = "desktop-mode-upload-hud__actions";
+    const cancelBtn = document.createElement("wpd-button");
+    cancelBtn.setAttribute("variant", "tertiary");
+    cancelBtn.setAttribute("size", "small");
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => {
+      const r = ROWS.get(file);
+      if (!r) {
+        return;
+      }
+      if (r.state === "running") {
+        r.statusEl.textContent = "Cancelling…";
+        r.cancelBtn.disabled = true;
+        r.abort();
+      } else {
+        dismissRow(r);
+      }
+    });
+    actions.appendChild(cancelBtn);
+    row.append(meta, bar, actions);
+    p.querySelector(".desktop-mode-upload-hud__list").appendChild(row);
+    ROWS.set(file, {
+      file,
+      abort,
+      root: row,
+      bar,
+      statusEl,
+      cancelBtn,
+      state: "running",
+      lingerTimer: null
+    });
+    updateHeader();
+  }
+  function onProgress(file, loaded, total, indeterminate) {
+    const r = ROWS.get(file);
+    if (!r || r.state !== "running") {
+      return;
+    }
+    if (indeterminate || total <= 0) {
+      r.bar.setAttribute("indeterminate", "");
+      r.statusEl.textContent = `${formatBytes$1(loaded)} sent`;
+    } else {
+      r.bar.removeAttribute("indeterminate");
+      r.bar.setAttribute("max", String(total));
+      r.bar.setAttribute("value", String(loaded));
+      r.statusEl.textContent = `${formatBytes$1(loaded)} / ${formatBytes$1(total)}`;
+    }
+  }
+  function onComplete(file, fields, result) {
+    const r = ROWS.get(file);
+    if (!r) {
+      return;
+    }
+    r.state = "success";
+    r.bar.removeAttribute("indeterminate");
+    r.bar.setAttribute("value", "100");
+    r.bar.setAttribute("max", "100");
+    r.bar.setAttribute("tone", "success");
+    r.statusEl.textContent = "Uploaded";
+    r.cancelBtn.textContent = "Dismiss";
+    r.lingerTimer = setTimeout(() => dismissRow(r), 2500);
+    updateHeader();
+    activity.publish("desktop-mode/upload-hud-complete", {
+      filename: fields.filename || result.filename,
+      attachmentId: result.id
+    });
+  }
+  function onFailed(file, error) {
+    const r = ROWS.get(file);
+    if (!r) {
+      return;
+    }
+    r.bar.removeAttribute("indeterminate");
+    r.bar.setAttribute("tone", "danger");
+    r.cancelBtn.textContent = "Dismiss";
+    r.cancelBtn.disabled = false;
+    if (error.name === "UploadAbortedError") {
+      r.state = "aborted";
+      r.statusEl.textContent = "Cancelled";
+    } else {
+      r.state = "failed";
+      r.statusEl.textContent = error.message || "Upload failed";
+    }
+    updateHeader();
+  }
+  function dismissRow(r) {
+    if (r.lingerTimer) {
+      clearTimeout(r.lingerTimer);
+    }
+    ROWS.delete(r.file);
+    r.root.remove();
+    updateHeader();
+    if (ROWS.size === 0 && panel) {
+      panel.hidden = true;
+    }
+  }
+  function ensurePanel() {
+    if (panel && panel.isConnected) {
+      panel.hidden = false;
+      return panel;
+    }
+    const p = document.createElement("div");
+    p.className = "desktop-mode-upload-hud";
+    p.setAttribute("role", "region");
+    p.setAttribute("aria-label", "Uploads");
+    const header = document.createElement("div");
+    header.className = "desktop-mode-upload-hud__header";
+    const title = document.createElement("div");
+    title.className = "desktop-mode-upload-hud__title";
+    title.textContent = "Uploads";
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "desktop-mode-upload-hud__close";
+    closeBtn.setAttribute("aria-label", "Hide upload panel");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", () => {
+      for (const r of [...ROWS.values()]) {
+        if (r.state !== "running") {
+          dismissRow(r);
+        }
+      }
+      if (ROWS.size === 0) {
+        p.hidden = true;
+      }
+    });
+    header.append(title, closeBtn);
+    const list2 = document.createElement("div");
+    list2.className = "desktop-mode-upload-hud__list";
+    p.append(header, list2);
+    document.body.appendChild(p);
+    panel = p;
+    return p;
+  }
+  function updateHeader() {
+    if (!panel) {
+      return;
+    }
+    const title = panel.querySelector(
+      ".desktop-mode-upload-hud__title"
+    );
+    if (!title) {
+      return;
+    }
+    const total = ROWS.size;
+    const running = [...ROWS.values()].filter((r) => r.state === "running").length;
+    if (running > 0) {
+      title.textContent = running === total ? `Uploading ${running} file${running === 1 ? "" : "s"}…` : `${running} of ${total} uploading…`;
+    } else if (total > 0) {
+      title.textContent = `Uploads (${total})`;
+    } else {
+      title.textContent = "Uploads";
+    }
+  }
+  function mountMediaLibraryRefresher() {
+    if (document.body.hasAttribute(
+      "data-desktop-mode-suppress-media-library-refresh"
+    )) {
+      return;
+    }
+    const sentinel = window;
+    if (sentinel.__wpdMediaLibraryRefresher) {
+      return;
+    }
+    sentinel.__wpdMediaLibraryRefresher = true;
+    addAction(
+      FILE_DROP_HOOKS.AFTER_UPLOAD,
+      "desktop-mode/os-file-drop-library-refresh",
+      () => refreshOpenLibraries()
+    );
+  }
+  function refreshOpenLibraries() {
+    const iframes = document.querySelectorAll("iframe");
+    for (const frame of Array.from(iframes)) {
+      if (!isMediaLibraryUrl(resolveIframeUrl(frame))) {
+        continue;
+      }
+      try {
+        frame.contentWindow?.location.reload();
+      } catch {
+        const reloadHref = resolveIframeUrl(frame);
+        if (reloadHref) {
+          frame.setAttribute("src", reloadHref);
+        }
+      }
+    }
+  }
+  function resolveIframeUrl(frame) {
+    try {
+      return frame.contentWindow?.location.href ?? frame.src ?? "";
+    } catch {
+      return frame.src ?? "";
+    }
+  }
+  function isMediaLibraryUrl(url) {
+    if (!url) {
+      return false;
+    }
+    return /\/wp-admin\/upload\.php(?:[?#]|$)/.test(url);
+  }
+  function bootOsFileDrop(args) {
+    const config = args.config || {
+      enabled: false,
+      allowedMimes: [],
+      maxSize: 0
+    };
+    mountUploadProgressHud();
+    mountMediaLibraryRefresher();
+    mountOsFileDropManager({
+      config,
+      mediaUrl: args.mediaUrl,
+      restNonce: args.restNonce,
+      filesUrl: args.filesUrl,
+      storage: args.storage,
+      openDialog: async (entries, ctx, extra) => {
+        const { openUploadDialog: openUploadDialog2 } = await Promise.resolve().then(() => dialog);
+        await openUploadDialog2({
+          entries,
+          context: ctx,
+          mediaUrl: args.mediaUrl,
+          restNonce: args.restNonce,
+          filesUrl: args.filesUrl,
+          storage: args.storage,
+          forceDesktop: extra?.forceDesktop,
+          emptyDirs: extra?.emptyDirs,
+          mediaMaxBytes: config.maxSize
+        });
+      }
+    });
+  }
+  const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    FILE_DROP_HOOKS,
+    bootOsFileDrop
   }, Symbol.toStringTag, { value: "Module" }));
   exports.clampGeometryToViewport = clampGeometryToViewport;
   Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });

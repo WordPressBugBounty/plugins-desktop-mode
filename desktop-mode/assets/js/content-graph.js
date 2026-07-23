@@ -849,8 +849,7 @@
           icon: "dashicons-tag",
           href: term.edit_url,
           title: term.name,
-          primary: true,
-          windowKey: `term-${term.taxonomy}-${term.id}`
+          primary: true
         })
       );
     };
@@ -918,8 +917,7 @@
           icon: "dashicons-admin-comments",
           href: comment.edit_url,
           title: authorName || __("Comment"),
-          primary: true,
-          windowKey: `comment-${comment.id}`
+          primary: true
         })
       );
     };
@@ -946,8 +944,7 @@
           icon: "dashicons-admin-media",
           href: media.edit_url,
           title: media.title,
-          primary: true,
-          windowKey: `media-${media.id}`
+          primary: true
         })
       );
     };
@@ -2129,8 +2126,10 @@
       this.callbacks = callbacks;
       this.onSatelliteClick = onSatelliteClick;
       const map = /* @__PURE__ */ new Map();
+      this.postTypeBySlug = /* @__PURE__ */ new Map();
       for (const t of postTypes) {
         map.set(t.slug, normalizeDashiconName(t.icon));
+        this.postTypeBySlug.set(t.slug, t);
       }
       this.postTypeIcon = (slug) => map.get(slug) ?? defaultIconForPostType(slug);
     }
@@ -2627,14 +2626,26 @@
         this.fitFollowActive = false;
       }
     }
+    postTypeSupportsTaxonomy(typeSlug, taxonomy) {
+      return this.postTypeBySlug.get(typeSlug)?.taxonomies?.[taxonomy] ?? false;
+    }
+    postTypeLabel(typeSlug) {
+      return this.postTypeBySlug.get(typeSlug)?.label ?? typeSlug;
+    }
     deriveGroupKeys(n, facet) {
       switch (facet) {
         case "category":
+          if (!this.postTypeSupportsTaxonomy(n.type, "category")) {
+            return [`cat:type_${n.type}`];
+          }
           if (n.category_ids.length === 0) {
             return ["cat:uncat"];
           }
           return n.category_ids.map((id) => `cat:${id}`);
         case "tag":
+          if (!this.postTypeSupportsTaxonomy(n.type, "post_tag")) {
+            return [`tag:type_${n.type}`];
+          }
           if (n.tag_ids.length === 0) {
             return ["tag:untagged"];
           }
@@ -2666,12 +2677,18 @@
           if (rest === "uncat") {
             return __("Uncategorized");
           }
+          if (rest.startsWith("type_")) {
+            return this.postTypeLabel(rest.slice(5));
+          }
           const id = Number(rest);
           return this.groupCatalogs.categories[id]?.name ?? `#${id}`;
         }
         case "tag": {
           if (rest === "untagged") {
             return __("Untagged");
+          }
+          if (rest.startsWith("type_")) {
+            return this.postTypeLabel(rest.slice(5));
           }
           const id = Number(rest);
           return this.groupCatalogs.tags[id]?.name ?? `#${id}`;
