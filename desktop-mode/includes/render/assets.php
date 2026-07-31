@@ -12,7 +12,6 @@
  * slicing (phase 6).
  *
  * @package Desktop_Mode
- * @since   0.8.1
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -22,8 +21,6 @@ defined( 'ABSPATH' ) || exit;
  *
  * Only loads the full desktop shell scripts and styles when the user has
  * desktop mode enabled and the request is not a chromeless iframe load.
- *
- * @since 0.1.0
  */
 function desktop_mode_enqueue_assets() {
 	if ( ! is_admin() ) {
@@ -72,8 +69,6 @@ function desktop_mode_enqueue_assets() {
 		 * Plugin and theme authors can hook here to enqueue their own CSS
 		 * overrides for legacy pages rendered in chromeless mode. Use the
 		 * `.desktop-mode-chromeless` body class to scope your rules.
-		 *
-		 * @since 0.1.0
 		 */
 		do_action( 'desktop_mode_chromeless_styles' );
 		return;
@@ -223,6 +218,17 @@ function desktop_mode_enqueue_assets() {
 	$server_games                  = isset( $menu_payload['serverGames'] )
 		? $menu_payload['serverGames']
 		: array();
+	// Boot-time copy of the desktop-theme library. Without it the
+	// shell's registry seeds EMPTY, and the consequences are subtle
+	// rather than obvious: PHP has already applied the user's theme
+	// server-side (stylesheet + shell attribute), but the client
+	// can't resolve the slug to an entry, so it believes nothing is
+	// active. Themed ICONS never paint, and switching back to the
+	// system default no-ops the first time — `applyDesktopTheme()`
+	// dedupes on an `activeId` that was never set.
+	$server_desktop_themes         = isset( $menu_payload['serverDesktopThemes'] )
+		? $menu_payload['serverDesktopThemes']
+		: array();
 	$desktop_icons     = isset( $menu_payload['desktopIcons'] )
 		? $menu_payload['desktopIcons']
 		: array();
@@ -261,8 +267,6 @@ function desktop_mode_enqueue_assets() {
 	/**
 	 * Filter the allowed-mime map used by the OS-file drop manager.
 	 *
-	 * @since 0.30.0
-	 *
 	 * @param array<string,string> $mimes_map  `ext => mime-type` map (same shape `get_allowed_mime_types()` returns).
 	 * @param int                  $user_id    The current user id.
 	 */
@@ -276,8 +280,6 @@ function desktop_mode_enqueue_assets() {
 	 * drop manager. Returning `0` disables the client-side cap —
 	 * the server still enforces its own.
 	 *
-	 * @since 0.30.0
-	 *
 	 * @param int $max_size  Default `wp_max_upload_size()`.
 	 * @param int $user_id   The current user id.
 	 */
@@ -288,8 +290,6 @@ function desktop_mode_enqueue_assets() {
 	 * disable the drop manager by role / capability beyond the
 	 * default `upload_files` check (e.g. only for admins, or
 	 * only on specific multisite blogs).
-	 *
-	 * @since 0.30.0
 	 *
 	 * @param bool $enabled  Default — `current_user_can( 'upload_files' )`.
 	 * @param int  $user_id  The current user id.
@@ -345,8 +345,6 @@ function desktop_mode_enqueue_assets() {
 
 	/**
 	 * Filters the desktop shell configuration passed to JavaScript.
-	 *
-	 * @since 0.1.0
 	 *
 	 * @param array $config {
 	 *     Desktop shell configuration.
@@ -422,6 +420,7 @@ function desktop_mode_enqueue_assets() {
 			// registry only fills after the first chromeless
 			// full-payload refresh and the Games hub boots empty.
 			'serverGames'               => $server_games,
+			'serverDesktopThemes'       => $server_desktop_themes,
 			'desktopIcons'     => $desktop_icons,
 			'serverFileTypes'        => $server_file_types,
 			'serverFileOpeners'      => $server_file_openers,
@@ -477,9 +476,9 @@ function desktop_mode_enqueue_assets() {
 			'shellOverlaysBundleUrl' => $lazy_bundle_url( 'shell-overlays' ),
 			// URL of the lazy window-system bundle (Stage 11).
 			// Holds the `Window` class and its DOM / pointer / tab /
-			// chrome helpers — the single largest module in the pre-
-			// 0.8.4 main bundle. Loaded on first `windowManager.open()`
-			// / `openNew()` call (both async since 0.8.4); pre-loaded
+			// chrome helpers — the single largest module split out of
+			// the main bundle. Loaded on first `windowManager.open()`
+			// / `openNew()` call (both async); pre-loaded
 			// by the shell after first paint when no session is being
 			// restored and no `openCurrentPage` will fire.
 			'windowSystemBundleUrl' => $lazy_bundle_url( 'window-system' ),
@@ -577,8 +576,6 @@ function desktop_mode_enqueue_assets() {
 
 	/**
 	 * Fires when desktop mode assets are enqueued.
-	 *
-	 * @since 0.1.0
 	 */
 	do_action( 'desktop_mode_mode_init' );
 }
@@ -627,8 +624,6 @@ add_action( 'admin_enqueue_scripts', 'desktop_mode_enqueue_assets' );
  * that serve `wp-content/plugins/` from a different origin should
  * supply absolute URLs through the filter; in that case the consumer
  * is responsible for the `crossorigin` semantics.
- *
- * @since 0.8.9
  */
 function desktop_mode_print_preload_hints() {
 	if (
@@ -691,9 +686,6 @@ function desktop_mode_print_preload_hints() {
 	 * back to `preload`. Unrecognized entries are silently skipped — keep
 	 * the contract permissive so a misconfigured plugin can't tank first
 	 * paint.
-	 *
-	 * @since 0.8.9
-	 * @since 0.9.1 Entries may carry a `rel` key (`preload` | `prefetch`).
 	 *
 	 * @param array $hints Default hints (main bundle + base CSS as
 	 *                     `preload`; window-system + shell-overlays as
@@ -762,8 +754,6 @@ add_action( 'admin_print_styles', 'desktop_mode_print_preload_hints', 1 );
  * their own non-critical stylesheets in (or pull a built-in out).
  * Chromeless iframes are skipped — their CSS pipeline is separate.
  *
- * @since 0.8.9
- *
  * @param string $html   The original <link> tag HTML.
  * @param string $handle The stylesheet handle WP is printing.
  * @param string $href   The full URL of the stylesheet.
@@ -793,8 +783,6 @@ function desktop_mode_defer_non_critical_styles( $html, $handle, $href, $media )
 	 * their own non-critical stylesheets here, or pull a built-in
 	 * out (e.g. a plugin that surfaces the AI assistant on every
 	 * page might want to keep its CSS critical-path).
-	 *
-	 * @since 0.8.9
 	 *
 	 * @param string[] $handles Default deferred handles.
 	 */
@@ -866,8 +854,6 @@ add_filter( 'style_loader_tag', 'desktop_mode_defer_non_critical_styles', 10, 4 
  * same handle) and ship the result through `wp_add_inline_script` on
  * our own bundle handle. That decouples us entirely from WP's command-
  * palette mount timing.
- *
- * @since 0.8.4
  *
  * @global array $menu
  * @global array $submenu

@@ -26,8 +26,6 @@ const DESKTOP_MODE_AI_ABILITY_CATEGORY = 'desktop-mode';
 /**
  * Registers the `desktop-mode` ability category.
  *
- * @since 0.9.4
- *
  * @return void
  */
 function desktop_mode_ai_register_ability_category() {
@@ -59,8 +57,6 @@ add_action( 'wp_abilities_api_categories_init', 'desktop_mode_ai_register_abilit
  * tool result), so the model is never handed an ability that could change the
  * site.
  *
- * @since 0.9.4
- *
  * @return string[] Fully-namespaced ability names.
  */
 function desktop_mode_ai_search_ability_names() {
@@ -91,8 +87,6 @@ function desktop_mode_ai_search_ability_names() {
  * → `search_posts`), so progress labels, the system prompt, and the answer
  * schema keep referring to the same names across the abilities migration.
  *
- * @since 0.9.4
- *
  * @param string $ability_name Fully-namespaced ability name.
  * @return string
  */
@@ -116,8 +110,6 @@ function desktop_mode_ai_ability_tool_name( $ability_name ) {
  * Mirrors the read-only search/navigation tools, which were ungated beyond the
  * Copilot's own logged-in requirement.
  *
- * @since 0.9.4
- *
  * @return bool
  */
 function desktop_mode_ai_ability_can_read() {
@@ -128,8 +120,6 @@ function desktop_mode_ai_ability_can_read() {
  * A loose object output schema: typed at the top level, permissive on the rest
  * so `WP_Ability::execute()`'s output validation never rejects a valid handler
  * return (the shapes carry optional/nested fields we don't want to freeze).
- *
- * @since 0.9.4
  *
  * @param array<string,array<string,mixed>> $properties Documented top-level props.
  * @return array<string,mixed>
@@ -148,8 +138,6 @@ function desktop_mode_ai_ability_output_schema( array $properties = array() ) {
 
 /**
  * Registers every Copilot ability.
- *
- * @since 0.9.4
  *
  * @return void
  */
@@ -282,7 +270,13 @@ function desktop_mode_ai_register_abilities() {
 		'desktop-mode/list-admin-pages',
 		array(
 			'label'               => __( 'List admin pages', 'desktop-mode' ),
-			'description'         => 'Returns the full catalog of WordPress admin (wp-admin) destinations — pages for managing posts, categories, users, plugins, themes, settings, etc. Call this when the user asks "where can I find X?", "how do I get to Y?", "where are the settings for Z?" — any navigational question about the admin UI. Once you have the catalog, select the 1-3 most relevant entries for the user\'s query and include them in your answer under admin_links with answer_type="navigation". The catalog is small and stable so one call is enough.',
+			// Describes the TOOL, not the caller's answer format: agents
+			// and the Copilot consume the same registry, and the
+			// Copilot's `admin_links` / `answer_type` contract exists in
+			// its own system prompt and answer schema. Naming those
+			// fields here would instruct an agent to emit a shape its
+			// answer schema does not have.
+			'description'         => 'Returns the full catalog of WordPress admin (wp-admin) destinations — pages for managing posts, categories, users, plugins, themes, settings, etc. Call this when the user asks "where can I find X?", "how do I get to Y?", "where are the settings for Z?" — any navigational question about the admin UI. Each entry carries a title, url, icon, and description, so pick the few most relevant to the query. The catalog is small and stable so one call is enough.',
 			'category'            => DESKTOP_MODE_AI_ABILITY_CATEGORY,
 			'input_schema'        => array(
 				'type'                 => 'object',
@@ -305,7 +299,7 @@ function desktop_mode_ai_register_abilities() {
 		'desktop-mode/search-wporg-plugins',
 		array(
 			'label'               => __( 'Search WordPress.org plugins', 'desktop-mode' ),
-			'description'         => 'Searches the official WordPress.org plugin directory. Use this when the user asks for a plugin recommendation — e.g. "is there a plugin for SEO?", "find me a backup plugin", "a caching plugin", "form builder". Returns up to 10 plugins with name, description, rating, active install count, and an admin URL that opens the plugin-info / install screen directly. Present the results as admin_links with answer_type="navigation", titled "Plugin Name · 5M+ installs · 4.8★".',
+			'description'         => 'Searches the official WordPress.org plugin directory. Use this when the user asks for a plugin recommendation — e.g. "is there a plugin for SEO?", "find me a backup plugin", "a caching plugin", "form builder". Returns up to 10 plugins with name, description, rating, active install count, and an admin URL that opens the plugin-info / install screen directly.',
 			'category'            => DESKTOP_MODE_AI_ABILITY_CATEGORY,
 			'input_schema'        => array(
 				'type'                 => 'object',
@@ -378,8 +372,6 @@ add_action( 'wp_abilities_api_init', 'desktop_mode_ai_register_abilities' );
  * resolves and executes it directly ({@see desktop_mode_ai_analyze_comment_now()}
  * runs through it). Exposed in the abilities catalog for observability + reuse.
  *
- * @since 0.9.4
- *
  * @return void
  */
 function desktop_mode_ai_register_comment_analysis_ability() {
@@ -422,8 +414,6 @@ function desktop_mode_ai_register_comment_analysis_ability() {
 
 /**
  * Execute callback for the `desktop-mode/analyze-comment` ability.
- *
- * @since 0.9.4
  *
  * @param array<string,mixed> $input Validated input (`comment_id`).
  * @return array|WP_Error Structured verdict, or an error.

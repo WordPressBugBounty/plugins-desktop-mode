@@ -11,18 +11,64 @@
  *   - `desktop_mode_content_graph_template_html`
  *
  * @package WPDesktopMode
- * @since   0.8.2
  */
 
 defined( 'ABSPATH' ) || exit;
+
+/**
+ * The Corkboard SVG, shared by the window icon and the desktop icon.
+ *
+ * Dashicons has no corkboard, and the near misses all fail for the
+ * same reason the old "Content Graph" name did: `networking` draws an
+ * org chart, `layout` draws a wireframe — diagrams of the data, not a
+ * thing on a desk. The pushpin is unavailable too, since
+ * `dashicons-admin-post` already owns it for Posts.
+ *
+ * So: a cork board with two notes pinned to it, joined by a length of
+ * thread. The thread is not decoration — it's the window's actual
+ * subject, the links between pieces of content, drawn the way anyone
+ * who has ever seen a detective's board already reads it. Without it
+ * the icon says "pinboard"; with it, "connections".
+ *
+ * Drawn in `currentColor`, which makes it a silhouette: `renderIcon()`
+ * paints it as a CSS mask rather than a background-image, so it takes
+ * whatever colour the surface is already using for text. That keeps it
+ * legible on the dark dock, on a light title bar, and on hover, with
+ * nothing to configure. Fixed colours could not do that — a background
+ * image has no colour to inherit.
+ *
+ * Hand-placed at 64×64 like the Games icons, the established shape for
+ * custom icons here. Held to five elements because it renders as small
+ * as 20px in the dock: board, two notes, thread, two pin heads. The
+ * thread arcs up through the empty top half rather than running
+ * between the notes, where a 5px gap would swallow it.
+ *
+ * @return string Raw `<svg>` markup.
+ */
+function desktop_mode_content_graph_icon_svg() {
+	return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+		// The board itself — outlined, so it frames rather than fills.
+		. '<rect x="5" y="9" width="54" height="46" rx="4.5" fill="none" stroke="currentColor" stroke-width="4"/>'
+		// Thread first: the pin heads below are drawn over its ends, so
+		// the joins stay round instead of showing a stroke cap.
+		. '<path d="M20.5 28Q32 16.5 43.5 28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>'
+		// Notes, each tilted a few degrees — pinned by hand, not laid out.
+		. '<g transform="rotate(-7 20.5 39)">'
+		. '<rect x="12" y="30" width="17" height="18" rx="1.5" fill="currentColor"/></g>'
+		. '<g transform="rotate(7 43.5 39)">'
+		. '<rect x="35" y="30" width="17" height="18" rx="1.5" fill="currentColor"/></g>'
+		// Pin heads, sitting proud of each note's top edge. They are the
+		// cue that separates a pinboard from a picture frame.
+		. '<circle cx="20.5" cy="28" r="3" fill="currentColor"/>'
+		. '<circle cx="43.5" cy="28" r="3" fill="currentColor"/>'
+		. '</svg>';
+}
 
 /**
  * Whether the current user should see Content Graph.
  *
  * Mirrors the my-wordpress gate, anyone who can edit posts can view
  * the link map of the content they author and maintain.
- *
- * @since 0.8.2
  *
  * @return bool
  */
@@ -32,8 +78,6 @@ function desktop_mode_content_graph_user_can_use() {
 	/**
 	 * Filter whether the current user can see the Content Graph
 	 * desktop icon and window.
-	 *
-	 * @since 0.8.2
 	 *
 	 * @param bool $can Default: edit_posts capability.
 	 */
@@ -45,8 +89,6 @@ function desktop_mode_content_graph_user_can_use() {
  * Defaults to every public post type (so CPTs participate by
  * default), matching the user-facing filter bar that ships ON for all
  * of them.
- *
- * @since 0.8.2
  *
  * @return array[] Each entry: `array( 'slug', 'label', 'icon', 'taxonomies' )`.
  */
@@ -80,8 +122,6 @@ function desktop_mode_content_graph_post_types() {
 	 * an entry hides it from the filter bar AND excludes it from the
 	 * graph entirely.
 	 *
-	 * @since 0.8.2
-	 *
 	 * @param array[] $result Default: every public post type except attachment.
 	 */
 	$filtered = apply_filters( 'desktop_mode_content_graph_post_types', $result );
@@ -101,8 +141,6 @@ function desktop_mode_content_graph_post_types() {
 /**
  * Render the Content Graph window's static template body. The bundle
  * mounts its UI into `[data-desktop-mode-content-graph-root]`.
- *
- * @since 0.8.2
  */
 function desktop_mode_content_graph_render_template() {
 	ob_start();
@@ -124,8 +162,6 @@ function desktop_mode_content_graph_render_template() {
 	/**
 	 * Filter the Content Graph window's template HTML.
 	 *
-	 * @since 0.8.2
-	 *
 	 * @param string $html Default template HTML.
 	 */
 	$filtered = (string) apply_filters( 'desktop_mode_content_graph_template_html', $html );
@@ -140,17 +176,17 @@ function desktop_mode_content_graph_render_template() {
 /**
  * Register the native window + the desktop icon on `init` priority 20,
  * matching the my-wordpress + recycle-bin modules.
- *
- * @since 0.8.2
  */
 function desktop_mode_content_graph_register_window() {
 	if ( ! desktop_mode_content_graph_user_can_use() ) {
 		return;
 	}
 
+	$icon_uri = 'data:image/svg+xml;base64,' . base64_encode( desktop_mode_content_graph_icon_svg() );
+
 	$window_args = array(
-		'title'      => __( 'Content Graph', 'desktop-mode' ),
-		'icon'       => 'dashicons-networking',
+		'title'      => __( 'Corkboard', 'desktop-mode' ),
+		'icon'       => $icon_uri,
 		'template'   => 'desktop_mode_content_graph_render_template',
 		'script'     => 'desktop-mode-content-graph',
 		'style'      => 'desktop-mode-content-graph',
@@ -168,14 +204,15 @@ function desktop_mode_content_graph_register_window() {
 			'editUserUrl'    => esc_url_raw( admin_url( 'user-edit.php' ) ),
 			'editCommentUrl' => esc_url_raw( admin_url( 'comment.php' ) ),
 			'mediaUrl'       => esc_url_raw( admin_url( 'upload.php' ) ),
+			// Labels the "Open in <site>" action on the detail panel,
+			// which hands off to the site folder window.
+			'siteName'       => desktop_mode_site_title(),
 			'postTypes'      => desktop_mode_content_graph_post_types(),
 		),
 	);
 
 	/**
 	 * Filter the args used to register the Content Graph native window.
-	 *
-	 * @since 0.8.2
 	 *
 	 * @param array $window_args Args passed to `desktop_mode_register_window()`.
 	 */
@@ -189,8 +226,8 @@ function desktop_mode_content_graph_register_window() {
 	}
 
 	$icon_args = array(
-		'title'    => __( 'Content Graph', 'desktop-mode' ),
-		'icon'     => 'dashicons-networking',
+		'title'    => __( 'Corkboard', 'desktop-mode' ),
+		'icon_svg' => desktop_mode_content_graph_icon_svg(),
 		'window'   => 'desktop-mode-content-graph',
 		'pinned'   => false,
 		'position' => 20,
@@ -198,8 +235,6 @@ function desktop_mode_content_graph_register_window() {
 
 	/**
 	 * Filter the args used to register the Content Graph desktop icon.
-	 *
-	 * @since 0.8.2
 	 *
 	 * @param array $icon_args Args passed to `desktop_mode_register_icon()`.
 	 */
@@ -212,8 +247,6 @@ add_action( 'init', 'desktop_mode_content_graph_register_window', 20 );
 /**
  * Enqueue the bundle's CSS in admin context. The script is lazy-
  * loaded by the native-window sync.
- *
- * @since 0.8.2
  */
 function desktop_mode_content_graph_enqueue_styles() {
 	if ( ! desktop_mode_content_graph_user_can_use() ) {

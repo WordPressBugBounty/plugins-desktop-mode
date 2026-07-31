@@ -16,8 +16,6 @@ defined( 'ABSPATH' ) || exit;
  * Allows users to switch between classic admin and desktop mode,
  * which renders admin screens in draggable, resizable windows.
  *
- * @since 0.1.0
- *
  * @param WP_Admin_Bar $wp_admin_bar The WP_Admin_Bar instance.
  */
 function desktop_mode_admin_bar_toggle( $wp_admin_bar ) {
@@ -173,8 +171,6 @@ function desktop_mode_admin_bar_toggle( $wp_admin_bar ) {
 		 *
 		 * Entries with missing/invalid `id` or `title` are dropped.
 		 *
-		 * @since 0.6.2
-		 *
 		 * @param array $items Existing custom items (default empty).
 		 */
 		$custom = apply_filters( 'desktop_mode_arrange_menu_items', array() );
@@ -289,8 +285,6 @@ add_action( 'admin_bar_menu', 'desktop_mode_admin_bar_toggle', 190 );
  * The JS is the external assets/js/admin-bar.js bundle, registered as
  * `desktop-mode-admin-bar` with `admin-bar` as a dependency; its config is
  * emitted as an inline JSON literal `before` the script.
- *
- * @since 0.1.0
  */
 function desktop_mode_enqueue_toggle_assets() {
 	if ( ! is_admin() || ! is_user_logged_in() ) {
@@ -443,9 +437,9 @@ function desktop_mode_enqueue_toggle_assets() {
 			padding: 12px 14px;
 			min-width: 460px;
 			max-width: min( 90vw, 720px );
-			background: var( --desktop-mode-window-bg, #fff );
-			color: var( --desktop-mode-text, #1d2327 );
-			border: 1px solid var( --desktop-mode-window-border, #c3c4c7 );
+			background: var( --wpd-surface, var( --desktop-mode-window-bg, #fff ) );
+			color: var( --wpd-fg, #1d2327 );
+			border: 1px solid var( --wpd-border, var( --desktop-mode-window-border, #c3c4c7 ) );
 			border-radius: 8px;
 			box-shadow: 0 8px 24px rgba( 0, 0, 0, 0.18 ),
 				0 2px 6px rgba( 0, 0, 0, 0.08 );
@@ -467,7 +461,7 @@ function desktop_mode_enqueue_toggle_assets() {
 			font-weight: 600;
 			letter-spacing: 0.04em;
 			text-transform: uppercase;
-			color: var( --desktop-mode-muted-fg, #50575e );
+			color: var( --wpd-fg-muted, #50575e );
 			line-height: 1.2;
 		}
 		#wpadminbar .desktop-mode-shortcuts-popover__table {
@@ -480,7 +474,7 @@ function desktop_mode_enqueue_toggle_assets() {
 			padding: 6px 8px;
 			vertical-align: middle;
 			text-align: left;
-			border-bottom: 1px solid rgba( 0, 0, 0, 0.06 );
+			border-bottom: 1px solid var( --wpd-border, rgba( 0, 0, 0, 0.06 ) );
 			color: inherit;
 			font-weight: 400;
 			font-size: 12px;
@@ -489,7 +483,7 @@ function desktop_mode_enqueue_toggle_assets() {
 		#wpadminbar .desktop-mode-shortcuts-popover__table th {
 			font-weight: 600;
 			font-size: 11px;
-			color: var( --desktop-mode-muted-fg, #50575e );
+			color: var( --wpd-fg-muted, #50575e );
 			letter-spacing: 0.02em;
 		}
 		#wpadminbar .desktop-mode-shortcuts-popover__table tbody tr:last-child td {
@@ -499,7 +493,7 @@ function desktop_mode_enqueue_toggle_assets() {
 			white-space: nowrap;
 		}
 		#wpadminbar .desktop-mode-shortcuts-popover__note {
-			color: var( --desktop-mode-muted-fg, #50575e );
+			color: var( --wpd-fg-muted, #50575e );
 			font-size: 11px;
 		}
 		#wpadminbar .desktop-mode-shortcuts-popover__list {
@@ -517,7 +511,7 @@ function desktop_mode_enqueue_toggle_assets() {
 			gap: 12px;
 			padding: 4px 8px;
 			border-radius: 4px;
-			background: rgba( 0, 0, 0, 0.03 );
+			background: var( --wpd-surface-sunken, rgba( 0, 0, 0, 0.03 ) );
 		}
 		#wpadminbar .desktop-mode-shortcuts-popover__keys {
 			display: inline-flex;
@@ -532,11 +526,11 @@ function desktop_mode_enqueue_toggle_assets() {
 			min-width: 22px;
 			height: 20px;
 			padding: 0 5px;
-			border: 1px solid rgba( 0, 0, 0, 0.18 );
+			border: 1px solid var( --wpd-border-strong, rgba( 0, 0, 0, 0.18 ) );
 			border-bottom-width: 2px;
 			border-radius: 4px;
-			background: #fff;
-			color: var( --desktop-mode-text, #1d2327 );
+			background: var( --wpd-surface-elevated, #fff );
+			color: var( --wpd-fg, #1d2327 );
 			font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 			font-size: 11px;
 			font-weight: 600;
@@ -545,7 +539,7 @@ function desktop_mode_enqueue_toggle_assets() {
 		}
 		#wpadminbar .desktop-mode-shortcuts-popover__plus {
 			font-size: 10px;
-			color: var( --desktop-mode-muted-fg, #50575e );
+			color: var( --wpd-fg-muted, #50575e );
 		}
 		#wpadminbar .desktop-mode-shortcuts-popover__description {
 			color: inherit;
@@ -593,17 +587,25 @@ function desktop_mode_enqueue_toggle_assets() {
 
 		/* Arrange submenu — aligned visually with the <wpd-menu> component
 		   (src/ui/components/wpd-menu/wpd-menu.styles.ts). The submenu
-		   flips from the native dark-on-dark admin bar to a light theme
-		   (white bg, dark text) so it matches the rest of our UI AND so
-		   the hover state stays legible (a light tint on a dark bg
-		   would render as invisible overlap with native admin-bar hover
-		   colors). Selectors prefixed with #wpadminbar to win the
-		   admin-bar specificity without !important. */
+		   breaks out of the native dark-on-dark admin bar and paints
+		   itself from the `--wpd-*` panel palette instead, so it matches
+		   the rest of our UI and stays legible under any desktop theme.
+
+		   Surface and text MUST come from the same palette. They used to
+		   not: the background read `--desktop-mode-window-bg` (which a
+		   theme sets) while the text read `--desktop-mode-text` (which
+		   nothing has ever defined, so it always fell back to near-black).
+		   Any dark theme therefore rendered near-black text on its own
+		   near-black panel. Keep both sides on `--wpd-surface` /
+		   `--wpd-fg` and that class of bug cannot come back.
+
+		   Selectors prefixed with #wpadminbar to win the admin-bar
+		   specificity without !important. */
 		#wpadminbar #wp-admin-bar-desktop-layout-menu .ab-sub-wrapper {
-			background: var( --desktop-mode-window-bg, #fff );
+			background: var( --wpd-surface, var( --desktop-mode-window-bg, #fff ) );
 			padding: 4px;
 			min-width: 220px;
-			border: 1px solid var( --desktop-mode-window-border, #c3c4c7 );
+			border: 1px solid var( --wpd-border, var( --desktop-mode-window-border, #c3c4c7 ) );
 			border-radius: 8px;
 			box-shadow: 0 8px 24px rgba( 0, 0, 0, 0.18 ),
 				0 2px 6px rgba( 0, 0, 0, 0.08 );
@@ -624,7 +626,7 @@ function desktop_mode_enqueue_toggle_assets() {
 			padding: 6px 10px;
 			font-size: 13px;
 			line-height: 1.3;
-			color: var( --desktop-mode-text, #1d2327 );
+			color: var( --wpd-fg, #1d2327 );
 			background: transparent;
 			border-radius: 6px;
 			transition: background-color 0.12s ease, color 0.12s ease;
@@ -636,8 +638,8 @@ function desktop_mode_enqueue_toggle_assets() {
 		#wpadminbar #wp-admin-bar-desktop-layout-menu .ab-sub-wrapper .ab-submenu > li > .ab-item:hover,
 		#wpadminbar #wp-admin-bar-desktop-layout-menu .ab-sub-wrapper .ab-submenu > li > .ab-item:focus,
 		#wpadminbar.nojq #wp-admin-bar-desktop-layout-menu .ab-sub-wrapper .ab-submenu > li:hover > .ab-item {
-			background: rgba( 0, 0, 0, 0.06 );
-			color: #000;
+			background: var( --wpd-hover, rgba( 0, 0, 0, 0.06 ) );
+			color: var( --wpd-fg, #000 );
 		}
 		#wp-admin-bar-desktop-layout-snap .desktop-mode-layout-checkbox {
 			flex-shrink: 0;

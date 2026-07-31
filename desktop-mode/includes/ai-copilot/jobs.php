@@ -27,8 +27,6 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Analyzes a comment and stores the result in comment meta.
  *
- * @since 0.5.0
- *
  * @param int $comment_id The comment ID.
  * @param int $user_id    The user to attribute the request to.
  */
@@ -65,8 +63,6 @@ function desktop_mode_ai_job_analyze_comment( $comment_id, $user_id ) {
 	 * and `spam`. Downstream plugins (e.g. a moderation helper) can act on
 	 * `harmful` or `spam` here rather than polling meta.
 	 *
-	 * @since 0.5.0
-	 *
 	 * @param int        $comment_id The comment ID.
 	 * @param array      $result     The structured analysis result.
 	 * @param WP_Comment $comment    The comment object.
@@ -81,8 +77,6 @@ add_action( 'desktop_mode_ai_analyze_comment', 'desktop_mode_ai_job_analyze_comm
  * Converts the chat-style prompt from {@see desktop_mode_ai_messages_for_comment()}
  * into a system instruction + user prompt, requests JSON constrained to the
  * comment schema, and decodes the result.
- *
- * @since 0.9.4
  *
  * @param WP_Comment $comment The comment to analyze.
  * @param int        $user_id Requesting user id. Currently unused — the builder
@@ -112,7 +106,7 @@ function desktop_mode_ai_analyze_comment_now( WP_Comment $comment, $user_id ) {
 	}
 	// Provider + model are chosen by the Core AI Client; Desktop Mode pins neither.
 
-	$json = $builder->as_json_response( $schema )->generate_text();
+	$json = $builder->as_json_response( desktop_mode_ai_normalize_response_schema( $schema ) )->generate_text();
 	if ( is_wp_error( $json ) ) {
 		return $json;
 	}

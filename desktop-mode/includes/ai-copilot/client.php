@@ -33,8 +33,6 @@ defined( 'ABSPATH' ) || exit;
  * Each definition is the neutral tool shape the registry already produces:
  * `{ type: 'function', name, description, parameters (JSON Schema) }`.
  *
- * @since 0.9.4
- *
  * @param array $tool_defs List of tool definitions.
  * @return FunctionDeclaration[]
  */
@@ -59,8 +57,6 @@ function desktop_mode_ai_build_function_declarations( array $tool_defs ) {
 /**
  * Wraps a user query as a text message for the conversation history.
  *
- * @since 0.9.4
- *
  * @param string $text
  * @return UserMessage
  */
@@ -70,8 +66,6 @@ function desktop_mode_ai_user_text_message( $text ) {
 
 /**
  * Wraps tool results as a user message of function-response parts.
- *
- * @since 0.9.4
  *
  * @param array $tool_outputs List of `{ call_id, name, response }` entries.
  * @return UserMessage
@@ -104,8 +98,6 @@ function desktop_mode_ai_tool_result_message( array $tool_outputs ) {
  * returned unchanged rather than emptied; the loop never replays such a
  * turn anyway.
  *
- * @since 0.9.4
- *
  * @param Message $message Assistant message as returned by the AI Client.
  * @return Message Message safe to append to the conversation history.
  */
@@ -137,8 +129,6 @@ function desktop_mode_ai_strip_thought_parts( Message $message ) {
  * to the shape the loop consumes; `message` has thought-channel parts stripped
  * ({@see desktop_mode_ai_strip_thought_parts()}) so it is safe to replay.
  *
- * @since 0.9.4
- *
  * @param int        $user_id       Requesting user id. Currently unused — the
  *                                  provider comes from Connectors and no
  *                                  per-user preference is applied; retained for
@@ -165,7 +155,10 @@ function desktop_mode_ai_client_generate( $user_id, array $messages, array $tool
 	}
 
 	if ( is_array( $answer_schema ) ) {
-		$builder = $builder->as_json_response( $answer_schema );
+		// Strict structured output: providers reject an object subschema that
+		// doesn't set `additionalProperties: false`, and one such node 400s the
+		// whole turn. Normalize here so no schema author has to know that.
+		$builder = $builder->as_json_response( desktop_mode_ai_normalize_response_schema( $answer_schema ) );
 	}
 
 	$result = $builder->generate_result();
@@ -212,8 +205,6 @@ function desktop_mode_ai_client_generate( $user_id, array $messages, array $tool
 /**
  * Extracts normalized token usage from a generation result.
  *
- * @since 0.9.4
- *
  * @param mixed $result GenerativeAiResult.
  * @return array{ prompt: int, completion: int, total: int }|null
  */
@@ -232,8 +223,6 @@ function desktop_mode_ai_result_token_usage( $result ) {
 
 /**
  * Extracts the resolved model's id + name from a generation result.
- *
- * @since 0.9.4
  *
  * @param mixed $result GenerativeAiResult.
  * @return array{ id: string, name: string }|null

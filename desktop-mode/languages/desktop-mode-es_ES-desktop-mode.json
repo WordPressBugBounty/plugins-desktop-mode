@@ -63,6 +63,9 @@
             "%1$s did not beat your score: %2$s vs your %3$s.": [
                 ""
             ],
+            "%1$s of %2$s components match.": [
+                ""
+            ],
             "%1$s updated to %2$s.": [
                 ""
             ],
@@ -105,9 +108,6 @@
             "%d min": [
                 "Navegación del administrador"
             ],
-            "%d new pending — reload": [
-                ""
-            ],
             "%d notification": [
                 ""
             ],
@@ -122,6 +122,9 @@
             ],
             "%d reference": [
                 ""
+            ],
+            "%d replies": [
+                "Subpáginas de %s"
             ],
             "%d selected": [
                 ""
@@ -139,8 +142,17 @@
             "%d:00": [
                 ""
             ],
+            "%dd ago": [
+                "Navegación del administrador"
+            ],
+            "%dh ago": [
+                "Navegación del administrador"
+            ],
             "%dm": [
                 ""
+            ],
+            "%dm ago": [
+                "Navegación del administrador"
             ],
             "%ds": [
                 ""
@@ -152,6 +164,9 @@
                 ""
             ],
             "%s activated.": [
+                ""
+            ],
+            "%s components registered.": [
                 ""
             ],
             "%s deactivated.": [
@@ -193,15 +208,23 @@
             "%s+ active installs": [
                 ""
             ],
+            "(coming soon)": [
+                ""
+            ],
             "(folder)": [
                 ""
             ],
             "(no title)": [
                 ""
             ],
-            "+ %d reply": [
-                "Subpáginas de %s",
-                "Subpáginas de %s"
+            "(opens in a new tab)": [
+                "Abrir en una nueva pestaña del navegador"
+            ],
+            "+ Create agent": [
+                ""
+            ],
+            "+ New chat": [
+                ""
             ],
             "1 item": [
                 ""
@@ -209,10 +232,13 @@
             "90 seconds on the clock — every word buys you more.": [
                 ""
             ],
-            "A gentle warm-up that builds.": [
+            "A comment cannot be empty.": [
                 ""
             ],
-            "A moderation surface built around how you actually triage: bulk actions with undo, an inline reply editor, keyboard shortcuts, and a spam score that surfaces the obvious junk first.": [
+            "A desktop theme restyles the whole shell — colours, window frames, the dock, and every icon. Your choice applies only to you.": [
+                ""
+            ],
+            "A gentle warm-up that builds.": [
                 ""
             ],
             "A plugin with the same folder name is already installed.": [
@@ -227,19 +253,22 @@
             "A short summary": [
                 ""
             ],
+            "A slanted edge sweeps off the trailing corner of the window.": [
+                ""
+            ],
+            "A spoke sweeps a full turn around the centre of the window, uncovering the page behind it.": [
+                ""
+            ],
+            "A straight edge travels across the window, uncovering the page behind it.": [
+                ""
+            ],
             "A year of activity": [
                 ""
             ],
             "AI assistant": [
                 ""
             ],
-            "AI: hostile / abusive tone.": [
-                ""
-            ],
-            "AI: looks like promotional spam.": [
-                ""
-            ],
-            "AI: looks safe.": [
+            "Abilities saved.": [
                 ""
             ],
             "About": [
@@ -253,6 +282,9 @@
             ],
             "Accuracy": [
                 ""
+            ],
+            "Action failed.": [
+                "Error al subir."
             ],
             "Activate": [
                 ""
@@ -284,6 +316,9 @@
             "Add new desktop": [
                 "Añadir nuevo escritorio"
             ],
+            "Add trigger": [
+                "Añadir %s"
+            ],
             "Add widget": [
                 "Añadir widget"
             ],
@@ -296,10 +331,25 @@
             "Adds an AI mode to the %s site assistant. Ask in plain language to find content, get around wp-admin, and answer questions about your site. Off by default.": [
                 ""
             ],
-            "Akismet cleared this comment.": [
+            "Adds an Agents section to My WordPress: durable AI workers that live on the site as login-blocked users, act through the WordPress Abilities API under their own role, and answer in a chat window. Requires a configured AI connector to run. Off by default — while off, nothing agent-related loads. Agent definitions are kept across a disable and reappear when re-enabled.": [
                 ""
             ],
-            "Akismet flagged this comment as spam.": [
+            "Admin bar": [
+                "Navegación del administrador"
+            ],
+            "Agent added to the desktop.": [
+                "Añadir nuevo escritorio"
+            ],
+            "Agent chat": [
+                ""
+            ],
+            "Agent name is required.": [
+                ""
+            ],
+            "Agent saved.": [
+                ""
+            ],
+            "Agents": [
                 ""
             ],
             "All": [
@@ -326,6 +376,9 @@
             "Amber": [
                 "Ámbar"
             ],
+            "An administrator has not created any agents on this site yet.": [
+                ""
+            ],
             "Angle": [
                 "Ángulo"
             ],
@@ -338,7 +391,13 @@
             "Appearance": [
                 ""
             ],
+            "Apply %s’s recommended layout and effects": [
+                ""
+            ],
             "Apply a visual treatment to every window except the one you are working in.": [
+                ""
+            ],
+            "Apply to the draft": [
                 ""
             ],
             "Approve": [
@@ -347,13 +406,13 @@
             "Approved": [
                 ""
             ],
-            "Approved %d.": [
-                ""
-            ],
             "Apps & Icons": [
                 ""
             ],
             "Apps & Icons settings…": [
+                ""
+            ],
+            "Ask the agent to do something…": [
                 ""
             ],
             "Attached media": [
@@ -366,9 +425,6 @@
                 ""
             ],
             "Author archive": [
-                ""
-            ],
-            "Author insights drawer": [
                 ""
             ],
             "Author website": [
@@ -419,10 +475,10 @@
             "Beta — off by default. Turn on for a native Users list with bulk role change, last-login tracking, live online indicators, click-to-copy email, and one-click password resets. Capability-gated — readers see a read-only view, role assignment respects WordPress role permissions.": [
                 ""
             ],
-            "Beta — off by default. Turn on for a native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it.": [
+            "Beta — off by default. Turn on for a native two-pane Comments window: a rail of conversations filtered by Pending / All / Spam / Trash / Mine, and the selected thread’s full nested reply chain beside it. Every message carries Reply, Edit, Approve, Spam and Trash inline, with a docked composer that repoints to whichever message you answer. Opening “Comments” on a post scopes the window to that post.": [
                 ""
             ],
-            "Beta — off by default. Turn on for a redesigned moderation queue with Pending / All / Spam / Trash / Mine tabs, bulk approve/spam/trash plus an 8-second undo, inline reply right in the row, an author insights drawer, a per-row spam confidence score (Akismet + heuristics), and full keyboard moderation (j/k navigate, a approve, s spam, d trash, r reply, e edit, u undo).": [
+            "Beta — off by default. Turn on for a native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it.": [
                 ""
             ],
             "Beta — off by default. Turn on for the same table-driven experience as the Posts window, tailored for Pages: a Parent column, hierarchical sort, and a lock indicator when another user is editing a page. Toggle off any time to return to the classic screen.": [
@@ -434,11 +490,11 @@
             "Big": [
                 ""
             ],
+            "Blinds": [
+                ""
+            ],
             "Board size": [
                 "Tamaño del dock"
-            ],
-            "Bold": [
-                ""
             ],
             "Bookmark": [
                 ""
@@ -461,15 +517,6 @@
             "Bug": [
                 ""
             ],
-            "Bulk %s failed.": [
-                "Error al subir."
-            ],
-            "Bulk moderation with undo": [
-                ""
-            ],
-            "Bulleted list": [
-                ""
-            ],
             "By hour of day (site time)": [
                 ""
             ],
@@ -482,7 +529,13 @@
             "CSS custom properties": [
                 ""
             ],
+            "Camera shutter": [
+                ""
+            ],
             "Cancel": [
+                ""
+            ],
+            "Cannot be undone.": [
                 ""
             ],
             "Can’t drop here": [
@@ -504,6 +557,9 @@
                 ""
             ],
             "Categories · %d": [
+                ""
+            ],
+            "Category added.": [
                 ""
             ],
             "Challenge finished": [
@@ -536,6 +592,15 @@
             "Changelog": [
                 ""
             ],
+            "Chat": [
+                ""
+            ],
+            "Chat window config is missing.": [
+                ""
+            ],
+            "Check your connection and try another tab.": [
+                ""
+            ],
             "Choose where each app shortcut shows up — on the dock, on the desktop wallpaper, both, or hidden entirely. Changes apply instantly to the running shell.": [
                 ""
             ],
@@ -543,9 +608,6 @@
                 ""
             ],
             "Classic": [
-                ""
-            ],
-            "Click an avatar to see the author's full history — total comments, spam rate, first seen, and one-click block.": [
                 ""
             ],
             "Clicking a window surfaces the windows directly tied to it — a parent brings up all of its children, a child brings up its parent — rising to just below the one you clicked, without stealing focus.": [
@@ -578,6 +640,27 @@
             "Comment": [
                 ""
             ],
+            "Comment approved.": [
+                ""
+            ],
+            "Comment marked as spam.": [
+                ""
+            ],
+            "Comment moved to trash.": [
+                "No se pudieron cargar tus medios: %s"
+            ],
+            "Comment restored from spam.": [
+                ""
+            ],
+            "Comment restored from trash.": [
+                ""
+            ],
+            "Comment text": [
+                "Buscar medios"
+            ],
+            "Comment unapproved.": [
+                ""
+            ],
             "Comment updated.": [
                 ""
             ],
@@ -587,8 +670,14 @@
             "Comments": [
                 ""
             ],
+            "Comments in this view will show up here.": [
+                ""
+            ],
             "Comments left": [
                 ""
+            ],
+            "Comments on this post": [
+                "Buscar medios"
             ],
             "Comments received": [
                 ""
@@ -611,9 +700,6 @@
             "Connectors": [
                 ""
             ],
-            "Content Graph container missing.": [
-                ""
-            ],
             "Contributor": [
                 ""
             ],
@@ -629,7 +715,13 @@
             "Convert to post": [
                 ""
             ],
+            "Corkboard container missing.": [
+                ""
+            ],
             "Could not accept the challenge.": [
+                "No se pudieron cargar tus medios: %s"
+            ],
+            "Could not apply the suggestion.": [
                 "No se pudieron cargar tus medios: %s"
             ],
             "Could not convert the note to a post.": [
@@ -644,19 +736,22 @@
             "Could not delete sharing data.": [
                 "No se pudieron cargar tus medios: %s"
             ],
+            "Could not get suggestions.": [
+                "No se pudieron cargar tus medios."
+            ],
             "Could not initialise the graph renderer.": [
                 ""
             ],
-            "Could not load comments.": [
+            "Could not load comments": [
+                "No se pudieron cargar tus medios."
+            ],
+            "Could not load drafts.": [
                 "No se pudieron cargar tus medios."
             ],
             "Could not load featured plugins: %s": [
                 "No se pudieron cargar tus medios."
             ],
             "Could not load footprint.": [
-                "No se pudieron cargar tus medios."
-            ],
-            "Could not load insights.": [
                 "No se pudieron cargar tus medios."
             ],
             "Could not load plugin details.": [
@@ -668,11 +763,11 @@
             "Could not load post #%d.": [
                 "No se pudieron cargar tus medios."
             ],
-            "Could not load replies.": [
-                "No se pudieron cargar tus medios."
-            ],
             "Could not load reviews.": [
                 "No se pudieron cargar tus medios."
+            ],
+            "Could not move the draft to Trash.": [
+                "No se pudieron cargar tus medios: %s"
             ],
             "Could not move the note to the Trash.": [
                 "No se pudieron cargar tus medios: %s"
@@ -687,6 +782,9 @@
                 "No se pudieron cargar tus medios: %s"
             ],
             "Could not toggle auto-updates for %1$s: %2$s": [
+                ""
+            ],
+            "Couldn't save your latest changes — the preview shows the last saved version.": [
                 ""
             ],
             "Couldn’t delete that file.": [
@@ -707,7 +805,19 @@
             "Crafted with curiosity": [
                 ""
             ],
+            "Create": [
+                ""
+            ],
+            "Create agent": [
+                ""
+            ],
+            "Create your first agent: give it a name, a role, and instructions, then pick the abilities it may use.": [
+                ""
+            ],
             "Current streak": [
+                ""
+            ],
+            "Curtain": [
                 ""
             ],
             "Curved connectors between related windows, ending in circular dots — the larger dot sits on the window the content belongs to; windows that reference each other get large dots on both ends.": [
@@ -746,8 +856,26 @@
             "Default": [
                 "Predeterminada"
             ],
+            "Default (per reveal)": [
+                ""
+            ],
+            "Define": [
+                ""
+            ],
             "Delete": [
                 ""
+            ],
+            "Delete %s": [
+                "Error al subir."
+            ],
+            "Delete agent?": [
+                "Error al subir."
+            ],
+            "Delete conversation": [
+                ""
+            ],
+            "Delete conversation?": [
+                "Error al subir."
             ],
             "Delete data": [
                 ""
@@ -773,6 +901,9 @@
             "Delete selected plugins?": [
                 ""
             ],
+            "Delete this theme?": [
+                "Error al subir."
+            ],
             "Deleting…": [
                 "Subiendo…"
             ],
@@ -797,7 +928,19 @@
             "Desktop layout": [
                 "Escritorio 1"
             ],
+            "Desktop theme": [
+                "Escritorio %d"
+            ],
+            "Desktop themes": [
+                "Escritorio %d"
+            ],
             "Details": [
+                ""
+            ],
+            "Diagonal": [
+                ""
+            ],
+            "Diamond": [
                 ""
             ],
             "Difficulty": [
@@ -839,6 +982,12 @@
             "Download": [
                 ""
             ],
+            "Draft moved to Trash.": [
+                ""
+            ],
+            "Drafts": [
+                ""
+            ],
             "Drag a .zip onto the window to install — or drag a Browse card straight to the dock to pin a shortcut. The framework drag bridge handles the rest.": [
                 ""
             ],
@@ -855,6 +1004,9 @@
                 ""
             ],
             "Drop a .zip plugin file here, or click to choose a file.": [
+                "Suelta una imagen aquí, o haz clic para subir"
+            ],
+            "Drop a theme .zip here, or click to upload": [
                 "Suelta una imagen aquí, o haz clic para subir"
             ],
             "Drop an image here, or click to upload": [
@@ -884,6 +1036,9 @@
             "Drop your .zip here or click to browse": [
                 "Suelta una imagen aquí, o haz clic para subir"
             ],
+            "Dynamic": [
+                ""
+            ],
             "Easy": [
                 ""
             ],
@@ -899,14 +1054,23 @@
             "Edit failed.": [
                 "Error al subir."
             ],
+            "Edit this post": [
+                ""
+            ],
             "Edit user": [
                 ""
             ],
             "Effects": [
                 ""
             ],
+            "Eight vertical slats retract at once, letting the page through between them.": [
+                ""
+            ],
             "Emerald": [
                 "Esmeralda"
+            ],
+            "Enable AI agents": [
+                ""
             ],
             "Enable auto-updates": [
                 ""
@@ -926,6 +1090,9 @@
             "Enter fullscreen": [
                 "Entrar en pantalla completa"
             ],
+            "Enter to send · Shift+Enter for a new line": [
+                ""
+            ],
             "Environment included with the report": [
                 ""
             ],
@@ -935,11 +1102,14 @@
             "Every <wpd-*> web component shipped by this plugin, with its props, slots, and a live example. Descriptors live next to each component class — the list stays in sync with the code.": [
                 ""
             ],
-            "Every comment gets a 0–100 score from Akismet + heuristics. Optionally turn on AI scoring in OS Settings → Features so each new comment is also scored by your configured AI provider on arrival.": [
-                ""
-            ],
             "Example": [
                 ""
+            ],
+            "Excerpt": [
+                ""
+            ],
+            "Excerpt updated.": [
+                "%d actualización"
             ],
             "Exit Desktop Mode": [
                 "Escritorio %d"
@@ -977,6 +1147,9 @@
             "Fast — 15s (not recommended)": [
                 ""
             ],
+            "Fast — 320 ms": [
+                ""
+            ],
             "Favorites": [
                 ""
             ],
@@ -1011,9 +1184,6 @@
                 ""
             ],
             "First published": [
-                ""
-            ],
-            "First seen": [
                 ""
             ],
             "Fit": [
@@ -1109,7 +1279,13 @@
             "Highlight related windows": [
                 ""
             ],
+            "Hook name": [
+                ""
+            ],
             "How often the WordPress Heartbeat API runs. Faster = quicker live updates (autosaves, lock checks, the heartbeat widget) at the cost of more server traffic. 15 s triples server load vs. the 60 s default — use sparingly. 30 s and 45 s require a page reload to apply exactly; 15 s and 60 s take effect immediately.": [
+                ""
+            ],
+            "How rounded the corners of windows are.": [
                 ""
             ],
             "How the rail itself paints — the shipped icon strip, or anything a plugin replaces it with. Switching is instant; the dock rebuilds with the new renderer.": [
@@ -1142,9 +1318,6 @@
             "Inkfall could not start.": [
                 ""
             ],
-            "Inline reply": [
-                ""
-            ],
             "Install": [
                 ""
             ],
@@ -1172,17 +1345,14 @@
             "Installing…": [
                 "Subiendo…"
             ],
-            "Italic": [
+            "Instructions (system prompt)": [
                 ""
             ],
-            "J/K to navigate, A approve, S spam, D trash, R reply, E edit, U undo. Press ? any time for the cheat sheet.": [
+            "Iris": [
                 ""
             ],
             "JPEG, PNG, or WebP · goes straight to your Media Library": [
                 "JPEG, PNG o WebP · va directo a tu biblioteca de medios"
-            ],
-            "Keyboard moderation": [
-                ""
             ],
             "Large": [
                 "Grande"
@@ -1196,9 +1366,6 @@
             "Last published %s": [
                 ""
             ],
-            "Last seen": [
-                ""
-            ],
             "Latest": [
                 ""
             ],
@@ -1209,9 +1376,6 @@
                 ""
             ],
             "Less": [
-                ""
-            ],
-            "Let me moderate": [
                 ""
             ],
             "Lets you share desktop folders with other users or roles, with read or read+write access. When off, every share-related affordance (Share button, invites, \"Leave shared folder\") disappears from your shell and the heartbeat stops delivering share payloads to your session. Other users are unaffected. On by default.": [
@@ -1231,9 +1395,6 @@
             ],
             "Load more": [
                 "Cargar más"
-            ],
-            "Loading author insights…": [
-                "Subiendo…"
             ],
             "Loading description…": [
                 "Subiendo…"
@@ -1277,7 +1438,10 @@
             "Makes every item in the WordPress Media Library draggable. Drop a media item into text fields, rich-text editors, Gutenberg blocks, or any target that accepts images or files. No replacement of the library — just a drag-and-drop layer on top of the one you already know.": [
                 ""
             ],
-            "Marked %d as spam.": [
+            "Mark as spam": [
+                ""
+            ],
+            "Mark as spam?": [
                 ""
             ],
             "Maximize": [
@@ -1302,6 +1466,9 @@
                 ""
             ],
             "Member since %s": [
+                ""
+            ],
+            "Message the agent": [
                 ""
             ],
             "Milestones": [
@@ -1331,6 +1498,9 @@
             "More": [
                 ""
             ],
+            "Mosaic": [
+                ""
+            ],
             "Most prolific month": [
                 ""
             ],
@@ -1340,8 +1510,8 @@
             "Move cancelled.": [
                 ""
             ],
-            "Move note to the Recycle Bin?": [
-                ""
+            "Move note to the Trash?": [
+                "No se pudieron cargar tus medios: %s"
             ],
             "Move note. Drag the pin, or press Enter then use the arrow keys.": [
                 ""
@@ -1349,20 +1519,23 @@
             "Move to Trash": [
                 ""
             ],
+            "Move to Trash?": [
+                ""
+            ],
+            "Move to trash": [
+                ""
+            ],
+            "Move to trash?": [
+                ""
+            ],
             "Move your cursor through the swarm · click for a spark": [
                 ""
             ],
-            "Moving note. Arrow keys to move, Enter to place, Escape to cancel, Delete to move to the Recycle Bin.": [
-                ""
-            ],
-            "Multi-select and approve, spam, or trash dozens at once. Every action shows an 8-second undo toast.": [
+            "Moving note. Arrow keys to move, Enter to place, Escape to cancel, Delete to move to the Trash.": [
                 ""
             ],
             "Mute sound effects": [
                 ""
-            ],
-            "My WordPress": [
-                "Azul WordPress"
             ],
             "Name": [
                 ""
@@ -1371,6 +1544,9 @@
                 ""
             ],
             "Name (Z → A)": [
+                ""
+            ],
+            "Name, tag, prop, event…": [
                 ""
             ],
             "Navigate into": [
@@ -1409,6 +1585,9 @@
             "No %s yet.": [
                 ""
             ],
+            "No AI provider is configured — agents cannot run until a connector is set up.": [
+                ""
+            ],
             "No FAQ": [
                 ""
             ],
@@ -1422,6 +1601,12 @@
                 ""
             ],
             "No additional contributors.": [
+                ""
+            ],
+            "No agent selected": [
+                ""
+            ],
+            "No agents yet": [
                 ""
             ],
             "No apps registered yet": [
@@ -1442,7 +1627,7 @@
             "No comments on this post yet.": [
                 ""
             ],
-            "No comments to moderate here.": [
+            "No components match.": [
                 ""
             ],
             "No components registered.": [
@@ -1451,7 +1636,22 @@
             "No content available.": [
                 ""
             ],
+            "No conversation selected": [
+                ""
+            ],
+            "No conversations yet": [
+                ""
+            ],
+            "No conversations yet.": [
+                ""
+            ],
             "No description": [
+                ""
+            ],
+            "No description yet.": [
+                "Subiendo…"
+            ],
+            "No drafts — all caught up.": [
                 ""
             ],
             "No featured plugins yet.": [
@@ -1487,6 +1687,9 @@
             "No preview available for this file type.": [
                 ""
             ],
+            "No preview is available for this content.": [
+                ""
+            ],
             "No ratings yet.": [
                 ""
             ],
@@ -1497,6 +1700,9 @@
                 ""
             ],
             "No tags assigned.": [
+                ""
+            ],
+            "No triggers configured yet.": [
                 ""
             ],
             "No users match \"%s\".": [
@@ -1517,10 +1723,10 @@
             "None": [
                 ""
             ],
-            "Not now": [
+            "Normal — 460 ms": [
                 ""
             ],
-            "Not spam": [
+            "Not now": [
                 ""
             ],
             "Note by %s": [
@@ -1544,13 +1750,13 @@
             "Note text": [
                 ""
             ],
+            "Nothing on this post here": [
+                ""
+            ],
             "Nothing to show yet.": [
                 ""
             ],
             "Nothing to show.": [
-                ""
-            ],
-            "Numbered list": [
                 ""
             ],
             "Off": [
@@ -1577,6 +1783,9 @@
             "On the dock": [
                 ""
             ],
+            "On: %s": [
+                ""
+            ],
             "One pot, whole world: everyone gets the same soup today (%s). Drag across the letters to fish the words out.": [
                 ""
             ],
@@ -1592,6 +1801,12 @@
             "Open": [
                 "Abrir"
             ],
+            "Open Connectors settings": [
+                ""
+            ],
+            "Open an agent from the Agents section of the site folder, or pick a past conversation.": [
+                ""
+            ],
             "Open another %s": [
                 "Abrir otra ventana de %s"
             ],
@@ -1604,8 +1819,8 @@
             "Open file in new tab": [
                 "Abrir en una nueva pestaña del navegador"
             ],
-            "Open in My WordPress": [
-                ""
+            "Open in %s": [
+                "Abrir nueva ventana de %s"
             ],
             "Open in WordPress": [
                 ""
@@ -1628,10 +1843,19 @@
             "Open on startup": [
                 "Abrir al iniciar"
             ],
+            "Open profile": [
+                "Abrir"
+            ],
             "Open reviews on WordPress.org ↗": [
                 ""
             ],
             "Open revision in WordPress": [
+                ""
+            ],
+            "Open the %1$s \"%2$s\"": [
+                "Error al subir."
+            ],
+            "Open the agent in My WordPress": [
                 ""
             ],
             "Open the full activity footprint surface for this user.": [
@@ -1646,13 +1870,16 @@
             "Or use your own image": [
                 "O usa tu propia imagen"
             ],
+            "Other": [
+                ""
+            ],
             "Overview": [
                 "Vista general"
             ],
-            "Page %1$d of %2$d": [
+            "Page": [
                 ""
             ],
-            "Page %1$d of %2$d (%3$d total)": [
+            "Page %1$d of %2$d": [
                 ""
             ],
             "Pages": [
@@ -1676,12 +1903,6 @@
             "Pending": [
                 ""
             ],
-            "Pending / All / Spam / Trash / Mine tabs — every status surface in a single window with live counts.": [
-                ""
-            ],
-            "Per page": [
-                ""
-            ],
             "Per-row capability flags so the UI hides actions you can't perform — and the server re-validates every mutation, so flags can't be tampered into more permissions.": [
                 ""
             ],
@@ -1695,6 +1916,12 @@
                 "Personaliza tu escritorio. Los cambios se aplican al instante y se guardan en este navegador."
             ],
             "Pick a .zip file from your computer, or drop one onto the area below.": [
+                ""
+            ],
+            "Pick a trigger kind…": [
+                ""
+            ],
+            "Pick one from the list to read and reply.": [
                 ""
             ],
             "Pin here": [
@@ -1778,10 +2005,10 @@
             "Popular": [
                 ""
             ],
-            "Posts": [
+            "Post": [
                 ""
             ],
-            "Prefer the classic Comments screen? You can switch back any time from OS Settings → Features.": [
+            "Posts": [
                 ""
             ],
             "Press Challenge to throw down one of your scores, or pick a row from the scoreboard.": [
@@ -1789,6 +2016,12 @@
             ],
             "Press stop to silence.": [
                 ""
+            ],
+            "Preview": [
+                "Vista general"
+            ],
+            "Preview: %s": [
+                "Vista general"
             ],
             "Previous": [
                 ""
@@ -1812,6 +2045,9 @@
                 ""
             ],
             "Question": [
+                ""
+            ],
+            "Radar": [
                 ""
             ],
             "Rated %s out of 5": [
@@ -1844,16 +2080,10 @@
             "Recommended": [
                 ""
             ],
-            "Recycle Bin — empty": [
-                ""
-            ],
             "Refresh": [
                 ""
             ],
             "Related": [
-                ""
-            ],
-            "Reliability: %d / 100": [
                 ""
             ],
             "Reload": [
@@ -1886,6 +2116,9 @@
             "Replay today’s soup?": [
                 ""
             ],
+            "Reply": [
+                "Error al subir."
+            ],
             "Reply (%d)": [
                 ""
             ],
@@ -1895,10 +2128,13 @@
             "Reply is empty.": [
                 ""
             ],
-            "Reply posted.": [
+            "Reply sent.": [
+                "Error al subir."
+            ],
+            "Replying to": [
                 ""
             ],
-            "Reply right inside the row — no modal, no full-page navigation. Press R on any row to jump straight to the editor.": [
+            "Required capability": [
                 ""
             ],
             "Requires PHP": [
@@ -1925,13 +2161,13 @@
             "Resetting…": [
                 ""
             ],
-            "Restore": [
-                ""
-            ],
-            "Restored %d.": [
-                ""
-            ],
             "Resume": [
+                ""
+            ],
+            "Reveal speed": [
+                ""
+            ],
+            "Reveal style": [
                 ""
             ],
             "Reviews": [
@@ -1949,11 +2185,20 @@
             "Right": [
                 ""
             ],
+            "Rise": [
+                ""
+            ],
+            "Role": [
+                ""
+            ],
             "Roles": [
                 ""
             ],
             "Rose": [
                 "Rosa"
+            ],
+            "Round": [
+                ""
             ],
             "S": [
                 ""
@@ -1962,6 +2207,9 @@
                 ""
             ],
             "Save": [
+                ""
+            ],
+            "Save the post to enable its preview": [
                 ""
             ],
             "Saved": [
@@ -2021,7 +2269,7 @@
             "Search WordPress.org…": [
                 ""
             ],
-            "Search comments…": [
+            "Search components": [
                 "Buscar medios"
             ],
             "Search installed plugins…": [
@@ -2057,9 +2305,6 @@
             "See where this is used": [
                 ""
             ],
-            "Select a full URL (https://…) in your reply, then click the link button.": [
-                ""
-            ],
             "Select a media item to preview it here.": [
                 ""
             ],
@@ -2072,6 +2317,9 @@
             "Select an item to preview it here.": [
                 ""
             ],
+            "Send": [
+                ""
+            ],
             "Send a challenge": [
                 ""
             ],
@@ -2079,6 +2327,15 @@
                 ""
             ],
             "Send reply": [
+                ""
+            ],
+            "Send to %s": [
+                "Añadir %s"
+            ],
+            "Send to Desktop": [
+                "Añadir nuevo escritorio"
+            ],
+            "Send to agent": [
                 ""
             ],
             "Settings sections": [
@@ -2099,14 +2356,20 @@
             "Share card": [
                 ""
             ],
+            "Shared with the agent": [
+                ""
+            ],
             "Shared!": [
+                ""
+            ],
+            "Sharp": [
                 ""
             ],
             "Shortcut": [
                 ""
             ],
-            "Show author insights": [
-                ""
+            "Show all": [
+                "Mostrando %d"
             ],
             "Show desktop when clicking the wallpaper": [
                 ""
@@ -2132,6 +2395,9 @@
             "Showing %d": [
                 "Mostrando %d"
             ],
+            "Shutter": [
+                ""
+            ],
             "Side bar with the core admin menus, plus a bottom dock for plugin apps.": [
                 ""
             ],
@@ -2147,16 +2413,28 @@
             "Site-wide enhancements that apply to every user. Toggling requires the affected page to be reloaded for the change to take effect.": [
                 ""
             ],
+            "Six horizontal slats retract at once, letting the page through between them.": [
+                ""
+            ],
+            "Six wedges slide aside in unison, opening a hexagonal aperture from the centre like the iris of a camera lens.": [
+                ""
+            ],
             "Size": [
                 ""
             ],
             "Size on disk": [
                 ""
             ],
+            "Slats": [
+                ""
+            ],
             "Slots": [
                 ""
             ],
             "Slow — 45s": [
+                ""
+            ],
+            "Slow — 700 ms": [
                 ""
             ],
             "Small": [
@@ -2177,15 +2455,6 @@
             "Spam": [
                 ""
             ],
-            "Spam confidence score": [
-                ""
-            ],
-            "Spam score: %1$d / 100. %2$s": [
-                ""
-            ],
-            "Spam score: %d / 100.": [
-                ""
-            ],
             "Spatial": [
                 ""
             ],
@@ -2196,6 +2465,9 @@
                 ""
             ],
             "Start focus": [
+                ""
+            ],
+            "Static": [
                 ""
             ],
             "Status": [
@@ -2219,13 +2491,19 @@
             "Streak": [
                 ""
             ],
-            "Submitted on": [
-                ""
-            ],
             "Subtract a minute": [
                 ""
             ],
+            "Suggest title, excerpt & tags": [
+                ""
+            ],
+            "Suggestions": [
+                ""
+            ],
             "Sunday": [
+                ""
+            ],
+            "Sweep": [
                 ""
             ],
             "Switch to %s": [
@@ -2234,8 +2512,14 @@
             "System Preferences": [
                 ""
             ],
+            "System default": [
+                "Predeterminada"
+            ],
             "T": [
                 "Hasta"
+            ],
+            "Tag added.": [
+                ""
             ],
             "Tags": [
                 ""
@@ -2244,6 +2528,9 @@
                 ""
             ],
             "Take me to settings": [
+                ""
+            ],
+            "Tap a suggestion to apply it to the draft.": [
                 ""
             ],
             "Taxonomies": [
@@ -2264,10 +2551,40 @@
             "That file isn’t an image.": [
                 "Ese archivo no es una imagen."
             ],
+            "That theme could not be deleted.": [
+                ""
+            ],
+            "That theme could not be installed.": [
+                ""
+            ],
+            "The admin bar is always visible above the desktop.": [
+                ""
+            ],
+            "The admin bar is never shown. Use the Exit Desktop Mode tile on the dock to get back to the classic admin.": [
+                ""
+            ],
+            "The admin bar slides out of the way and comes back when you move the pointer to the top edge of the screen.": [
+                ""
+            ],
+            "The agent acts with this role's capabilities — pick the least privilege that still lets it do its job.": [
+                ""
+            ],
+            "The agent finished without a text answer.": [
+                ""
+            ],
+            "The agent may only call abilities ticked here — and every call is still gated by the ability's own permission check against the agent's role.": [
+                ""
+            ],
+            "The agent user is deleted permanently. Content it authored is not reassigned.": [
+                ""
+            ],
             "The backdrop behind your windows. Pick a preset, mix your own gradient, or drop in an image.": [
                 "El fondo tras tus ventanas. Elige un preestablecido, mezcla tu propio gradiente o suelta una imagen."
             ],
             "The card could not be shared.": [
+                ""
+            ],
+            "The desktop files API is not available in this context.": [
                 ""
             ],
             "The detail flyout shows screenshots, the ratings histogram, recent reviews, the changelog and FAQ — all without leaving the window.": [
@@ -2276,10 +2593,49 @@
             "The dock repaints LIVE after every install / activate / deactivate / delete. No reload, no stale tile, no \"wait, did that work?\".": [
                 ""
             ],
+            "The look Desktop Mode ships with": [
+                "Cambiar a modo escritorio"
+            ],
+            "The page arrives as a grid of tiles, each opening out from its own centre.": [
+                ""
+            ],
+            "The page opens out from the centre of the window through a growing rhombus.": [
+                ""
+            ],
+            "The page opens out from the centre of the window, like a camera shutter.": [
+                ""
+            ],
+            "The page rises into the window from the bottom edge upward.": [
+                ""
+            ],
+            "The preview opens once the post has been saved.": [
+                ""
+            ],
             "The three <wpd-*> tags below are intentionally bogus. Open the browser console: within ~2 seconds you should see three console.error entries from the framework, each pointing the developer at the fix (typo with \"did you mean\", and unknown tags). The tags are kept off-screen so they do not affect layout. Remove this section in your fork if you want a quieter Components tab.": [
                 ""
             ],
             "The underlying entity is no longer available.": [
+                ""
+            ],
+            "The user dropped the %1$s \"%2$s\" (id %3$s) onto you. Handle it according to your instructions, using your tools as needed.": [
+                ""
+            ],
+            "The user sent you the %1$s \"%2$s\" (id %3$s) from the \"Send to\" menu. Handle it according to your instructions, using your tools as needed.": [
+                ""
+            ],
+            "Themes": [
+                "Añadir %s"
+            ],
+            "Thinking…": [
+                "Subiendo…"
+            ],
+            "This WordPress does not ship the AI Client (WordPress 7.0+). Agents can be defined but not run.": [
+                ""
+            ],
+            "This comment moves out of the conversation. You can restore it from the Spam tab.": [
+                ""
+            ],
+            "This comment moves out of the conversation. You can restore it from the Trash tab.": [
                 ""
             ],
             "This component has no help descriptor yet. Add `static help` to its class for a fuller reference.": [
@@ -2315,6 +2671,9 @@
             "This plugin will stop running on the site. You can re-activate it later from the Plugins screen.": [
                 ""
             ],
+            "This post has no comments in this view — try another tab.": [
+                ""
+            ],
             "This revision has no rendered content.": [
                 ""
             ],
@@ -2339,8 +2698,20 @@
             "Title and description are both required.": [
                 ""
             ],
+            "Title ideas": [
+                ""
+            ],
+            "Title updated.": [
+                "%d actualización"
+            ],
             "To": [
                 "Hasta"
+            ],
+            "Tool calls": [
+                ""
+            ],
+            "Tools": [
+                ""
             ],
             "Top authors": [
                 ""
@@ -2354,25 +2725,34 @@
             "Top topics": [
                 ""
             ],
-            "Total comments": [
-                ""
-            ],
             "Total content": [
                 ""
             ],
             "Trash": [
                 ""
             ],
-            "Trashed %d.": [
+            "Trash — empty": [
                 ""
             ],
-            "Triage in one place": [
+            "Triggers": [
+                ""
+            ],
+            "Triggers describe how this site reaches the agent. Chat, drag & drop, and Send to work today; kinds marked \"coming soon\" can be configured but are not wired yet.": [
+                ""
+            ],
+            "Triggers saved.": [
                 ""
             ],
             "Tuesday": [
                 ""
             ],
             "Tune individual Desktop Mode behaviors. Each toggle affects only your account and takes effect immediately — no reload required. Watch the dot in the OS Settings title bar to see when a change has been saved.": [
+                ""
+            ],
+            "Two panels part from the middle of the window and slide off the sides.": [
+                ""
+            ],
+            "Two panels part from the middle of the window and slide off the top and bottom.": [
                 ""
             ],
             "Two tabs in one window — Installed for managing what you have, Browse for discovering new plugins. No more bouncing between Plugins → Add New → back to Installed.": [
@@ -2384,16 +2764,13 @@
             "Type: %s": [
                 ""
             ],
-            "Un-spammed %d.": [
-                ""
-            ],
             "Unapprove": [
                 ""
             ],
-            "Unapproved %d.": [
+            "Uncategorized": [
                 ""
             ],
-            "Uncategorized": [
+            "Uncover a window’s content when it finishes loading, instead of fading it in.": [
                 ""
             ],
             "Undated": [
@@ -2402,13 +2779,7 @@
             "Undo": [
                 ""
             ],
-            "Undo failed.": [
-                "Error al subir."
-            ],
             "Undocumented — declared via static props.": [
-                ""
-            ],
-            "Undone.": [
                 ""
             ],
             "Unfocused window effect": [
@@ -2423,13 +2794,13 @@
             "Unknown": [
                 ""
             ],
-            "Unknown My WordPress entity: %s": [
-                ""
-            ],
             "Unknown author": [
                 ""
             ],
             "Unknown entity type.": [
+                ""
+            ],
+            "Unknown entity: %s": [
                 ""
             ],
             "Unknown error.": [
@@ -2531,10 +2902,22 @@
             "Used in focused window title bars, buttons, and focus rings.": [
                 "Usado en barras de título enfocadas, botones y anillos de foco."
             ],
+            "User": [
+                ""
+            ],
             "User agent": [
                 ""
             ],
             "Version": [
+                ""
+            ],
+            "Version %s": [
+                ""
+            ],
+            "Very fast — 200 ms": [
+                ""
+            ],
+            "Very slow — 1100 ms": [
                 ""
             ],
             "Very slow — 60s (default)": [
@@ -2552,6 +2935,9 @@
             "View author archive": [
                 ""
             ],
+            "View contributions": [
+                "Acciones de ventana"
+            ],
             "View details for %s": [
                 ""
             ],
@@ -2563,6 +2949,9 @@
             ],
             "View on site": [
                 ""
+            ],
+            "View post": [
+                "Acciones de ventana"
             ],
             "W": [
                 ""
@@ -2600,9 +2989,6 @@
             "Wednesday": [
                 ""
             ],
-            "Welcome to the new Comments": [
-                "Cambiar a modo escritorio"
-            ],
             "Welcome to the new Plugins window": [
                 ""
             ],
@@ -2613,6 +2999,9 @@
                 ""
             ],
             "When a related window is focused": [
+                ""
+            ],
+            "When to use (description)": [
                 ""
             ],
             "While a group member is focused, its related windows get an accent outline and a soft glow so the family is recognizable at a glance.": [
@@ -2630,8 +3019,17 @@
             "Window actions": [
                 "Acciones de ventana"
             ],
+            "Window corners": [
+                "Acciones de ventana"
+            ],
             "Window links": [
                 "Acciones de ventana"
+            ],
+            "Window reveal": [
+                "Acciones de ventana"
+            ],
+            "WordPress": [
+                "Azul WordPress"
             ],
             "WordPress %1$s \"%2$s\" is available.": [
                 ""
@@ -2657,8 +3055,8 @@
             "Words": [
                 ""
             ],
-            "Wrap selection in a link": [
-                ""
+            "Working…": [
+                "Subiendo…"
             ],
             "Write a note…": [
                 ""
@@ -2667,6 +3065,15 @@
                 ""
             ],
             "Write a review on WordPress.org ↗": [
+                ""
+            ],
+            "Writing suggestions": [
+                ""
+            ],
+            "Yesterday": [
+                ""
+            ],
+            "You": [
                 ""
             ],
             "You accepted — play %1$s and beat %2$s!": [
@@ -2678,10 +3085,7 @@
             "You beat the %1$s challenge: %2$s vs %3$s.": [
                 ""
             ],
-            "You can restore it from the Recycle Bin later.": [
-                "Lo sentimos, no tienes permiso para acceder al escritorio de WordPress."
-            ],
-            "You can't edit this comment.": [
+            "You can restore it from the Trash later.": [
                 "Lo sentimos, no tienes permiso para acceder al escritorio de WordPress."
             ],
             "You declined %1$s’s %2$s challenge.": [
@@ -2717,10 +3121,10 @@
             "by %s": [
                 ""
             ],
-            "comments": [
+            "can modify": [
                 ""
             ],
-            "components registered.": [
+            "comments": [
                 ""
             ],
             "deactivated": [
@@ -2735,6 +3139,9 @@
             "in %s": [
                 ""
             ],
+            "just now": [
+                ""
+            ],
             "macOS-style gesture: a left click on the empty desktop minimizes every window, and a second click restores them. When on, the matching \"Show desktop\" entry is removed from the wallpaper context menu — the click gesture replaces it. Off by default.": [
                 ""
             ],
@@ -2742,6 +3149,9 @@
                 ""
             ],
             "points": [
+                ""
+            ],
+            "read-only": [
                 ""
             ],
             "updated": [
@@ -2757,7 +3167,13 @@
             "—": [
                 ""
             ],
+            "“%s” will be moved to the Trash. You can restore it later.": [
+                ""
+            ],
             "“%s” will be permanently deleted. This cannot be undone.": [
+                ""
+            ],
+            "“%s” will be removed from this site for everyone. This cannot be undone.": [
                 ""
             ],
             "→ %s": [

@@ -14,7 +14,6 @@
  * contracts, and error codes all unchanged.
  *
  * @package Desktop_Mode
- * @since   0.8.1
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -54,11 +53,6 @@ defined( 'ABSPATH' ) || exit;
  * };
  * ```
  *
- * @since 0.8.1
- * @since 0.8.1 Returns `WP_Error` on validation failure instead of
- *               silent `false`. Legacy `if ( $result )` callers remain
- *               correct because `WP_Error` is truthy.
- *
  * @param string $id   Wallpaper id. For canvas wallpapers this must
  *                     match the `window.desktopModeWallpapers[<id>]`
  *                     key the plugin's JS publishes.
@@ -83,7 +77,7 @@ defined( 'ABSPATH' ) || exit;
  *                                  Settings when the wallpaper is the
  *                                  active selection — what it is, where
  *                                  its data comes from, the story behind
- *                                  it. Optional. Since 0.9.4.
+ *                                  it. Optional.
  *     @type string[] $capabilities Gate: ALL caps must match. Any
  *                                  missed cap returns
  *                                  `WP_Error desktop_mode_capability_denied`.
@@ -156,7 +150,17 @@ function desktop_mode_register_wallpaper( $id, $args = array() ) {
 
 	$entry = array(
 		'id'          => $id,
-		'label'       => (string) $args['label'],
+		// Plain text by contract, same as `description` below. The
+		// shell paints labels through the `html` tagged template, whose
+		// text slots build DOM with `createTextNode()` — never
+		// `innerHTML` — so a label cannot become markup downstream.
+		//
+		// Note this STRIPS rather than ESCAPES, and that distinction is
+		// load-bearing: `esc_html()` here would encode `&` in a
+		// perfectly ordinary label ("Black & White") and the text node
+		// would then render the entity literally as `&amp;`. Escaping
+		// belongs at an HTML boundary; there isn't one on this path.
+		'label'       => sanitize_text_field( (string) $args['label'] ),
 		'preview'     => (string) $args['preview'],
 		'type'        => $type,
 		'value'       => $value,
@@ -173,8 +177,6 @@ function desktop_mode_register_wallpaper( $id, $args = array() ) {
 	 * Does NOT fire when `desktop_mode_register_wallpaper()` returns a
 	 * `WP_Error`.
 	 *
-	 * @since 0.8.1
-	 *
 	 * @param string $id    The wallpaper id.
 	 * @param array  $entry The stored registry entry.
 	 */
@@ -188,7 +190,6 @@ function desktop_mode_register_wallpaper( $id, $args = array() ) {
  * {@see desktop_mode_register_wallpaper()}. Same static-store
  * pattern as the widget + native-window registries.
  *
- * @since 0.8.1
  * @internal
  */
 function desktop_mode_desktop_wallpaper_registry( $id = '', $entry = null ) {
@@ -208,8 +209,6 @@ function desktop_mode_desktop_wallpaper_registry( $id = '', $entry = null ) {
  * the resolved script URL cross the wire; the plugin's mount
  * callback is announced via the JS global the script sets up.
  *
- * @since 0.8.1
- *
  * @return array[]
  */
 function desktop_mode_build_desktop_wallpapers_payload() {
@@ -222,8 +221,6 @@ function desktop_mode_build_desktop_wallpapers_payload() {
 	 * the shell. Mirrors the JS-side `desktop-mode.wallpapers` filter
 	 * so plugins can rearrange, hide, or override entries at boot
 	 * without round-tripping through the JS registry.
-	 *
-	 * @since 0.8.1
 	 *
 	 * @param array[] $registry The registered wallpaper entries.
 	 */
@@ -261,8 +258,6 @@ function desktop_mode_build_desktop_wallpapers_payload() {
  * Enqueue plugin-registered wallpaper scripts on the shell page
  * so wallpapers active at boot time have their defs available
  * without any dynamic-load roundtrip.
- *
- * @since 0.8.1
  */
 function desktop_mode_enqueue_desktop_wallpaper_scripts() {
 	if ( ! desktop_mode_is_enabled() || desktop_mode_is_chromeless_request() || desktop_mode_is_classic_request() ) {

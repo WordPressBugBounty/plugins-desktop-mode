@@ -3,7 +3,7 @@
  * Plugin Name:       Desktop Mode
  * Plugin URI:        https://github.com/WordPress/desktop-mode
  * Description:       Renders the WordPress admin as a desktop OS. Admin screens become draggable, resizable, minimizable windows floating on a desktop with a dock. Purely opt-in per user.
- * Version:           0.9.7
+ * Version:           0.9.8
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Daniel López Sánchez
@@ -17,7 +17,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'DESKTOP_MODE_VERSION', '0.9.7' );
+define( 'DESKTOP_MODE_VERSION', '0.9.8' );
 define( 'DESKTOP_MODE_FILE', __FILE__ );
 define( 'DESKTOP_MODE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'DESKTOP_MODE_URL', plugin_dir_url( __FILE__ ) );
@@ -41,8 +41,6 @@ define( 'DESKTOP_MODE_URL', plugin_dir_url( __FILE__ ) );
  * defined until `parse_request`), cron, WP-CLI, and the PHPUnit
  * environment (the test bootstrap loads the plugin outside admin
  * context but exercises the render layer directly).
- *
- * @since 0.9.7
  *
  * @return bool True to load the admin-rendering modules.
  */
@@ -72,8 +70,6 @@ function desktop_mode_request_needs_admin_modules() {
 	 * that internally dispatches `desktop-mode/v1` REST routes via
 	 * `rest_do_request()` outside a sniffable REST request can force
 	 * the full load by returning true.
-	 *
-	 * @since 0.9.7
 	 *
 	 * @param bool $needs Whether the current request loads the
 	 *                    admin-rendering module set.
@@ -133,6 +129,7 @@ require_once DESKTOP_MODE_DIR . 'includes/widgets/widget-site-views.php';
 require_once DESKTOP_MODE_DIR . 'includes/widgets/widget-jazz-quote.php';
 require_once DESKTOP_MODE_DIR . 'includes/widgets/widget-starter.php';
 require_once DESKTOP_MODE_DIR . 'includes/widgets/widget-notes.php';
+require_once DESKTOP_MODE_DIR . 'includes/widgets/widget-drafts.php';
 require_once DESKTOP_MODE_DIR . 'includes/widgets/widget-focus-timer.php';
 require_once DESKTOP_MODE_DIR . 'includes/extended-options.php';
 require_once DESKTOP_MODE_DIR . 'includes/oauth-relay.php';
@@ -142,6 +139,7 @@ require_once DESKTOP_MODE_DIR . 'includes/ai-copilot/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/content-changes.php';
 require_once DESKTOP_MODE_DIR . 'includes/recycle-bin/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/desktop-files/bootstrap.php';
+require_once DESKTOP_MODE_DIR . 'includes/desktop-themes/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/notes/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/posts-window/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/pages-window/bootstrap.php';
@@ -153,6 +151,7 @@ require_once DESKTOP_MODE_DIR . 'includes/my-wordpress/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/content-graph/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/living-tree/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/games/bootstrap.php';
+require_once DESKTOP_MODE_DIR . 'includes/agents/bootstrap.php';
 require_once DESKTOP_MODE_DIR . 'includes/pwa.php';
 require_once DESKTOP_MODE_DIR . 'includes/compat/divi.php';
 
@@ -215,8 +214,6 @@ if ( desktop_mode_request_needs_admin_modules() ) {
  * `desktop_mode_*` helpers expecting Desktop Mode to be wired up;
  * firing them mid-cascade can trigger the same fatal we're trying
  * to prevent. Skipping them is the safer default.
- *
- * @since 0.8.2
  */
 function desktop_mode_cascade_deactivate_dependents() {
 	// Defer to `shutdown` so we run AFTER the outer
@@ -234,8 +231,6 @@ register_deactivation_hook( DESKTOP_MODE_FILE, 'desktop_mode_cascade_deactivate_
  * that callback must register, not execute, the cascade. See
  * {@see desktop_mode_cascade_deactivate_dependents} for the timing
  * rationale.
- *
- * @since 0.8.2
  */
 function desktop_mode_do_cascade_deactivate() {
 	if ( ! class_exists( 'WP_Plugin_Dependencies' ) ) {
@@ -258,8 +253,6 @@ function desktop_mode_do_cascade_deactivate() {
 	 * Filter the list of plugin files to cascade-deactivate when
 	 * Desktop Mode is deactivated. Defaults to every plugin whose
 	 * `Requires Plugins` header lists our directory slug.
-	 *
-	 * @since 0.8.2
 	 *
 	 * @param string[] $dependents Plugin files (e.g. "foo/foo.php").
 	 * @param string   $slug       Desktop Mode's directory slug.
