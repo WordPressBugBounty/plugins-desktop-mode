@@ -1,6 +1,6 @@
 <?php
 /**
- * Desktop Mode — Recycle Bin: window + icon registration.
+ * OpenStation — Recycle Bin: window + icon registration.
  *
  * Native window with id `desktop-mode-recycle-bin`, pinned to the taskbar with a
  * matching wallpaper icon. Like the code editor, the template body is a
@@ -8,34 +8,140 @@
  * is populated from the REST list endpoint at render time.
  *
  * Both registrations are filterable via the standard
- * `desktop_mode_recycle_bin_window_args` / `desktop_mode_recycle_bin_icon_args`
+ * `openstation_recycle_bin_window_args` / `openstation_recycle_bin_icon_args`
  * filters so a plugin can swap the icon, change the dimensions, or
  * restrict who sees the bin without touching this file.
  *
- * @package WPDesktopMode
+ * @package OpenStation
  */
 
 defined( 'ABSPATH' ) || exit;
 
 /**
+ * The shared bin SVG used by the window icon and the desktop icon.
+ *
+ * The bin used to be `dashicons-trash`, which worked but wore the
+ * wrong clothes. Dashicons are WP core's icon set: solid fills on a
+ * 20-unit grid, tuned for admin-menu sizes. The shell's own icons are
+ * outlined vessels on a 64-unit grid at stroke 3. Sitting next to
+ * WP Explorer, Corkboard and Games in the dock, the Dashicon was
+ * visibly a guest from another system: heavier, tighter, and drawn to
+ * a different rhythm.
+ *
+ * So this is the same object, redrawn to the house rule the other
+ * three follow: an outlined vessel with solid content, three elements
+ * because it renders as small as 20px in the dock. The lid is the
+ * solid one, which gives the mark a single dense horizontal to be
+ * recognised by when the tapered body below it thins out.
+ *
+ * Drawn in `currentColor`, so `renderIcon()` paints it as a CSS mask
+ * and it takes the surface's own text colour. Dashicons already
+ * inherited colour, being font glyphs; the point of the change is the
+ * drawing, not the theming.
+ *
+ * Note that the row actions inside the bin window, and the "Move to
+ * trash" entries in context menus, stay on `dashicons-trash`. Those
+ * are menu glyphs sitting among other menu glyphs, and they should
+ * match their neighbours rather than this icon.
+ *
+ * The bin has two states. Empty is the vessel on its own; full adds
+ * three crumpled balls inside it and knocks the lid askew. See
+ * {@link openstation_recycle_bin_icon_svg()} for why the lid only
+ * moves 8 degrees.
+ *
+ * @param bool $full Whether to draw the bin holding something.
+ * @return string Raw `<svg>` markup.
+ */
+function openstation_recycle_bin_icon_svg( $full = false ) {
+	// The lid and the handle travel together. In the full state the
+	// pair is knocked askew, which is the whole difference at the top
+	// of the mark.
+	$lid_transform = $full
+		? ' transform="translate(0 -2.5) rotate(8 32 21.5)"'
+		: '';
+
+	$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+		. '<g' . $lid_transform . '>'
+		// The handle, outlined so it reads as a loop rather than a tab.
+		. '<path d="M25 19v-2.5a3.5 3.5 0 0 1 3.5-3.5h7a3.5 3.5 0 0 1 3.5 3.5V19" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>'
+		// The lid: the one solid element, and the widest, so it anchors
+		// the mark at small sizes.
+		. '<rect x="10" y="19" width="44" height="5" rx="2.5" fill="currentColor"/>'
+		. '</g>'
+		// The body, tapered towards the base the way a real bin is, which
+		// is also what separates it from a plain bucket.
+		//
+		// 27 units tall, narrowing to 71% of its top width. It was 24
+		// tall at 59%, which drew a shallower, more conical tub than a
+		// bin actually is, and left an interior too cramped to hold
+		// anything. Taken further, to a bottom much past 75%, the walls
+		// go vertical and the mark reads as a bucket; this sits at the
+		// edge of that.
+		. '<path d="M15.5 28.5h33l-1.2 24a3.5 3.5 0 0 1-3.5 3H20.2a3.5 3.5 0 0 1-3.5-3z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>';
+
+	if ( $full ) {
+		// Three crumpled balls, one path with three subpaths so the
+		// mark stays at four elements rather than six.
+		//
+		// Each is a seven-point polygon on a radius jittered between
+		// 0.81 and 1.0, with a same-colour round-joined stroke that
+		// turns the corners into creases instead of points. Seven
+		// points rather than nine because a ball this small needs
+		// deeper, fewer facets to keep any texture at all.
+		//
+		// The layout is staggered deliberately. Two balls at the same
+		// height with a third centred under them reads as a face, and
+		// it cannot be unseen once noticed, so no two share a y (the
+		// top pair are 4.2 units apart) and the third sits below-left
+		// rather than on the centreline. Every gap in the mark clears
+		// 2 units: 5.1 to the left wall, 4.4 to the right, 2.8 to the
+		// rim, 2.5 to the base, and 2.5 to 4.2 between the balls. Those
+		// last three decide how far down the size ladder they stay
+		// three things instead of one.
+		$svg .= '<path d="M29.7 38 27.4 39.5 24.7 39.6 23.6 37.1 24.1 34.4 26.8 34.1 29.2 35.1'
+			. 'ZM39.4 44.1 36.7 43.5 34.8 41.6 35.8 39.1 38.1 37.6 40.2 39.3 41.1 41.8'
+			. 'ZM28.1 50.4 27 47.9 27.4 45.2 30 44.6 32.6 45.6 32.4 48.3 31 50.5Z"'
+			. ' fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>';
+	}
+
+	return $svg . '</svg>';
+}
+
+/**
+ * Both bin states as base64 data URIs, ready for `renderIcon()`.
+ *
+ * The client swaps between these as the count crosses zero, so both
+ * have to reach the page on the first paint. Cheap: two string
+ * builds and two base64 encodes, no queries.
+ *
+ * @return array{empty:string,full:string}
+ */
+function openstation_recycle_bin_icon_uris() {
+	return array(
+		'empty' => 'data:image/svg+xml;base64,' . base64_encode( openstation_recycle_bin_icon_svg( false ) ),
+		'full'  => 'data:image/svg+xml;base64,' . base64_encode( openstation_recycle_bin_icon_svg( true ) ),
+	);
+}
+
+/**
  * Echoes the recycle bin window's template body.
  *
- * The shell wraps this in `<template id="desktop-mode-native-window-desktop-mode-recycle-bin">`
+ * The shell wraps this in `<template id="os-native-window-desktop-mode-recycle-bin">`
  * and clones it into the window body BEFORE the JS render callback runs.
- * The `data-desktop-mode-recycle-bin-*` hooks below are the contract the JS
+ * The `data-os-recycle-bin-*` hooks below are the contract the JS
  * relies on — keep them intact (or rename via the filter) when
  * customizing the layout.
  */
-function desktop_mode_recycle_bin_render_template() {
+function openstation_recycle_bin_render_template() {
 	ob_start();
 	?>
-	<div class="desktop-mode-recycle-bin" data-desktop-mode-recycle-bin-root>
-		<header class="desktop-mode-recycle-bin__toolbar" data-desktop-mode-recycle-bin-toolbar>
-			<div class="desktop-mode-recycle-bin__toolbar-left">
-				<wpd-segmented data-desktop-mode-recycle-bin-filter>
-					<wpd-segment value="" selected><?php esc_html_e( 'All', 'desktop-mode' ); ?></wpd-segment>
-					<wpd-segment value="post"><?php esc_html_e( 'Posts', 'desktop-mode' ); ?></wpd-segment>
-					<wpd-segment value="page"><?php esc_html_e( 'Pages', 'desktop-mode' ); ?></wpd-segment>
+	<div class="desktop-mode-recycle-bin" data-os-recycle-bin-root>
+		<header class="os-recycle-bin__toolbar" data-os-recycle-bin-toolbar>
+			<div class="os-recycle-bin__toolbar-left">
+				<os-segmented data-os-recycle-bin-filter>
+					<os-segment value="" selected><?php esc_html_e( 'All', 'desktop-mode' ); ?></os-segment>
+					<os-segment value="post"><?php esc_html_e( 'Posts', 'desktop-mode' ); ?></os-segment>
+					<os-segment value="page"><?php esc_html_e( 'Pages', 'desktop-mode' ); ?></os-segment>
 					<?php
 					// The Media segment is only useful when WP itself routes
 					// attachment deletions through Trash. That gate is the
@@ -46,60 +152,60 @@ function desktop_mode_recycle_bin_render_template() {
 					// the tab would always read "0" and confuse users.
 					if ( defined( 'MEDIA_TRASH' ) && MEDIA_TRASH ) :
 						?>
-						<wpd-segment value="attachment"><?php esc_html_e( 'Media', 'desktop-mode' ); ?></wpd-segment>
+						<os-segment value="attachment"><?php esc_html_e( 'Media', 'desktop-mode' ); ?></os-segment>
 						<?php
 					endif;
 					?>
-					<wpd-segment value="comment"><?php esc_html_e( 'Comments', 'desktop-mode' ); ?></wpd-segment>
-					<wpd-segment value="desktop"><?php esc_html_e( 'Desktop', 'desktop-mode' ); ?></wpd-segment>
-				</wpd-segmented>
-				<wpd-text-field
-					data-desktop-mode-recycle-bin-search
+					<os-segment value="comment"><?php esc_html_e( 'Comments', 'desktop-mode' ); ?></os-segment>
+					<os-segment value="desktop"><?php esc_html_e( 'Desktop', 'desktop-mode' ); ?></os-segment>
+				</os-segmented>
+				<os-text-field
+					data-os-recycle-bin-search
 					placeholder="<?php esc_attr_e( 'Search trash…', 'desktop-mode' ); ?>"
-				></wpd-text-field>
+				></os-text-field>
 			</div>
-			<div class="desktop-mode-recycle-bin__toolbar-right" data-desktop-mode-recycle-bin-bulk hidden>
-				<span class="desktop-mode-recycle-bin__count" data-desktop-mode-recycle-bin-count></span>
-				<wpd-button variant="secondary" data-desktop-mode-recycle-bin-restore-selected>
+			<div class="os-recycle-bin__toolbar-right" data-os-recycle-bin-bulk hidden>
+				<span class="os-recycle-bin__count" data-os-recycle-bin-count></span>
+				<os-button variant="secondary" data-os-recycle-bin-restore-selected>
 					<span class="dashicons dashicons-image-rotate" aria-hidden="true"></span>
 					<?php esc_html_e( 'Restore', 'desktop-mode' ); ?>
-				</wpd-button>
-				<wpd-button variant="secondary" data-desktop-mode-recycle-bin-pin-to-desktop>
+				</os-button>
+				<os-button variant="secondary" data-os-recycle-bin-pin-to-desktop>
 					<span class="dashicons dashicons-desktop" aria-hidden="true"></span>
 					<?php esc_html_e( 'Pin to desktop', 'desktop-mode' ); ?>
-				</wpd-button>
-				<wpd-button variant="danger" data-desktop-mode-recycle-bin-purge-selected>
+				</os-button>
+				<os-button variant="danger" data-os-recycle-bin-purge-selected>
 					<span class="dashicons dashicons-trash" aria-hidden="true"></span>
 					<?php esc_html_e( 'Delete forever', 'desktop-mode' ); ?>
-				</wpd-button>
+				</os-button>
 			</div>
-			<div class="desktop-mode-recycle-bin__toolbar-trailing">
-				<wpd-button variant="ghost" data-desktop-mode-recycle-bin-refresh title="<?php esc_attr_e( 'Refresh', 'desktop-mode' ); ?>">
+			<div class="os-recycle-bin__toolbar-trailing">
+				<os-button variant="ghost" data-os-recycle-bin-refresh title="<?php esc_attr_e( 'Refresh', 'desktop-mode' ); ?>">
 					<span class="dashicons dashicons-update" aria-hidden="true"></span>
-				</wpd-button>
-				<wpd-button variant="danger" data-desktop-mode-recycle-bin-empty>
+				</os-button>
+				<os-button variant="danger" data-os-recycle-bin-empty>
 					<span class="dashicons dashicons-trash" aria-hidden="true"></span>
 					<?php esc_html_e( 'Empty Trash', 'desktop-mode' ); ?>
-				</wpd-button>
+				</os-button>
 			</div>
 		</header>
-		<div class="desktop-mode-recycle-bin__body" data-desktop-mode-recycle-bin-body>
-			<wpd-table
-				data-desktop-mode-recycle-bin-table
+		<div class="os-recycle-bin__body" data-os-recycle-bin-body>
+			<os-table
+				data-os-recycle-bin-table
 				selectable="multi"
 				sticky-header
 				hover
 				striped
 				loading
 			>
-				<div slot="empty" class="desktop-mode-recycle-bin__empty">
+				<div slot="empty" class="os-recycle-bin__empty">
 					<span class="dashicons dashicons-trash" aria-hidden="true"></span>
 					<p><?php esc_html_e( 'The Trash is empty.', 'desktop-mode' ); ?></p>
-					<p class="desktop-mode-recycle-bin__empty-hint">
+					<p class="os-recycle-bin__empty-hint">
 						<?php esc_html_e( 'Deleted posts, pages, and media show up here. Restoring puts them back where they were.', 'desktop-mode' ); ?>
 					</p>
 				</div>
-			</wpd-table>
+			</os-table>
 		</div>
 	</div>
 	<?php
@@ -108,14 +214,14 @@ function desktop_mode_recycle_bin_render_template() {
 	/**
 	 * Filter the recycle bin window's template HTML.
 	 *
-	 * Keep the `data-desktop-mode-recycle-bin-*` hooks intact so the JS render
+	 * Keep the `data-os-recycle-bin-*` hooks intact so the JS render
 	 * callback can find its mount points, or rename them and update the
 	 * matching constants in `src/recycle-bin/index.ts`.
 	 *
 	 * @param string $html Default template HTML.
 	 */
-	$filtered = (string) apply_filters( 'desktop_mode_recycle_bin_template_html', $html );
-	echo wp_kses( $filtered, desktop_mode_native_window_allowed_html() );
+	$filtered = (string) apply_filters( 'openstation_recycle_bin_template_html', $html );
+	echo wp_kses( $filtered, openstation_native_window_allowed_html() );
 }
 
 /**
@@ -127,7 +233,7 @@ function desktop_mode_recycle_bin_render_template() {
  *
  * @return bool
  */
-function desktop_mode_recycle_bin_user_can_use() {
+function openstation_recycle_bin_user_can_use() {
 	$can = current_user_can( 'edit_posts' );
 
 	/**
@@ -135,7 +241,7 @@ function desktop_mode_recycle_bin_user_can_use() {
 	 *
 	 * @param bool $can Default: edit_posts capability.
 	 */
-	return (bool) apply_filters( 'desktop_mode_recycle_bin_user_can_use', $can );
+	return (bool) apply_filters( 'openstation_recycle_bin_user_can_use', $can );
 }
 
 /**
@@ -144,15 +250,18 @@ function desktop_mode_recycle_bin_user_can_use() {
  * Hooked at priority 20, after `components.php` has bootstrapped the
  * native-window registry — same timing as the code editor.
  */
-function desktop_mode_recycle_bin_register_window() {
-	if ( ! desktop_mode_recycle_bin_user_can_use() ) {
+function openstation_recycle_bin_register_window() {
+	if ( ! openstation_recycle_bin_user_can_use() ) {
 		return;
 	}
 
+	$icon_uris = openstation_recycle_bin_icon_uris();
+	$icon_uri  = $icon_uris['empty'];
+
 	$window_args = array(
 		'title'      => __( 'Trash', 'desktop-mode' ),
-		'icon'       => 'dashicons-trash',
-		'template'   => 'desktop_mode_recycle_bin_render_template',
+		'icon'       => $icon_uri,
+		'template'   => 'openstation_recycle_bin_render_template',
 		'script'     => 'desktop-mode-recycle-bin',
 		'width'      => 880,
 		'height'     => 560,
@@ -164,20 +273,20 @@ function desktop_mode_recycle_bin_register_window() {
 	/**
 	 * Filter the args used to register the recycle bin native window.
 	 *
-	 * @param array $window_args Args passed to `desktop_mode_register_window()`.
+	 * @param array $window_args Args passed to `openstation_register_window()`.
 	 */
-	$window_args = (array) apply_filters( 'desktop_mode_recycle_bin_window_args', $window_args );
+	$window_args = (array) apply_filters( 'openstation_recycle_bin_window_args', $window_args );
 
-	$registered = desktop_mode_register_window( 'desktop-mode-recycle-bin', $window_args );
+	$registered = openstation_register_window( 'desktop-mode-recycle-bin', $window_args );
 	if ( is_wp_error( $registered ) ) {
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-		error_log( '[desktop-mode] Recycle bin window registration failed: ' . $registered->get_error_message() );
+		error_log( '[openstation] Recycle bin window registration failed: ' . $registered->get_error_message() );
 		return;
 	}
 
 	$icon_args = array(
 		'title'    => __( 'Trash', 'desktop-mode' ),
-		'icon'     => 'dashicons-trash',
+		'icon_svg' => openstation_recycle_bin_icon_svg(),
 		'window'   => 'desktop-mode-recycle-bin',
 		'position' => 80,
 	);
@@ -185,28 +294,28 @@ function desktop_mode_recycle_bin_register_window() {
 	/**
 	 * Filter the args used to register the recycle bin desktop icon.
 	 *
-	 * @param array $icon_args Args passed to `desktop_mode_register_icon()`.
+	 * @param array $icon_args Args passed to `openstation_register_icon()`.
 	 */
-	$icon_args = (array) apply_filters( 'desktop_mode_recycle_bin_icon_args', $icon_args );
+	$icon_args = (array) apply_filters( 'openstation_recycle_bin_icon_args', $icon_args );
 
-	desktop_mode_register_icon( 'desktop-mode-recycle-bin', $icon_args );
+	openstation_register_icon( 'desktop-mode-recycle-bin', $icon_args );
 }
-add_action( 'init', 'desktop_mode_recycle_bin_register_window', 20 );
+add_action( 'init', 'openstation_recycle_bin_register_window', 20 );
 
 /**
  * Localize REST endpoints for the JS bundle.
  *
  * Same pattern as the code editor: the bundle reads its config off
- * `window.desktopModeRecycleBinConfig` and never hardcodes URLs.
+ * `window.openStationRecycleBinConfig` and never hardcodes URLs.
  */
-function desktop_mode_recycle_bin_localize_config() {
-	if ( ! desktop_mode_recycle_bin_user_can_use() ) {
+function openstation_recycle_bin_localize_config() {
+	if ( ! openstation_recycle_bin_user_can_use() ) {
 		return;
 	}
 
 	wp_localize_script(
 		'desktop-mode-recycle-bin',
-		'desktopModeRecycleBinConfig',
+		'openStationRecycleBinConfig',
 		array(
 			'restNonce'  => wp_create_nonce( 'wp_rest' ),
 			'listUrl'    => esc_url_raw( rest_url( 'desktop-mode/v1/recycle-bin' ) ),
@@ -214,29 +323,38 @@ function desktop_mode_recycle_bin_localize_config() {
 			'purgeUrl'   => esc_url_raw( rest_url( 'desktop-mode/v1/recycle-bin/purge' ) ),
 			'emptyUrl'   => esc_url_raw( rest_url( 'desktop-mode/v1/recycle-bin/empty' ) ),
 			'countUrl'   => esc_url_raw( rest_url( 'desktop-mode/v1/recycle-bin/count' ) ),
-			'postTypes'  => desktop_mode_recycle_bin_capture_post_types(),
+			'postTypes'  => openstation_recycle_bin_capture_post_types(),
 		)
 	);
 
 	wp_enqueue_style( 'desktop-mode-recycle-bin' );
 }
-add_action( 'admin_enqueue_scripts', 'desktop_mode_recycle_bin_localize_config', 30 );
+add_action( 'admin_enqueue_scripts', 'openstation_recycle_bin_localize_config', 30 );
 
 /**
- * Inject the initial trash count into the shell config so the
- * dock/taskbar tile + desktop icon can paint a badge on the very
- * first paint — before the bin window has ever opened.
+ * Inject the initial trash count and both bin drawings into the
+ * shell config, so the dock/taskbar tile and the desktop icon show
+ * the right one on the very first paint, before the bin window has
+ * ever opened.
+ *
+ * Both drawings travel together rather than the server picking one:
+ * the count changes without a reload, and shipping the pair makes
+ * crossing zero a local swap instead of a round trip.
  *
  * @param array $config Shell config blob.
  * @return array
  */
-function desktop_mode_recycle_bin_inject_shell_config( $config ) {
+function openstation_recycle_bin_inject_shell_config( $config ) {
 	if ( ! is_array( $config ) ) {
 		return $config;
 	}
-	$config['recycleBinCount']     = desktop_mode_recycle_bin_count();
+	$icons = openstation_recycle_bin_icon_uris();
+
+	$config['recycleBinCount']     = openstation_recycle_bin_count();
 	$config['recycleBinCountUrl']  = esc_url_raw( rest_url( 'desktop-mode/v1/recycle-bin/count' ) );
-	$config['recycleBinPostTypes'] = desktop_mode_recycle_bin_capture_post_types();
+	$config['recycleBinPostTypes'] = openstation_recycle_bin_capture_post_types();
+	$config['recycleBinIconEmpty'] = $icons['empty'];
+	$config['recycleBinIconFull']  = $icons['full'];
 	return $config;
 }
-add_filter( 'desktop_mode_shell_config', 'desktop_mode_recycle_bin_inject_shell_config', 20 );
+add_filter( 'openstation_shell_config', 'openstation_recycle_bin_inject_shell_config', 20 );
