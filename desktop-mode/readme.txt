@@ -1,10 +1,10 @@
-=== OpenStation ===
+=== OpenStation — Desktop Windows, Dock & Virtual Desktops for WP Admin ===
 Contributors: automattic, allterraindeveloper, epeicher, mmtr86, nickhamze
 Tags: admin, dashboard, desktop, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -121,6 +121,15 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * **[LDNOOBW English list](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)** (CC-BY 4.0) — used as an exclusion filter.
 
 == Changelog ==
+
+= 1.0.1 =
+* Tile contrast, comments-window styling, Overview clicks, and preview refreshes
+* Always show the Agents section in WP Explorer
+* Windows: Preserve fullscreen state after leaving Overview
+* Decode HTML entities in plugin install toast
+* Settle a pending Overview exit before re-entering
+* AI: surface an empty final answer as an error instead of a silent success
+* Experimental: Set OpenStation windows free into real OS windows (Electron adapter)
 
 = 1.0.0 =
 * Desktop Mode is now OpenStation — new name, new look, same plugin. Settings, files, sessions and desktop layouts carry over untouched.
