@@ -21,6 +21,8 @@
 use WordPress\AiClient\Messages\DTO\Message;
 use WordPress\AiClient\Messages\DTO\MessagePart;
 use WordPress\AiClient\Messages\DTO\UserMessage;
+use WordPress\AiClient\Providers\Models\Contracts\ModelInterface;
+use WordPress\AiClient\Providers\Models\DTO\ModelConfig;
 use WordPress\AiClient\Tools\DTO\FunctionCall;
 use WordPress\AiClient\Tools\DTO\FunctionDeclaration;
 use WordPress\AiClient\Tools\DTO\FunctionResponse;
@@ -144,6 +146,82 @@ function openstation_ai_empty_answer_error( $detail ) {
 }
 
 /**
+ * Applies the site's model config to a prompt builder.
+ *
+ * @param mixed $builder WP_AI_Client_Prompt_Builder.
+ * @param array $context Partial filter context; missing keys are defaulted.
+ * @return mixed
+ */
+function openstation_ai_apply_model_config( $builder, array $context ) {
+	$context = array_merge(
+		array(
+			'user_id'    => 0,
+			'request_id' => '',
+			'source'     => '',
+			'has_tools'  => false,
+			'has_schema' => false,
+		),
+		$context
+	);
+
+	/**
+	 * Filters the model config for one AI turn.
+	 *
+	 * Defaults to empty. Recipe: `docs/examples/ai-model-config.md`.
+	 *
+	 * @param array $config  { model?: string|ModelInterface, max_tokens?: int, temperature?: float, custom_options?: array<string, mixed> }.
+	 * @param array $context { user_id, request_id, source, has_tools, has_schema }.
+	 */
+	$config = apply_filters( 'openstation_ai_model_config', array(), $context );
+	if ( ! is_array( $config ) ) {
+		return $builder;
+	}
+
+	$model_config = new ModelConfig();
+
+	if ( isset( $config['max_tokens'] ) && is_numeric( $config['max_tokens'] ) && (int) $config['max_tokens'] > 0 ) {
+		$model_config->setMaxTokens( (int) $config['max_tokens'] );
+	}
+
+	// Unlike max_tokens, 0.0 is a legitimate temperature (deterministic). The
+	// 2.0 ceiling is the range the SDK's own schema declares.
+	if ( isset( $config['temperature'] ) && is_numeric( $config['temperature'] )
+		&& (float) $config['temperature'] >= 0.0 && (float) $config['temperature'] <= 2.0 ) {
+		$model_config->setTemperature( (float) $config['temperature'] );
+	}
+
+	$custom_options = array();
+	if ( isset( $config['custom_options'] ) && is_array( $config['custom_options'] ) ) {
+		foreach ( $config['custom_options'] as $key => $value ) {
+			// A list would reach the provider as parameters named `0`, `1`, ….
+			if ( is_string( $key ) && '' !== $key ) {
+				$custom_options[ $key ] = $value;
+			}
+		}
+	}
+
+	if ( ! empty( $custom_options ) ) {
+		$model_config->setCustomOptions( $custom_options );
+	}
+
+	$builder = $builder->using_model_config( $model_config );
+
+	// After the config: `using_model()` merges the model's own defaults under
+	// whatever the builder already carries, so ours has to land first.
+	$model = isset( $config['model'] ) ? $config['model'] : null;
+	if ( $model instanceof ModelInterface ) {
+		$builder = $builder->using_model( $model );
+	} elseif ( is_string( $model ) && '' !== trim( $model ) ) {
+		// `using_model()` needs a ModelInterface, so a bare model id goes
+		// through `using_model_preference()`, which throws on anything that
+		// isn't a non-empty string.
+		$builder = $builder->using_model_preference( trim( $model ) );
+	}
+
+	return $builder;
+}
+
+/**
  * Runs one generation turn through the AI Client.
  *
  * Rebuilds the prompt from the full ordered message list each turn (the
@@ -153,25 +231,24 @@ function openstation_ai_empty_answer_error( $detail ) {
  * to the shape the loop consumes; `message` has thought-channel parts stripped
  * ({@see openstation_ai_strip_thought_parts()}) so it is safe to replay.
  *
- * @param int        $user_id       Requesting user id. Currently unused — the
- *                                  provider comes from Connectors and no
- *                                  per-user preference is applied; retained for
- *                                  signature stability and future attribution.
+ * @param int        $user_id       Requesting user id.
  * @param array      $messages      Ordered conversation as SDK Message objects.
  * @param array      $tool_defs     Tool definitions to advertise.
  * @param array|null $answer_schema JSON Schema for the final answer, or null.
  * @param string     $instructions  System instruction.
+ * @param array      $context       Optional. `{ source?: string, request_id?: string }`
+ *                                  for the model-config filter.
  * @return array{ text: ?string, function_calls: array, message: mixed, usage: ?array, model: ?array }|WP_Error
  */
-function openstation_ai_client_generate( $user_id, array $messages, array $tool_defs, $answer_schema, $instructions ) {
+function openstation_ai_client_generate( $user_id, array $messages, array $tool_defs, $answer_schema, $instructions, array $context = array() ) {
 	$builder = wp_ai_client_prompt( $messages );
 
 	if ( is_string( $instructions ) && '' !== $instructions ) {
 		$builder = $builder->using_system_instruction( $instructions );
 	}
 
-	// Provider + model selection is delegated entirely to the Core AI Client
-	// (Connector-backed); OpenStation pins neither.
+	// Provider + model selection is delegated to the Core AI Client
+	// (Connector-backed) unless the model-config filter says otherwise.
 
 	$declarations = openstation_ai_build_function_declarations( $tool_defs );
 	if ( ! empty( $declarations ) ) {
@@ -184,6 +261,18 @@ function openstation_ai_client_generate( $user_id, array $messages, array $tool_
 		// whole turn. Normalize here so no schema author has to know that.
 		$builder = $builder->as_json_response( openstation_ai_normalize_response_schema( $answer_schema ) );
 	}
+
+	$builder = openstation_ai_apply_model_config(
+		$builder,
+		array_merge(
+			$context,
+			array(
+				'user_id'    => (int) $user_id,
+				'has_tools'  => ! empty( $declarations ),
+				'has_schema' => is_array( $answer_schema ),
+			)
+		)
+	);
 
 	$result = $builder->generate_result();
 	if ( is_wp_error( $result ) ) {

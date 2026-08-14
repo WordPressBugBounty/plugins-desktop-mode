@@ -85,6 +85,9 @@ function openstation_enqueue_assets() {
 	wp_enqueue_style( 'os-settings' );
 	wp_enqueue_style( 'os-dock' );
 	wp_enqueue_style( 'os-dock-peek' );
+	wp_enqueue_style( 'os-notch' );
+	wp_enqueue_style( 'os-shortcuts' );
+	wp_enqueue_style( 'os-openstation-layout' );
 	wp_enqueue_style( 'desktop-mode-ai-assistant' );
 	wp_enqueue_style( 'desktop-mode-bug-report' );
 	wp_enqueue_style( 'os-files' );
@@ -437,10 +440,9 @@ function openstation_enqueue_assets() {
 	 *     @type string $portalUrl    Canonical `/openstation/` URL.
 	 *     @type bool   $fromPortal   Whether the shell was reached via the portal.
 	 *     @type bool   $fromPortalIntent Whether the portal redirect resolved from an explicit `?target=…` (user navigation intent) rather than the session's focused window or the default-window fallback. Distinguishes a bare `/openstation/` visit from a portal-redirected admin-bar click so the shell can honour the URL the user actually asked for.
-	 *     @type array  $seenIntros   Slugs of one-time intro dialogs the user has dismissed (e.g. `['posts']`). Native windows gate their first-open intro on this list.
+	 *     @type array  $seenIntros   Slugs of one-time announcements the user has dismissed (e.g. `['openstation-rebrand']`).
 	 *     @type string $seenIntrosUrl REST endpoint for the seen-intros surface — POST `/seen` to mark, DELETE the base to reset.
 	 *     @type bool   $rebrandNotice Whether to offer this user the one-off announcement explaining the rename from Desktop Mode to OpenStation. True only when migration 5 flagged this user as a Desktop Mode user from before the rename AND they haven't dismissed the `openstation-rebrand` intro. Only ever present in the shell config, so the announcement never reaches the classic admin.
-	 *     @type array  $stickyNotes  { available: bool } — whether the Gutenberg Guidelines experiment (the `wp_guideline` CPT + `wp_guideline_type` taxonomy) is registered. The shell skips booting the sticky-notes layer when false, avoiding the REST probes that 404 without the experiment. See `openstation_sticky_notes_is_available()`.
 	 * }
 	 */
 	$config = apply_filters(
@@ -450,6 +452,13 @@ function openstation_enqueue_assets() {
 			'currentTitle'                  => wp_strip_all_tags( $title ),
 			'currentIcon'                   => sanitize_html_class( $menu_icon ),
 			'adminUrl'                      => esc_url( admin_url() ),
+			'homeUrl'                       => esc_url( home_url( '/' ) ),
+			// Decoded: the shell assigns this to `window.location`,
+			// where `&amp;` would make `_wpnonce` arrive as
+			// `amp;_wpnonce` and fail the nonce check.
+			'logoutUrl'                     => esc_url_raw(
+				html_entity_decode( wp_logout_url(), ENT_QUOTES, 'UTF-8' )
+			),
 			'colorScheme'                   => sanitize_html_class( get_user_option( 'admin_color' ), 'fresh' ),
 			'dockItems'                     => $dock_items,
 			// Baseline menu fingerprint. The shell seeds its last-known
@@ -581,16 +590,7 @@ function openstation_enqueue_assets() {
 			// above; the dialog cannot paint without that stylesheet, so
 			// the two must not diverge.
 			'rebrandNotice'                 => $show_rebrand_notice,
-			// Sticky notes ride on Gutenberg's Guidelines experiment
-			// (the `wp_guideline` CPT + `wp_guideline_type` taxonomy).
-			// When that experiment isn't active the `wp/v2/guidelines`
-			// + `wp/v2/wp_guideline_type` probes 404 — harmless but
-			// noisy — so the shell skips booting the layer entirely.
-			'stickyNotes'                   => array(
-				'available' => openstation_sticky_notes_is_available(),
-			),
 			'aiSearchUrl'                   => esc_url_raw( rest_url( 'desktop-mode/v1/ai/search' ) ),
-			'aiSearchStreamUrl'             => esc_url_raw( add_query_arg( 'action', 'openstation_ai_search_stream', admin_url( 'admin-ajax.php' ) ) ),
 			// AI assistant availability + per-user toggle. Drives whether the
 			// Cmd+K palette and admin-bar icon appear, and the setup placeholder.
 			'aiAssistant'                   => function_exists( 'openstation_ai_assistant_config' )
@@ -876,6 +876,7 @@ function openstation_defer_non_critical_styles( $html, $handle, $href, $media ) 
 		'openstation_deferred_styles',
 		array(
 			'os-dock-peek',
+			'os-openstation-layout',
 			'desktop-mode-ai-assistant',
 			'desktop-mode-bug-report',
 			'os-window-overview',

@@ -84,9 +84,6 @@
             "%1$s did not beat your score: %2$s vs your %3$s.": [
                 ""
             ],
-            "%1$s of %2$s components match.": [
-                ""
-            ],
             "%1$s over %2$d orders": [
                 ""
             ],
@@ -188,6 +185,10 @@
             "%d notification": [
                 ""
             ],
+            "%d open window": [
+                "Abrir en una nueva pestaña del navegador",
+                "Abrir en una nueva pestaña del navegador"
+            ],
             "%d order": [
                 ""
             ],
@@ -286,9 +287,6 @@
             "%s average": [
                 ""
             ],
-            "%s components registered.": [
-                ""
-            ],
             "%s deactivated.": [
                 ""
             ],
@@ -304,8 +302,14 @@
             "%s is currently editing": [
                 ""
             ],
+            "%s menu": [
+                ""
+            ],
             "%s relaxed waves. No clock pressure, just streaks.": [
                 ""
+            ],
+            "%s sections": [
+                "Acciones de ventana"
             ],
             "%s settings": [
                 ""
@@ -326,6 +330,9 @@
                 ""
             ],
             "%s+ active installs": [
+                ""
+            ],
+            "(No title)": [
                 ""
             ],
             "(coming soon)": [
@@ -352,22 +359,31 @@
             "90 seconds on the clock — every word buys you more.": [
                 ""
             ],
+            "A click on the empty desktop minimizes every window; a second click restores them.": [
+                ""
+            ],
             "A comment cannot be empty.": [
                 ""
             ],
-            "A desktop theme restyles the whole shell — colours, window frames, the dock, and every icon. Your choice applies only to you.": [
+            "A desktop theme repaints every token at once. A coarser version of what Appearance does one control at a time.": [
                 ""
             ],
             "A gentle warm-up that builds.": [
+                ""
+            ],
+            "A native Plugins window with an Installed list, bulk actions, and a Browse gallery from the WordPress.org directory.": [
+                ""
+            ],
+            "A native Users list with bulk role changes, online indicators, and one-click password resets.": [
+                ""
+            ],
+            "A native two-pane Comments window: a list of conversations beside the full reply thread.": [
                 ""
             ],
             "A plugin with the same folder name is already installed.": [
                 ""
             ],
             "A plugin with the same folder name is already installed. Replacing it overwrites the installed files. Any local edits to the plugin will be lost. The plugin will keep its activation state.": [
-                ""
-            ],
-            "A real gallery on Browse — clean cards with rating, install count, last updated, and a click-anywhere detail flyout. Subtle hover lift, lazy-loaded icons, infinite scroll.": [
                 ""
             ],
             "A short summary": [
@@ -460,7 +476,7 @@
             "Adds a Games app for every user: built-in games, scoreboards, and player-to-player challenges. Off by default — while off, nothing game-related runs anywhere, on the server or in the browser. Saved scores are kept across a disable and reappear when re-enabled.": [
                 ""
             ],
-            "Adds an AI mode to the %s site assistant. Ask in plain language to find content, get around wp-admin, and answer questions about your site. Off by default.": [
+            "Adds an AI mode to the %s command palette: find content and ask about your site.": [
                 ""
             ],
             "Adds an Agents section to WP Explorer: durable AI workers that live on the site as login-blocked users, act through the WordPress Abilities API under their own role, and answer in a chat window. Requires a configured AI connector to run. Off by default — while off, nothing agent-related loads. Agent definitions are kept across a disable and reappear when re-enabled.": [
@@ -553,16 +569,25 @@
             "Approved": [
                 ""
             ],
-            "Apps & Icons": [
+            "Apps & Plugins": [
+                "Subir nueva"
+            ],
+            "Apps & Plugins settings…": [
                 ""
             ],
-            "Apps & Icons settings…": [
+            "Ask AI": [
                 ""
             ],
             "Ask an administrator to turn the Agents framework on in OpenStation Preferences → Features.": [
                 ""
             ],
             "Ask the agent to do something…": [
+                ""
+            ],
+            "Ask the assistant": [
+                ""
+            ],
+            "Assistant mode": [
                 ""
             ],
             "Attached media": [
@@ -634,21 +659,6 @@
             "Beta features": [
                 ""
             ],
-            "Beta — off by default. Turn on for a native Users list with bulk role change, last-login tracking, live online indicators, click-to-copy email, and one-click password resets. Capability-gated — readers see a read-only view, role assignment respects WordPress role permissions.": [
-                ""
-            ],
-            "Beta — off by default. Turn on for a native two-pane Comments window: a rail of conversations filtered by Pending / All / Spam / Trash / Mine, and the selected thread’s full nested reply chain beside it. Every message carries Reply, Edit, Approve, Spam and Trash inline, with a docked composer that repoints to whichever message you answer. Opening “Comments” on a post scopes the window to that post.": [
-                ""
-            ],
-            "Beta — off by default. Turn on for a native two-tab Plugins window: an Installed list with bulk activate / deactivate / delete, and a Browse gallery powered by the WordPress.org repository — rich detail flyout with screenshots, ratings histogram, and recent reviews. Drag a .zip onto the window to install, or drag a card from Browse to the dock to pin it.": [
-                ""
-            ],
-            "Beta — off by default. Turn on for the same table-driven experience as the Posts window, tailored for Pages: a Parent column, hierarchical sort, and a lock indicator when another user is editing a page. Toggle off any time to return to the classic screen.": [
-                ""
-            ],
-            "Beta — off by default. Turn on to replace the classic Posts list iframe with a native, table-driven window: sticky header, server-paginated rows, multi-select bulk actions, and a sub-row preview. Toggle off any time to return to the classic screen.": [
-                ""
-            ],
             "Big": [
                 ""
             ],
@@ -679,9 +689,6 @@
             "Bottom": [
                 ""
             ],
-            "Bottom dock for plugin apps; core admin menus appear as icons on the wallpaper.": [
-                ""
-            ],
             "Breadcrumb": [
                 ""
             ],
@@ -689,6 +696,9 @@
                 ""
             ],
             "Bring related windows to front": [
+                ""
+            ],
+            "Brings back the one-time announcements you have dismissed, such as the welcome dialog.": [
                 ""
             ],
             "Brisk from the first word.": [
@@ -805,10 +815,7 @@
             "Circle": [
                 ""
             ],
-            "Classic": [
-                ""
-            ],
-            "Clicking a window surfaces the windows directly tied to it — a parent brings up all of its children, a child brings up its parent — rising to just below the one you clicked, without stealing focus.": [
+            "Clicking a window also surfaces its parent and children.": [
                 ""
             ],
             "Clock": [
@@ -841,6 +848,15 @@
             "Colour": [
                 ""
             ],
+            "Command /%1$s failed: %2$s": [
+                "Error al subir."
+            ],
+            "Command /%s was cancelled.": [
+                ""
+            ],
+            "Commands": [
+                ""
+            ],
             "Comment": [
                 ""
             ],
@@ -852,6 +868,9 @@
             ],
             "Comment moved to trash.": [
                 "No se pudieron cargar tus medios: %s"
+            ],
+            "Comment on “%s”": [
+                "Buscar medios"
             ],
             "Comment restored from spam.": [
                 ""
@@ -895,9 +914,6 @@
             "Compact": [
                 "Compacta"
             ],
-            "Component library": [
-                ""
-            ],
             "Components": [
                 ""
             ],
@@ -930,6 +946,9 @@
             ],
             "Copy link": [
                 "Mostrando %d"
+            ],
+            "Core admin menus are placed in a sidebar; plugins, apps, and OpenStation controls in a dock along the bottom edge.": [
+                ""
             ],
             "Corkboard container missing.": [
                 ""
@@ -1006,9 +1025,6 @@
             "Could not read the selected entries.": [
                 "No se pudieron cargar tus medios: %s"
             ],
-            "Could not save sticky note.": [
-                "No se pudieron cargar tus medios."
-            ],
             "Could not send the challenge.": [
                 "No se pudieron cargar tus medios: %s"
             ],
@@ -1065,6 +1081,9 @@
             ],
             "Curved connectors between related windows, ending in circular dots — the larger dot sits on the window the content belongs to; windows that reference each other get large dots on both ends.": [
                 ""
+            ],
+            "Custom": [
+                "Imagen personalizada"
             ],
             "Custom gradient": [
                 "Gradiente personalizado"
@@ -1198,9 +1217,6 @@
             "Desktop theme": [
                 "Escritorio %d"
             ],
-            "Desktop themes": [
-                "Escritorio %d"
-            ],
             "Detach": [
                 ""
             ],
@@ -1243,11 +1259,17 @@
             "Dismiss notice": [
                 ""
             ],
+            "Do I have any spam comments?": [
+                ""
+            ],
             "Do not allow": [
                 ""
             ],
             "Dock %s back to widget column": [
                 ""
+            ],
+            "Dock position": [
+                "Tamaño del dock"
             ],
             "Dock size": [
                 "Tamaño del dock"
@@ -1273,9 +1295,6 @@
             "Drafts": [
                 ""
             ],
-            "Drag a .zip onto the window to install — or drag a Browse card straight to the dock to pin a shortcut. The framework drag bridge handles the rest.": [
-                ""
-            ],
             "Drag to pin": [
                 ""
             ],
@@ -1285,7 +1304,7 @@
             "Draw a visual tie between windows showing related content — a post and its comments or media.": [
                 ""
             ],
-            "Draws arrowed connector lines between windows showing related content — a post and its comments or media, or two posts that link to each other. The line style and when the lines show live in Effects → Window links. On by default.": [
+            "Draws connector lines between related windows. Line style and visibility live in Windows → Window links.": [
                 ""
             ],
             "Drop a .zip plugin file here, or click to choose a file.": [
@@ -1363,9 +1382,6 @@
             "Edit…": [
                 ""
             ],
-            "Effects": [
-                ""
-            ],
             "Eight vertical slats retract at once, letting the page through between them.": [
                 ""
             ],
@@ -1405,7 +1421,13 @@
             "Events": [
                 ""
             ],
-            "Every <os-*> web component shipped by this plugin, with its props, slots, and a live example. Descriptors live next to each component class — the list stays in sync with the code.": [
+            "Every <os-*> web component shipped by this plugin, with its props, slots, and a live example.": [
+                ""
+            ],
+            "Every menu in a single dock.": [
+                ""
+            ],
+            "Everything installed on the station in one place: which apps appear where, and which plugins are extending the desktop.": [
                 ""
             ],
             "Everything is already set up. You don't need to install any new plugins, so you can keep using the same features as before.": [
@@ -1435,7 +1457,7 @@
             "Experimental": [
                 ""
             ],
-            "Experimental redesigns of core admin screens. Off by default — opt in to try them. Each toggle affects only your account and takes effect immediately, no reload required.": [
+            "Experimental redesigns of core admin screens, off by default. Each toggle affects only your account and takes effect immediately.": [
                 ""
             ],
             "Expires": [
@@ -1468,10 +1490,10 @@
             "Failed to load usage data.": [
                 "No se pudieron cargar tus medios."
             ],
-            "Fast ink, long words. Good luck.": [
+            "Fast (15s, not recommended)": [
                 ""
             ],
-            "Fast — 15s (not recommended)": [
+            "Fast ink, long words. Good luck.": [
                 ""
             ],
             "Fast — 320 ms": [
@@ -1505,6 +1527,9 @@
                 ""
             ],
             "Find a player…": [
+                ""
+            ],
+            "Find my post about…": [
                 ""
             ],
             "First order": [
@@ -1627,9 +1652,6 @@
             "Hide from dock": [
                 ""
             ],
-            "Hide sticky note": [
-                ""
-            ],
             "Highlight related windows": [
                 ""
             ],
@@ -1642,13 +1664,19 @@
             "Hook name": [
                 ""
             ],
-            "How often the WordPress Heartbeat API runs. Faster = quicker live updates (autosaves, lock checks, the heartbeat widget) at the cost of more server traffic. 15 s triples server load vs. the 60 s default — use sparingly. 30 s and 45 s require a page reload to apply exactly; 15 s and 60 s take effect immediately.": [
+            "How can I help?": [
+                ""
+            ],
+            "How often the Heartbeat API runs. Faster means quicker live updates and more server traffic. The 30s and 45s rates apply exactly from the next page load.": [
                 ""
             ],
             "How rounded the corners of windows are.": [
                 ""
             ],
             "How the rail itself paints — the shipped icon strip, or anything a plugin replaces it with. Switching is instant; the dock rebuilds with the new renderer.": [
+                ""
+            ],
+            "How windows look, how they arrive, and how they behave when they are not the one you are using.": [
                 ""
             ],
             "Hue": [
@@ -1693,9 +1721,6 @@
             "Install": [
                 ""
             ],
-            "Install %s as an app": [
-                ""
-            ],
             "Install cancelled.": [
                 ""
             ],
@@ -1706,6 +1731,12 @@
                 ""
             ],
             "Install isn't available — another plugin's service worker is active on this site. A site admin can opt in by setting the openstation_pwa_force_replace_sw filter to true.": [
+                ""
+            ],
+            "Install web app": [
+                ""
+            ],
+            "Installed": [
                 ""
             ],
             "Installed %s as an app.": [
@@ -1760,9 +1791,6 @@
                 ""
             ],
             "Less": [
-                ""
-            ],
-            "Lets you share desktop folders with other users or roles, with read or read+write access. When off, every share-related affordance (Share button, invites, \"Leave shared folder\") disappears from your shell and the heartbeat stops delivering share payloads to your session. Other users are unaffected. On by default.": [
                 ""
             ],
             "Level": [
@@ -1846,6 +1874,9 @@
             "Mark as spam?": [
                 ""
             ],
+            "Marks unpublished posts and pages with a corner ribbon on their tiles.": [
+                ""
+            ],
             "Maximize": [
                 "Maximizar"
             ],
@@ -1864,7 +1895,7 @@
             "Medium": [
                 ""
             ],
-            "Medium — 30s": [
+            "Medium (30s)": [
                 ""
             ],
             "Member since": [
@@ -1880,6 +1911,9 @@
                 ""
             ],
             "Minimize": [
+                "Minimizar"
+            ],
+            "Minimized": [
                 "Minimizar"
             ],
             "Minimum spend": [
@@ -1969,6 +2003,9 @@
             "Network error — check your connection.": [
                 ""
             ],
+            "Network error — please check your connection and try again.": [
+                ""
+            ],
             "Network only": [
                 ""
             ],
@@ -1989,9 +2026,6 @@
             ],
             "New role": [
                 "Añadir nuevo escritorio"
-            ],
-            "New sticky note": [
-                ""
             ],
             "Newest first": [
                 ""
@@ -2048,6 +2082,9 @@
                 ""
             ],
             "No changelog": [
+                ""
+            ],
+            "No commands matching %s.": [
                 ""
             ],
             "No comments on this post yet.": [
@@ -2128,6 +2165,12 @@
             "No scores yet — be the first to play!": [
                 ""
             ],
+            "No settings match that.": [
+                ""
+            ],
+            "No suggestions — press %s to run with the text you typed.": [
+                ""
+            ],
             "No tags assigned.": [
                 ""
             ],
@@ -2162,6 +2205,12 @@
                 ""
             ],
             "Not now": [
+                ""
+            ],
+            "Not saved.": [
+                ""
+            ],
+            "Not saved. %s": [
                 ""
             ],
             "Not sticky": [
@@ -2260,14 +2309,17 @@
             "Open Connectors settings": [
                 ""
             ],
+            "Open Preferences": [
+                ""
+            ],
             "Open an agent from the Agents section of WP Explorer, or pick a past conversation.": [
                 ""
             ],
             "Open another %s": [
                 "Abrir otra ventana de %s"
             ],
-            "Open artifact": [
-                ""
+            "Open comment in desktop": [
+                "Añadir nuevo escritorio"
             ],
             "Open customer": [
                 ""
@@ -2302,6 +2354,12 @@
             "Open on startup": [
                 "Abrir al iniciar"
             ],
+            "Open page in desktop": [
+                "Añadir nuevo escritorio"
+            ],
+            "Open post in desktop": [
+                "Añadir nuevo escritorio"
+            ],
             "Open profile": [
                 "Abrir"
             ],
@@ -2323,8 +2381,14 @@
             "Open the orders screen filtered to this customer, in its own window.": [
                 ""
             ],
+            "Open the site assistant": [
+                ""
+            ],
             "Open this user’s profile editor in a new window.": [
                 ""
+            ],
+            "Open windows": [
+                "Abrir en una nueva pestaña del navegador"
             ],
             "OpenStation deactivated. Reloading…": [
                 ""
@@ -2332,11 +2396,11 @@
             "OpenStation deleted. Reloading…": [
                 ""
             ],
+            "OpenStation is no longer active. Returning to the WordPress dashboard…": [
+                ""
+            ],
             "Opened \"%s\" in a new browser tab — this site doesn't allow embedding.": [
                 "Se ha abierto «%s» en una nueva pestaña del navegador — este sitio no permite incrustarse."
-            ],
-            "Or use your own image": [
-                "O usa tu propia imagen"
             ],
             "Order": [
                 ""
@@ -2365,9 +2429,6 @@
             "Paid via": [
                 ""
             ],
-            "Paints a diagonal corner ribbon — Draft, Pending, Private, or Scheduled — on WP Explorer tiles whose post status isn’t published. Off hides every ribbon; tiles still respect their dimmed-icon treatment so unpublished items remain visible at a glance. On by default.": [
-                ""
-            ],
             "Paper color": [
                 "Color de acento"
             ],
@@ -2388,9 +2449,6 @@
             ],
             "Per customer": [
                 "Color de acento"
-            ],
-            "Per-row capability flags so the UI hides actions you can't perform — and the server re-validates every mutation, so flags can't be tampered into more permissions.": [
-                ""
             ],
             "Permanently delete %d plugin(s)? Their files will be removed from disk. This cannot be undone.": [
                 ""
@@ -2432,6 +2490,9 @@
                 ""
             ],
             "Placed": [
+                "Error al subir."
+            ],
+            "Placement": [
                 "Error al subir."
             ],
             "Planned": [
@@ -2506,6 +2567,9 @@
             "Potato": [
                 ""
             ],
+            "Press %s to run": [
+                ""
+            ],
             "Press Challenge to throw down one of your scores, or pick a row from the scoreboard.": [
                 ""
             ],
@@ -2569,10 +2633,10 @@
             "Rated %s out of 5": [
                 ""
             ],
-            "Rating": [
+            "Rates incoming comments so you can triage the queue faster.": [
                 ""
             ],
-            "Re-shows the one-time introduction dialog the next time you open each redesigned native window.": [
+            "Rating": [
                 ""
             ],
             "Read all reviews on WordPress.org ↗": [
@@ -2608,6 +2672,9 @@
             "Related": [
                 ""
             ],
+            "Related windows get an accent outline while one of them is focused.": [
+                ""
+            ],
             "Reload": [
                 ""
             ],
@@ -2620,10 +2687,16 @@
             "Remove custom image": [
                 "Eliminar imagen personalizada"
             ],
+            "Removes every share and its access list. Cannot be undone.": [
+                ""
+            ],
             "Replace": [
                 "Error al subir."
             ],
             "Replace existing plugin?": [
+                ""
+            ],
+            "Replaces the classic Posts list with a native table window: sticky header, paginated rows, bulk actions, and a row preview.": [
                 ""
             ],
             "Replacing existing plugin…": [
@@ -2655,6 +2728,15 @@
             ],
             "Replying to": [
                 ""
+            ],
+            "Request failed (HTTP %d).": [
+                ""
+            ],
+            "Request failed (HTTP %s).": [
+                "Error al subir."
+            ],
+            "Request failed.": [
+                "Error al subir."
             ],
             "Required capability": [
                 ""
@@ -2737,6 +2819,9 @@
             "Round": [
                 ""
             ],
+            "Running /%s…": [
+                ""
+            ],
             "S": [
                 ""
             ],
@@ -2797,9 +2882,6 @@
             "Scoreboard": [
                 ""
             ],
-            "Scores every new comment for spam and hostility, folding the result into the spam confidence shown in the Comments window. Site-wide, off by default.": [
-                ""
-            ],
             "Screenshots": [
                 ""
             ],
@@ -2814,6 +2896,9 @@
             ],
             "Search WordPress.org…": [
                 ""
+            ],
+            "Search commands…": [
+                "Buscar medios"
             ],
             "Search components": [
                 "Buscar medios"
@@ -2832,6 +2917,9 @@
             ],
             "Search posts and pages in the graph": [
                 ""
+            ],
+            "Search settings": [
+                "Buscar medios"
             ],
             "Search users": [
                 "Buscar medios"
@@ -2887,6 +2975,9 @@
             "Send to agent": [
                 ""
             ],
+            "Server returned %d": [
+                ""
+            ],
             "Settings sections": [
                 ""
             ],
@@ -2909,6 +3000,9 @@
                 ""
             ],
             "Share card": [
+                ""
+            ],
+            "Share desktop folders with other users or roles, with read or write access.": [
                 ""
             ],
             "Shared with the agent": [
@@ -2959,13 +3053,10 @@
             "Shutter": [
                 ""
             ],
-            "Side bar with the core admin menus, plus a bottom dock for plugin apps.": [
+            "Site Assistant": [
                 ""
             ],
-            "Single bottom dock holding every menu — core and plugin apps share one rail.": [
-                ""
-            ],
-            "Site-wide destructive action (admin only). Drops every shares table — invites, decisions, share rows. Empty tables are recreated immediately so the feature still works for anyone who wants to start fresh. Use this on sites that never needed sharing to clear the data outright.": [
+            "Site assistant": [
                 ""
             ],
             "Site-wide enhancements that apply to every user. Toggling requires the affected page to be reloaded for the change to take effect.": [
@@ -2989,7 +3080,7 @@
             "Slots": [
                 ""
             ],
-            "Slow — 45s": [
+            "Slow (45s)": [
                 ""
             ],
             "Slow — 700 ms": [
@@ -3019,13 +3110,13 @@
             "Spam": [
                 ""
             ],
-            "Spatial": [
-                ""
-            ],
             "Spin the gradient": [
                 "Gradiente personalizado"
             ],
             "Splines": [
+                ""
+            ],
+            "Split": [
                 ""
             ],
             "Stable": [
@@ -3049,15 +3140,6 @@
             "Sticky": [
                 ""
             ],
-            "Sticky note text": [
-                ""
-            ],
-            "Sticky notes": [
-                ""
-            ],
-            "Sticky term is unavailable.": [
-                ""
-            ],
             "Stock": [
                 ""
             ],
@@ -3077,6 +3159,9 @@
                 ""
             ],
             "Suggest title, excerpt & tags": [
+                ""
+            ],
+            "Suggested commands": [
                 ""
             ],
             "Suggestions": [
@@ -3115,7 +3200,7 @@
             "Tags · %d": [
                 ""
             ],
-            "Take me to settings": [
+            "Take me to plugin settings": [
                 ""
             ],
             "Tap a suggestion to apply it to the draft.": [
@@ -3151,6 +3236,9 @@
             "That theme could not be installed.": [
                 ""
             ],
+            "The Posts table experience for Pages, with a Parent column, hierarchical sort, and edit-lock indicators.": [
+                ""
+            ],
             "The admin bar is always visible above the desktop.": [
                 ""
             ],
@@ -3172,6 +3260,9 @@
             "The agent user is deleted permanently. Content it authored is not reassigned.": [
                 ""
             ],
+            "The assistant, the developer tools, and the betas. Every switch here affects only your account and takes effect immediately.": [
+                ""
+            ],
             "The backdrop behind your windows. Pick a preset, mix your own gradient, or drop in an image.": [
                 "El fondo tras tus ventanas. Elige un preestablecido, mezcla tu propio gradiente o suelta una imagen."
             ],
@@ -3182,12 +3273,6 @@
                 ""
             ],
             "The desktop files API is not available in this context.": [
-                ""
-            ],
-            "The detail flyout shows screenshots, the ratings histogram, recent reviews, the changelog and FAQ — all without leaving the window.": [
-                ""
-            ],
-            "The dock repaints LIVE after every install / activate / deactivate / delete. No reload, no stale tile, no \"wait, did that work?\".": [
                 ""
             ],
             "The look OpenStation ships with": [
@@ -3355,10 +3440,10 @@
             "Triggers saved.": [
                 ""
             ],
-            "Tuesday": [
+            "Try asking": [
                 ""
             ],
-            "Tune individual OpenStation behaviors. Each toggle affects only your account and takes effect immediately — no reload required. Watch the dot in the OpenStation Preferences title bar to see when a change has been saved.": [
+            "Tuesday": [
                 ""
             ],
             "Turn on Agents": [
@@ -3371,9 +3456,6 @@
                 ""
             ],
             "Two panels part from the middle of the window and slide off the top and bottom.": [
-                ""
-            ],
-            "Two tabs in one window — Installed for managing what you have, Browse for discovering new plugins. No more bouncing between Plugins → Add New → back to Installed.": [
                 ""
             ],
             "Type": [
@@ -3415,6 +3497,9 @@
             "Unknown author": [
                 ""
             ],
+            "Unknown command: /%s": [
+                ""
+            ],
             "Unknown entity type.": [
                 ""
             ],
@@ -3424,7 +3509,7 @@
             "Unknown error.": [
                 ""
             ],
-            "Unlocks developer-facing surfaces meant for plugin authors: the Starter Widget appears in the add-widget picker, and the OpenStation Preferences → Components tab runs its intentional missing-import-warner demo (a console banner plus three deliberate console.error entries). Off by default so regular users don’t see developer noise.": [
+            "Unlocks developer surfaces meant for plugin authors.": [
                 ""
             ],
             "Unmute sound effects": [
@@ -3435,6 +3520,9 @@
             ],
             "Untagged": [
                 ""
+            ],
+            "Untitled": [
+                "Organizar ventanas"
             ],
             "Untitled window": [
                 "Organizar ventanas"
@@ -3520,6 +3608,9 @@
             "Use the native Users window": [
                 ""
             ],
+            "Use your own image": [
+                "O usa tu propia imagen"
+            ],
             "Used": [
                 ""
             ],
@@ -3550,10 +3641,10 @@
             "Very fast — 200 ms": [
                 ""
             ],
-            "Very slow — 1100 ms": [
+            "Very slow (60s, default)": [
                 ""
             ],
-            "Very slow — 60s (default)": [
+            "Very slow — 1100 ms": [
                 ""
             ],
             "View": [
@@ -3613,6 +3704,9 @@
             "Warming up the soup…": [
                 ""
             ],
+            "Watch the dot in the OpenStation Preferences title bar to see when a change has been saved.": [
+                ""
+            ],
             "Wave": [
                 ""
             ],
@@ -3631,9 +3725,6 @@
             "Wednesday": [
                 ""
             ],
-            "Welcome to the new Plugins window": [
-                ""
-            ],
             "What happened? What did you expect?": [
                 ""
             ],
@@ -3646,14 +3737,14 @@
             "When to use (description)": [
                 ""
             ],
-            "While a group member is focused, its related windows get an accent outline and a soft glow so the family is recognizable at a glance.": [
+            "Where can I see categories?": [
+                "No se pudieron cargar tus medios."
+            ],
+            "Where the menus live.": [
                 ""
             ],
             "Why OpenStation? Because it represents much more than a desktop interface. It's an open workspace where WordPress becomes a complete environment for creating, managing and building, just like a real workstation, but powered by the web.": [
                 ""
-            ],
-            "Width of the dock and size of its icons.": [
-                "Anchura del dock y tamaño de sus iconos."
             ],
             "Wind": [
                 ""
@@ -3671,6 +3762,9 @@
                 "Acciones de ventana"
             ],
             "Window reveal": [
+                "Acciones de ventana"
+            ],
+            "Windows": [
                 "Acciones de ventana"
             ],
             "Wobble speed": [
@@ -3760,7 +3854,7 @@
             "You will review and submit on GitHub.": [
                 ""
             ],
-            "You're looking at the redesigned Plugins admin — same WordPress.org repository under the hood, with a workflow tuned for how OpenStation wants you to work.": [
+            "Your assistant to quickly navigate and manage your entire site.": [
                 ""
             ],
             "Your score could not be saved.": [
@@ -3793,6 +3887,9 @@
             "deleted": [
                 ""
             ],
+            "fallback name for the post a comment was left on\u0004post": [
+                "Acciones de ventana"
+            ],
             "in %s": [
                 ""
             ],
@@ -3800,9 +3897,6 @@
                 ""
             ],
             "just now": [
-                ""
-            ],
-            "macOS-style gesture: a left click on the empty desktop minimizes every window, and a second click restores them. When on, the matching \"Show desktop\" entry is removed from the wallpaper context menu — the click gesture replaces it. Off by default.": [
                 ""
             ],
             "no reason given": [

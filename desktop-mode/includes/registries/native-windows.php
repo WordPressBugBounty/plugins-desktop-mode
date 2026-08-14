@@ -92,6 +92,27 @@ defined( 'ABSPATH' ) || exit;
  *     @type string   $placement    'dock' | 'none'. Default 'dock'.
  *                                  'none' skips the tile (plugin
  *                                  opens the window programmatically).
+ *     @type int      $dock_order   Sort key among system tiles,
+ *                                  ascending; ties keep registration
+ *                                  order. Default 0, which places the
+ *                                  tile ahead of the shell's own
+ *                                  trailing cluster (Mio 10, Overview
+ *                                  20, System 30, Exit 35, Trash 40).
+ *                                  Needed because registration order
+ *                                  is not something a plugin controls:
+ *                                  tiles land when their lazy script
+ *                                  resolves.
+ *     @type bool     $placeable    Whether the dock tile gets a row in
+ *                                  OpenStation Preferences → Apps &
+ *                                  Plugins, so the user can move it to
+ *                                  the wallpaper or hide it. Defaults
+ *                                  to the dock either way. Default
+ *                                  false, because most tiles are
+ *                                  load-bearing. Opt in for a window
+ *                                  the user can reasonably do without.
+ *                                  Only offer this on a window that
+ *                                  registers no desktop icon: the icon
+ *                                  already owns a row of its own.
  *     @type string[] $capabilities User capabilities that gate the
  *                                  registration. ANY miss returns
  *                                  `WP_Error openstation_capability_denied`.
@@ -159,6 +180,8 @@ function openstation_register_window( $id, $args = array() ) {
 		'min_width'        => 280,
 		'min_height'       => 220,
 		'placement'        => 'dock',
+		'dock_order'       => 0,
+		'placeable'        => false,
 		'capabilities'     => array(),
 		'autofocus'        => false,
 		'main_tab_label'   => '',
@@ -217,6 +240,12 @@ function openstation_register_window( $id, $args = array() ) {
 		'min_width'        => (int) $args['min_width'],
 		'min_height'       => (int) $args['min_height'],
 		'placement'        => $placement,
+		// Sort key among system tiles, ascending. `0` (the default)
+		// puts a plugin's tile ahead of the shell's own trailing
+		// cluster — Mio 10, Overview 20, System 30 — which is where a
+		// launcher belongs. Trash uses 40 to sit at the very end.
+		'dock_order'       => (int) $args['dock_order'],
+		'placeable'        => (bool) $args['placeable'],
 		'autofocus'        => $args['autofocus'],
 		'main_tab_label'   => (string) $args['main_tab_label'],
 		// Stored as-is (string or int). `openstation_build_native_window_template_html`
@@ -677,11 +706,20 @@ function openstation_build_native_window_template_html( $entry ) {
 		return (string) ob_get_clean();
 	}
 
-	// Multi-tab window — wrap in <os-stack> + <os-tabs> + one
-	// <os-tabpanel> per tab. The default active tab is the main
-	// one (the window's own template). Plugin authors still get to
-	// declare their own tab-change side effects via the
-	// `os-tab-change` event bubbled by <os-tabs>.
+	// Multi-tab window — wrap in <os-stack> + one <os-tabpanel> per
+	// tab. The default active tab is the main one (the window's own
+	// template).
+	//
+	// The tab STRIP is deliberately absent from this markup. It is
+	// built by the shell in the window chrome, under the title bar,
+	// from the same tab metadata this function walks (the payload
+	// carries it as `tabs`). One tab strip per window, in one place,
+	// whether the window is an admin page in an iframe or a native
+	// window like this one.
+	//
+	// Plugin authors declare tab-change side effects by listening for
+	// `os-window-tab-change` on the window element; see
+	// docs/migration-window-tabs.md.
 	//
 	// The wrap's padding is plugin-controllable two ways:
 	// 1. `main_tab_padding` arg on `openstation_register_window` —
@@ -717,27 +755,16 @@ function openstation_build_native_window_template_html( $entry ) {
 		$padding = 0;
 	}
 
-	$buffer  = sprintf(
+	$buffer = sprintf(
 		'<os-stack gap="12" padding="%d">',
 		$padding
 	);
-	$buffer .= '<os-tabs value="' . esc_attr( OPENSTATION_NATIVE_WINDOW_MAIN_TAB ) . '">';
-	foreach ( $tabs as $tab ) {
-		$buffer .= sprintf(
-			'<os-tab value="%s">%s</os-tab>',
-			esc_attr( $tab['value'] ),
-			esc_html( $tab['label'] )
-		);
-	}
-	$buffer .= '</os-tabs>';
 
 	// Stamp `hidden` on every non-active panel directly in the
-	// emitted HTML. The client-side `<os-tabs>` syncs panel
-	// visibility on `value` changes, but its initial sync runs
-	// inside a microtask — and panel siblings may not have upgraded
-	// in time on first paint. Setting the attribute server-side
-	// makes first paint correct regardless of upgrade order; the JS
-	// keeps owning subsequent transitions.
+	// emitted HTML. The shell takes over panel visibility as soon as
+	// it declares the strip, but that happens after the template is
+	// in the body — setting the attribute server-side makes first
+	// paint correct rather than flashing every pane at once.
 	foreach ( $tabs as $tab ) {
 		if ( ! is_callable( $tab['template'] ) ) {
 			continue;
