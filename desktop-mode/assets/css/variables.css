@@ -387,6 +387,31 @@ body.os-active {
 	--os-ui-bg: #1a1721;
 	--os-ui-bg-subtle: rgba(255, 251, 255, 0.03);
 
+	/*
+	 * Fields — the surface an input paints, for markup in the LIGHT
+	 * DOM.
+	 *
+	 * The kit's own controls don't need these: `<os-text-field>` and
+	 * friends resolve `--os-window-bg` inside their shadow roots,
+	 * which the window chrome sets. A plugin writing a plain
+	 * `<input>` into a native window's body has neither, and the
+	 * palette had no general answer — no `surface` variant means
+	 * "input". What it had was `--os-ui-modal-field-bg`, which is a
+	 * MODAL token: right value, wrong scope, and the sort of thing a
+	 * plugin author finds by grepping for a colour that looks close.
+	 *
+	 * Consumers keep the pre-brand WordPress-admin literals as their
+	 * fallbacks — `#fff`, `#8c8f94`, `#2c3338` — so an unstyled page
+	 * lands on the classic admin's own field, not on nothing:
+	 *
+	 *     background: var( --os-ui-field-bg, #fff );
+	 *     border: 1px solid var( --os-ui-field-border, #8c8f94 );
+	 *     color: var( --os-ui-field-fg, #2c3338 );
+	 */
+	--os-ui-field-bg: #33303a;
+	--os-ui-field-border: #4d4a52;
+	--os-ui-field-fg: #fffbff;
+
 	/* Text — Starlight down through the Shade ramp. */
 	--os-ui-fg: #fffbff;
 	--os-ui-fg-muted: #b3afb5;
@@ -796,7 +821,7 @@ body.os-active {
 	/*
 	 * Dialogs, menus and flyouts.
 	 *
-	 * The five `--os-ui-modal-*` names below are the escape hatch
+	 * The `--os-ui-modal-*` names below are the escape hatch
 	 * `<os-modal>` needs. Its dialog surface is dark whatever the
 	 * admin colour scheme says, so it re-points `--os-ui-fg`,
 	 * `--os-ui-fg-muted`, `--os-ui-border`, `--os-window-bg` and
@@ -805,6 +830,20 @@ body.os-active {
 	 * the palette used to stop at the dialog's edge. It reads these
 	 * instead, so the station owns the dialog again and the literals
 	 * behind them stay as the no-stylesheet floor.
+	 *
+	 * The set has to cover a dark context COMPLETELY, and the four
+	 * added last are the ones that proved it. A dialog re-pointing
+	 * only its text colours is fine while the palette around it is
+	 * dark too — every unre-pointed token happens to agree. Put a
+	 * LIGHT palette outside it (any theme in the admin's own colours,
+	 * Legacy included) and the halves come apart: `--os-ui-surface`
+	 * stays white, so `<os-select>` inside the dialog painted a white
+	 * trigger and the re-pointed `--os-ui-fg` wrote near-white text
+	 * onto it. `--os-ui-hover` was a black wash over a dark row.
+	 *
+	 * So the rule for anything added here: if a token names a SURFACE
+	 * or a wash on one, the dialog owns it. Leaving one out is not
+	 * "inherit the theme", it is "disagree with the other five".
 	 */
 	--os-ui-modal-bg: #1a1721;
 	--os-ui-modal-text: #fffbff;
@@ -812,6 +851,10 @@ body.os-active {
 	--os-ui-modal-border: #4d4a52;
 	--os-ui-modal-field-bg: #33303a;
 	--os-ui-modal-button-bg-hover: rgba(255, 251, 255, 0.14);
+	--os-ui-modal-surface: #1a1721;
+	--os-ui-modal-surface-elevated: #33303a;
+	--os-ui-modal-border-strong: #4d4a52;
+	--os-ui-modal-hover: rgba(255, 251, 255, 0.06);
 	--os-ui-confirm-dialog-bg: #1a1721;
 	--os-ui-context-menu-bg: #1a1721;
 	--os-ui-context-menu-separator-color: rgba(255, 251, 255, 0.1);
@@ -1105,9 +1148,8 @@ body.os-active {
 	/*
 	 * ---- Tooltips ---------------------------------------------
 	 *
-	 * Two tokens own every tooltip in the shell — the dock tile
-	 * tooltip, the content-graph satellite tooltip, and the My
-	 * WordPress entity hover card.
+	 * Two tokens own every tooltip CHIP in the shell — the dock tile
+	 * tooltip and the content-graph satellite tooltip.
 	 *
 	 * They are worth naming rather than leaving derived. Without them
 	 * tooltips borrow their colours from unrelated families —
@@ -1117,8 +1159,14 @@ body.os-active {
 	 * palette `--os-ui-fg-on-accent` is Void, which would have rendered
 	 * near-black text on a near-black chip.
 	 *
-	 * Secondary text inside the richer tooltips — the hover card's
-	 * excerpt — still follows `--os-ui-fg-muted`.
+	 * A chip is deliberately the SAME dark lozenge on every desktop
+	 * theme, which is why these two are flat values and not derived
+	 * from anything. That is right for one line of text pinned to a
+	 * control, and wrong for a rich card: the My WordPress entity
+	 * hover card used to read them and showed up Obsidian over a white
+	 * Legacy window. It has its own derived family now —
+	 * `--os-my-wordpress-card-*`, further down — and it still names
+	 * these two as its last fallback.
 	 */
 	--os-tooltip-bg: #33303a;
 	--os-tooltip-fg: #fffbff;
@@ -1265,6 +1313,51 @@ body.os-active {
 	--os-my-wordpress-bg: #1a1721;
 	--os-my-wordpress-fg: #fffbff;
 	--os-my-wordpress-surface: rgba(255, 251, 255, 0.06);
+	/*
+	 * The entity hover card — the "thumb" that floats over a tile with
+	 * a title, a featured image and an excerpt.
+	 *
+	 * It is NOT a dock chip, and it used to be painted as one.
+	 * `--os-tooltip-bg` is a fixed dark lozenge on every theme by
+	 * design — one line of text, always the same object, no reason to
+	 * follow anything. The card borrowed it, so a light desktop theme
+	 * summoned an Obsidian card over a white window, with a border in
+	 * `--os-ui-border` and an excerpt in `--os-ui-fg-muted` that both
+	 * followed the WINDOW instead. Three families, one surface.
+	 *
+	 * The card is window furniture: it belongs to the surface it was
+	 * summoned from, so it follows the theme that paints that surface.
+	 * Every value below is DERIVED rather than declared flat, which is
+	 * what makes that true — a theme that names only
+	 * `--os-my-wordpress-bg` (Legacy names exactly that, `#fff`) moves
+	 * the card with the window for free, and a theme that wants the
+	 * card alone names a `-card-` token.
+	 *
+	 * A card lands on the same colour as the window under it, so the
+	 * border and the shadow are the whole reason it reads as a
+	 * separate object. Neither is decoration here and neither may
+	 * collapse into the background — which is exactly what the border
+	 * did: `--os-ui-border` is #33303a on this palette, the SAME value
+	 * `--os-tooltip-bg` had, so the card had no edge at all.
+	 *
+	 * The shadow is the one flat value in the family. A drop shadow is
+	 * cast light, dark on a light theme and dark on a dark one, so
+	 * there is no window token for it to follow; it is named so a
+	 * theme can still reach it.
+	 */
+	--os-my-wordpress-card-bg: var(--os-my-wordpress-bg, #1a1721);
+	--os-my-wordpress-card-fg: var(--os-my-wordpress-fg, #fffbff);
+	--os-my-wordpress-card-fg-muted: var(--os-ui-fg-muted, #b3afb5);
+	--os-my-wordpress-card-border: var(--os-ui-border, #33303a);
+	--os-my-wordpress-card-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+	--os-my-wordpress-card-thumb-bg: var(
+		--os-media-tile-bg,
+		rgba(255, 251, 255, 0.05)
+	);
+	--os-my-wordpress-card-lock-bg: var(
+		--os-ui-badge-danger-bg,
+		rgba(255, 90, 90, 0.16)
+	);
 	--os-ai-panel-bg: rgba(26, 23, 33, 0.97);
 	/*
 	 * ---- Window tab strip ---------------------------------------
@@ -1457,12 +1550,13 @@ body.os-active {
 	 */
 	--os-z-mio: 190;
 	/*
-	 * The notch — above every window and above the dock, because it
-	 * overlaps the shell's top edge deliberately and must stay legible
-	 * over a maximized window's title bar. Scoped inside the shell's
-	 * own stacking context, so it never competes with the admin bar.
+	 * The notch — on the desk, under the windows (100 + stack index),
+	 * above the window-link wires (50) so a tie never draws across the
+	 * pill. It hangs over the strip a window's title bar occupies, and
+	 * a pill floating above someone's window is the shell talking over
+	 * the thing they are working in.
 	 */
-	--os-z-notch: 9000;
+	--os-z-notch: 60;
 
 	/*
 	 * Window-link ties (relation splines between windows). The accent

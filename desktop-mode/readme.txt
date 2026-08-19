@@ -4,7 +4,7 @@ Tags: admin, dashboard, desktop, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -22,7 +22,7 @@ WordPress has rebuilt almost everything else. The editor, the site editor, the p
 
 OpenStation touches it.
 
-https://www.youtube.com/watch?v=jii_gGbqUx4
+https://www.youtube.com/watch?v=g5MLB3WMlCc
 
 Install it and admin screens become draggable, resizable windows. Edit a post while the Media Library sits open next to it. Drag an image from one window straight into the other. Keep comments open in the corner. Reload the browser and your window layout — open pages, positions, sizes, and window states — comes back where you left it.
 
@@ -140,13 +140,15 @@ In `docs/` inside the plugin, and on [GitHub](https://github.com/WordPress/opens
 
 == Screenshots ==
 
-1. Real multitasking: Users, Media, and a post you're editing, open side by side as windows.
-2. Your admin, your desktop: custom wallpapers and live widgets registered by plugins.
-3. Ask the AI Assistant (Cmd+K) about your own posts, pages, and comments.
-4. Corkboard: a zoomable map of how your content links together.
-5. OpenStation Preferences: wallpaper presets, animated scenes, or your own image.
-6. Files on the desktop: drag posts, media, and links onto the wallpaper and into folders.
-7. The Trash collects trashed posts, media, folders, and shortcuts in one window.
+1. Real multitasking: your posts, your preferences, and the Trash open side by side as windows.
+2. Make it yours: accent colours, wallpaper presets and animated scenes, and a dock on whichever edge you like.
+3. Find anything with Cmd+K: the Site Assistant opens admin pages, runs commands, and answers questions about your content.
+4. Give an AI agent its own instructions and tools, then set it to work on your posts, media, and comments.
+5. Live widgets on the wallpaper: post stats, recent comments, drafts, a notepad, and more from your plugins.
+6. Mio, your desk companion, tuned to whatever shape, colour, and mood suits you.
+7. One desktop per job: keep writing, the store, and moderation on separate Spaces.
+8. Games built into the desktop, with a scoreboard shared across everyone on your site.
+9. Corkboard: a zoomable map of how your posts and pages link together.
 
 == Credits ==
 
@@ -167,6 +169,23 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * **[LDNOOBW English list](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)** (CC-BY 4.0) — used as an exclusion filter.
 
 == Changelog ==
+
+= 1.1.1 =
+* My WordPress: let the entity hover card follow the desktop theme
+* Expose and sync status ribbons setting
+* Load window, wallpaper and widget bundles on demand
+* Components: add <os-field-row>, <os-token-field> and <os-repeater>
+* Windows: guard focus(), unstick the opening class, add child windows
+* Files: make the conflict toast's "View folder" actually open the folder
+* Notch: place it behind the windows
+* Update the wp.org screenshots for the current shell
+* Windows: make Reload a common action for native windows too
+* Themes: answer every palette literal in the Legacy snapshot
+* Settings: open the Custom accent's colour wheel on its own swatch
+* Components: a dark dialog owns its surfaces, not just its text
+* Redesign the WordPress Themes workspace
+* Hide iridescence slider when effect is off
+* Hide wobble sliders when effect is off
 
 = 1.1.0 =
 * Consolidate navigation into a single dock
