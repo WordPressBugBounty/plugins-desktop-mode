@@ -1923,6 +1923,167 @@ function openstation_resolve_style_payload( $handle ) {
 }
 
 /**
+ * Build the deferred command-palette asset manifest.
+ *
+ * `wp_enqueue_command_palette_assets()` (WP 6.9+) enqueues
+ * `wp-commands` + `wp-core-commands` and attaches the inline
+ * `wp.coreCommands.initializeCommandPalette( … )` call that seeds the
+ * `core/commands` store. Its transitive dependency chain is the whole
+ * Gutenberg runtime — `wp-block-editor`, `wp-components`, React,
+ * `wp-core-data`, some forty bundles, ~800 KB gzipped — which the
+ * shell used to pay on EVERY boot so that the ⌘K palette's baseline
+ * commands existed if the user ever opened it.
+ *
+ * This builder lets Core do exactly what it would have done — the
+ * menu-command serialization and the inline init included — then
+ * UNWINDS the enqueue: it snapshots the script/style queues, calls
+ * the Core function, diffs out the roots it added, restores the
+ * queues so nothing prints at boot, and resolves the full ordered
+ * dependency chain on CLONES (the live `$to_do` is never touched).
+ * Each handle in the chain is harvested into the same
+ * url/before/after/l10n/translations shape the native-window lazy
+ * loader uses, and the shell replays the list — in order — the first
+ * time the palette is invoked (`src/commands/palette-assets.ts`).
+ *
+ * Handles with no `src` (pure aggregators) are kept whenever they
+ * carry inline data; dropping them would lose middleware and locale
+ * setup the chain depends on. Handles another plugin already
+ * enqueued at boot print normally and are skipped client-side by a
+ * same-path DOM sniff — the manifest deliberately lists them anyway,
+ * because which ones those are differs per site and per screen.
+ *
+ * Returns `null` on pre-6.9 sites (no Core palette to defer).
+ *
+ * @return array{scripts:array<int,array<string,mixed>>,styles:array<int,array<string,mixed>>}|null
+ */
+function openstation_build_command_palette_assets_payload() {
+	if ( ! function_exists( 'wp_enqueue_command_palette_assets' ) ) {
+		return null;
+	}
+	$scripts = wp_scripts();
+	$styles  = wp_styles();
+	if ( ! $scripts || ! $styles ) {
+		return null;
+	}
+
+	// `wp_enqueue_command_palette_assets()` reads `$submenu` without
+	// guarding the global — initialize defensively (test contexts,
+	// edge-case admin requests where the menu wasn't built yet).
+	global $menu, $submenu;
+	// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- initializing an unset global to its documented empty shape, not replacing a built menu.
+	if ( ! isset( $submenu ) || ! is_array( $submenu ) ) {
+		$submenu = array();
+	}
+	if ( ! isset( $menu ) || ! is_array( $menu ) ) {
+		$menu = array();
+	}
+	// phpcs:enable WordPress.WP.GlobalVariablesOverride.Prohibited
+
+	$script_queue_before = $scripts->queue;
+	$style_queue_before  = $styles->queue;
+
+	wp_enqueue_command_palette_assets();
+
+	$script_roots = array_values( array_diff( $scripts->queue, $script_queue_before ) );
+	$style_roots  = array_values( array_diff( $styles->queue, $style_queue_before ) );
+
+	// Unwind: the boot page must not print any of it. The inline init
+	// stays attached to the `wp-core-commands` HANDLE — that is the
+	// point: the harvest below captures it, and if some other screen
+	// legitimately enqueues the handle, it prints as Core intended.
+	$scripts->queue = $script_queue_before;
+	$styles->queue  = $style_queue_before;
+
+	$out = array(
+		'scripts' => array(),
+		'styles'  => array(),
+	);
+
+	// Ordered dependency chains, resolved on clones so the request's
+	// real `$to_do` / `$done` state is untouched.
+	$script_probe        = clone $scripts;
+	$script_probe->to_do = array();
+	$script_probe->done  = array();
+	$script_probe->all_deps( $script_roots );
+	foreach ( $script_probe->to_do as $handle ) {
+		$payload = openstation_resolve_script_payload( $handle );
+		if ( '' === $payload['url'] ) {
+			// Src-less aggregator — keep it only for its inline data.
+			$registered = isset( $scripts->registered[ $handle ] ) ? $scripts->registered[ $handle ] : null;
+			if ( $registered ) {
+				foreach ( array( 'before', 'after' ) as $position ) {
+					if ( isset( $registered->extra[ $position ] ) && is_array( $registered->extra[ $position ] ) ) {
+						$payload[ $position ] = array_values( array_filter( array_map( 'strval', $registered->extra[ $position ] ) ) );
+					}
+				}
+				if ( ! empty( $registered->extra['data'] ) && is_string( $registered->extra['data'] ) ) {
+					$payload['l10n'][] = $registered->extra['data'];
+				}
+			}
+			if ( empty( $payload['before'] ) && empty( $payload['after'] ) && empty( $payload['l10n'] ) ) {
+				continue;
+			}
+		}
+		$out['scripts'][] = array(
+			'handle'       => (string) $handle,
+			'url'          => $payload['url'],
+			'before'       => $payload['before'],
+			'after'        => $payload['after'],
+			'l10n'         => $payload['l10n'],
+			'translations' => $payload['translations'],
+		);
+	}
+
+	$style_probe        = clone $styles;
+	$style_probe->to_do = array();
+	$style_probe->done  = array();
+	$style_probe->all_deps( $style_roots );
+	foreach ( $style_probe->to_do as $handle ) {
+		$style_payload = openstation_resolve_style_payload( $handle );
+		if ( '' === $style_payload['url'] ) {
+			continue;
+		}
+		$out['styles'][] = array(
+			'handle' => (string) $handle,
+			'url'    => $style_payload['url'],
+			'inline' => $style_payload['inline'],
+		);
+	}
+
+	return $out;
+}
+
+/**
+ * Resolve a list of style handles into the `deferredStyles` config
+ * map: handle → `array( 'url' => …, 'inline' => string[] )`.
+ *
+ * For shell surfaces that render on demand but are NOT native
+ * windows — the Preferences panel, the AI assistant, the bug-report
+ * window — so the `styles` companion mechanism can't carry their
+ * CSS. The shell reads this map off `openStationConfig.deferredStyles`
+ * and injects each sheet the first time its surface opens
+ * (`ensureDeferredStyle()` in `src/deferred-styles.ts`).
+ *
+ * Handles that resolve to nothing (never registered) are dropped, so
+ * the client map only ever holds injectable entries.
+ *
+ * @param string[] $handles Registered style handles.
+ * @return array<string, array{url:string, inline:string[]}>
+ */
+function openstation_build_deferred_styles( $handles ) {
+	$out = array();
+	foreach ( (array) $handles as $handle ) {
+		$handle  = (string) $handle;
+		$payload = openstation_resolve_style_payload( $handle );
+		if ( '' === $payload['url'] ) {
+			continue;
+		}
+		$out[ $handle ] = $payload;
+	}
+	return $out;
+}
+
+/**
  * Fire a `_doing_it_wrong()` notice exactly once per handle per
  * request. Shared by every `openstation_build_desktop_*_scripts_payload()`
  * caller — payload builders run on every shell-config rebuild
@@ -2017,6 +2178,35 @@ function openstation_build_native_windows_payload() {
 		return array();
 	}
 
+	// Synthesized `openStationWindowConfig[ id ]` assignments, grouped
+	// by SCRIPT HANDLE rather than kept per window. Several windows
+	// share one bundle (Posts / Pages / Users / Profile all ride
+	// `os-posts-window`), and the shell fetches a URL once — so a
+	// config that only travels with its own window's entry is dropped
+	// for every sibling after the first, and a bundle whose code
+	// serves one window from inside another (the Users window mounts
+	// the Profile form, which reads the user-edit config) never sees
+	// it at all. Shipping the whole handle's config set on every entry
+	// that names the handle means whichever entry loads the bundle
+	// delivers all of them; the assignments are keyed by id, so
+	// replaying a sibling's copy is idempotent.
+	$config_snippets_by_handle = array();
+	foreach ( $registry as $entry ) {
+		$handle = isset( $entry['script'] ) ? (string) $entry['script'] : '';
+		if ( '' === $handle || ! is_callable( $entry['template'] ) ) {
+			continue;
+		}
+		$window_config = openstation_filter_native_window_config( $entry );
+		if ( empty( $window_config ) ) {
+			continue;
+		}
+		$config_snippets_by_handle[ $handle ][ $entry['id'] ] = sprintf(
+			'window.openStationWindowConfig=window.openStationWindowConfig||{};window.openStationWindowConfig[%s]=%s;',
+			wp_json_encode( $entry['id'] ),
+			wp_json_encode( $window_config )
+		);
+	}
+
 	$out = array();
 	foreach ( $registry as $entry ) {
 		if ( ! is_callable( $entry['template'] ) ) {
@@ -2074,19 +2264,61 @@ function openstation_build_native_windows_payload() {
 		$style_handle  = isset( $entry['style'] ) ? (string) $entry['style'] : '';
 		$style_payload = openstation_resolve_style_payload( $style_handle );
 
+		// Companion style handles (`styles` arg) — stylesheets the
+		// shell injects on the window's FIRST OPEN, after the window's
+		// own style, in declared order. The styles-side mirror of
+		// `companionScripts`, with different timing on purpose: the
+		// window's own `style` lands when the window registers so a
+		// mid-session activation paints, but a companion exists to be
+		// deferred — it costs nothing until the window is actually
+		// shown. Unregistered handles drop, same as script companions.
+		$companion_styles = array();
+		if ( ! empty( $entry['styles'] ) && is_array( $entry['styles'] ) ) {
+			foreach ( $entry['styles'] as $companion_style_handle ) {
+				$companion_style_handle  = (string) $companion_style_handle;
+				$companion_style_payload = openstation_resolve_style_payload( $companion_style_handle );
+				if ( '' === $companion_style_payload['url'] ) {
+					continue;
+				}
+				$companion_styles[] = array(
+					'styleUrl'    => $companion_style_payload['url'],
+					'styleHandle' => $companion_style_handle,
+					'styleInline' => $companion_style_payload['inline'],
+				);
+			}
+		}
+
 		// `config` arg on `openstation_register_window()` — discoverable
 		// alternative to `wp_localize_script`. We synthesize a localize
 		// snippet so it lands through the same delivery path as native
 		// `wp_localize_script`. The bundle reads
 		// `window.openStationWindowConfig[id]` (or via
 		// `wp.os.getWindowConfig(id)`).
-		$window_config = openstation_filter_native_window_config( $entry );
-		if ( ! empty( $window_config ) ) {
-			$script_payload['l10n'][] = sprintf(
-				'window.openStationWindowConfig=window.openStationWindowConfig||{};window.openStationWindowConfig[%s]=%s;',
-				wp_json_encode( $entry['id'] ),
-				wp_json_encode( $window_config )
-			);
+		//
+		// The whole HANDLE's config set rides along, own window first —
+		// see `$config_snippets_by_handle` above for why a shared
+		// bundle must carry its siblings' configs too.
+		if ( '' !== $script_handle && isset( $config_snippets_by_handle[ $script_handle ] ) ) {
+			$handle_snippets = $config_snippets_by_handle[ $script_handle ];
+			if ( isset( $handle_snippets[ $entry['id'] ] ) ) {
+				$script_payload['l10n'][] = $handle_snippets[ $entry['id'] ];
+				unset( $handle_snippets[ $entry['id'] ] );
+			}
+			foreach ( $handle_snippets as $sibling_snippet ) {
+				$script_payload['l10n'][] = $sibling_snippet;
+			}
+		} elseif ( '' === $script_handle ) {
+			// A window with no bundle keeps the old shape: its config
+			// snippet is synthesized onto the (never-delivered) script
+			// payload, preserving behavior for declarative windows.
+			$window_config = openstation_filter_native_window_config( $entry );
+			if ( ! empty( $window_config ) ) {
+				$script_payload['l10n'][] = sprintf(
+					'window.openStationWindowConfig=window.openStationWindowConfig||{};window.openStationWindowConfig[%s]=%s;',
+					wp_json_encode( $entry['id'] ),
+					wp_json_encode( $window_config )
+				);
+			}
 		}
 
 		// Tab metadata (label + extra script payloads) ships alongside
@@ -2148,6 +2380,7 @@ function openstation_build_native_windows_payload() {
 			'styleUrl'           => $style_payload['url'],
 			'styleHandle'        => $style_handle,
 			'styleInline'        => $style_payload['inline'],
+			'companionStyles'    => $companion_styles,
 			'tabs'               => $tab_descriptors,
 		);
 	}

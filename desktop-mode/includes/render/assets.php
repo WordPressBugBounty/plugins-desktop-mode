@@ -78,18 +78,20 @@ function openstation_enqueue_assets() {
 		return;
 	}
 
-	// CSS.
+	// CSS. Only the sheets that paint surfaces present at boot — the
+	// shell chrome, the dock, desktop tiles and pinned notes. Sheets
+	// for on-demand surfaces (Preferences panel, AI assistant, bug
+	// report) ship as `deferredStyles` in the config blob below and
+	// inject on first open; a native window's sheet rides its
+	// registration's `styles` companion list the same way.
 	wp_enqueue_style( 'openstation' );
 	wp_enqueue_style( 'os-windows' );
 	wp_enqueue_style( 'os-window-overview' );
-	wp_enqueue_style( 'os-settings' );
 	wp_enqueue_style( 'os-dock' );
 	wp_enqueue_style( 'os-dock-peek' );
 	wp_enqueue_style( 'os-notch' );
 	wp_enqueue_style( 'os-shortcuts' );
 	wp_enqueue_style( 'os-openstation-layout' );
-	wp_enqueue_style( 'desktop-mode-ai-assistant' );
-	wp_enqueue_style( 'desktop-mode-bug-report' );
 	wp_enqueue_style( 'os-files' );
 	wp_enqueue_style( 'os-notes' );
 
@@ -162,33 +164,33 @@ function openstation_enqueue_assets() {
 	// palette; the shell needs it on every admin URL it might wrap.
 	// `function_exists` guard for pre-6.9 sites — the harvester gracefully
 	// no-ops when the store is missing.
-	if ( function_exists( 'wp_enqueue_command_palette_assets' ) ) {
-		// `wp_enqueue_command_palette_assets()` calls
-		// `array_key_exists( $menu_slug, $submenu )` without guarding
-		// the global, so an unset `$submenu` (test contexts, edge-case
-		// admin requests where the menu wasn't built yet) blows up
-		// with a TypeError. Initialize defensively before calling.
-		global $menu, $submenu;
-		// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- initializing an unset global to its documented empty shape, not replacing a built menu.
-		if ( ! isset( $submenu ) || ! is_array( $submenu ) ) {
-			$submenu = array();
-		}
-		if ( ! isset( $menu ) || ! is_array( $menu ) ) {
-			$menu = array();
-		}
-		// phpcs:enable WordPress.WP.GlobalVariablesOverride.Prohibited
-		wp_enqueue_command_palette_assets();
+	// See `openstation_defer_core_command_palette()` below for why
+	// Core's own boot-time enqueue is unhooked on shell pages.
+	//
+	// The Core command-palette runtime is NOT enqueued here any more.
+	// Its dependency chain is the whole Gutenberg runtime (~800 KB
+	// gzipped across forty-odd bundles), paid on every boot for a ⌘K
+	// palette most sessions never open. It now ships as an ordered
+	// manifest in the config blob (`commandPalette`, built by
+	// `openstation_build_command_palette_assets_payload()`), and
+	// `src/commands/palette-assets.ts` replays it the first time the
+	// palette is invoked. The shell harvester keeps its idle-time
+	// `install()` — a graceful no-op until the store exists — and
+	// re-installs on `os-command-palette-ready`.
+	$command_palette = openstation_build_command_palette_assets_payload();
 
+	if ( function_exists( 'wp_enqueue_command_palette_assets' ) ) {
 		// Expose the same menu-commands array WP serializes into
 		// `wp.coreCommands.initializeCommandPalette(...)` on a window
 		// slot the shell harvester can read. Built in PHP from `$menu`
-		// / `$submenu` here (we already guarded that they're arrays
-		// above), then injected as a `before` inline on our own bundle
-		// — that runs synchronously before `desktop.min.js` boots the
-		// shell harvester, so the lookup is guaranteed populated by
-		// the time `src/commands/shell-harvester.ts` classifies any
-		// command. Decoupled from WP's command-palette mount timing
-		// (which fires from a core-registered hook we can't reorder).
+		// / `$submenu`, then injected as a `before` inline on our own
+		// bundle — that runs synchronously before `desktop.min.js`
+		// boots the shell harvester, so the lookup is guaranteed
+		// populated by the time `src/commands/shell-harvester.ts`
+		// classifies any command. Decoupled from WP's command-palette
+		// mount timing (which fires from a core-registered hook we
+		// can't reorder) — and, since the palette bundles went lazy,
+		// from whether they have loaded at all.
 		$menu_map = openstation_build_command_menu_map();
 		wp_add_inline_script(
 			'openstation',
@@ -670,6 +672,26 @@ function openstation_enqueue_assets() {
 				// the polite behaviour where we yield to existing PWAs.
 				'forceReplaceSw' => openstation_pwa_force_replace_sw(),
 			),
+			// Ordered Core command-palette asset manifest, replayed on
+			// first palette invocation. `null` on pre-6.9 sites.
+			'commandPalette'                => $command_palette,
+			// Stylesheets for shell surfaces that render on demand —
+			// the Preferences panel, the AI assistant, the bug-report
+			// window. None of them is a server-registered native
+			// window (they are built client-side by the shell
+			// bundle), so the `styles` companion mechanism can't
+			// carry their CSS; instead the shell injects each sheet
+			// the first time its surface opens, via
+			// `ensureDeferredStyle()` in `src/deferred-styles.ts`.
+			// Same resolved shape a native window's `styleUrl` /
+			// `styleInline` travels in.
+			'deferredStyles'                => openstation_build_deferred_styles(
+				array(
+					'os-settings',
+					'desktop-mode-ai-assistant',
+					'desktop-mode-bug-report',
+				)
+			),
 		)
 	);
 
@@ -681,6 +703,37 @@ function openstation_enqueue_assets() {
 	do_action( 'openstation_mode_init' );
 }
 add_action( 'admin_enqueue_scripts', 'openstation_enqueue_assets' );
+
+/**
+ * Keep Core's boot-time command-palette enqueue off shell pages.
+ *
+ * WordPress 7.0 hooks `wp_enqueue_command_palette_assets()` on
+ * `admin_enqueue_scripts` by default, which puts the palette's whole
+ * dependency chain — the Gutenberg runtime, ~800 KB gzipped — on
+ * every admin page. On a SHELL page that is pure dead weight: the
+ * shell suppresses Core's palette unconditionally (the ⌘K keystroke
+ * and the admin-bar icon both route to the shell's own palette), so
+ * the runtime it powers can never be shown. Unhooking here lets the
+ * deferred manifest (`openstation_build_command_palette_assets_payload()`)
+ * capture the chain instead, and the shell loads it on the first
+ * palette invocation.
+ *
+ * Deliberately scoped: chromeless iframes and classic-mode requests
+ * keep Core's default — inside an iframe the runtime powers the
+ * command harvest the bridge streams to the parent, and a classic
+ * page is Core's own UI where Core's palette is the right one.
+ *
+ * Priority 0, ahead of Core's default 10, so the removal lands
+ * before the callback fires. On WP 6.9 (function exists, no default
+ * hook) the `remove_action()` is a harmless no-op.
+ */
+function openstation_defer_core_command_palette() {
+	if ( ! openstation_is_enabled() || openstation_is_chromeless_request() || openstation_is_classic_request() ) {
+		return;
+	}
+	remove_action( 'admin_enqueue_scripts', 'wp_enqueue_command_palette_assets' );
+}
+add_action( 'admin_enqueue_scripts', 'openstation_defer_core_command_palette', 0 );
 
 /**
  * Emits `<link rel="preload">` hints for the shell's critical-path
