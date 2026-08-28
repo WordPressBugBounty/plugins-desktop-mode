@@ -46,6 +46,22 @@ const OPENSTATION_PWA_MANIFEST_FRAGMENT = 'manifest.webmanifest';
 const OPENSTATION_PWA_SW_FRAGMENT = 'sw.js';
 
 /**
+ * Query var for the extensionless service-worker fallback endpoint.
+ *
+ * Some hosts' nginx (WordPress.com among them) short-circuits paths
+ * with a static-file extension straight to the filesystem: a virtual
+ * route like `/openstation/sw.js` 404s at the web server and never
+ * reaches WordPress, so the pretty SW endpoint is unservable there —
+ * while the extensionless manifest route works fine. The fallback
+ * serves the same bytes at `/?openstation_sw=1`: no extension, so the
+ * request always reaches WordPress, and the script URL's *path* is
+ * `/`, which grants root scope without the `Service-Worker-Allowed`
+ * header even mattering. `src/pwa/sw-register.ts` retries with this
+ * URL when registering the pretty URL fails.
+ */
+const OPENSTATION_PWA_SW_QUERY = 'openstation_sw';
+
+/**
  * User-meta key — JSON blob persisting per-user PWA UI state.
  *
  * Today: `installHintDismissed` (bool), `notificationsEnabled` (bool).
@@ -78,6 +94,19 @@ function openstation_pwa_sw_url() {
 }
 
 /**
+ * Builds the extensionless service-worker fallback URL.
+ *
+ * See {@see OPENSTATION_PWA_SW_QUERY} for why this exists. Kept as a
+ * root-path URL on purpose: the SW script URL's path determines the
+ * default maximum scope, and `/` is exactly the scope we register.
+ *
+ * @return string
+ */
+function openstation_pwa_sw_fallback_url() {
+	return add_query_arg( OPENSTATION_PWA_SW_QUERY, '1', home_url( '/' ) );
+}
+
+/**
  * Resolves whether openstation should usurp another root-scope SW.
  *
  * When `false` (default), `src/pwa/sw-register.ts` bails on registration
@@ -103,6 +132,96 @@ function openstation_pwa_force_replace_sw() {
 	 * @param bool $force_replace Defaults to `false` (yield to existing SWs).
 	 */
 	return (bool) apply_filters( 'openstation_pwa_force_replace_sw', false );
+}
+
+/**
+ * Resolves whether the service worker's shared admin-asset cache is on.
+ *
+ * When enabled, the root-scope SW serves versioned admin static assets
+ * (Core CSS/JS, the `load-scripts.php` / `load-styles.php` concat
+ * blobs, plugin/theme assets carrying a `ver` query) from one
+ * origin-wide Cache Storage bucket — so an asset fetched by any window
+ * (shell or chromeless iframe) is answered locally for every later
+ * window, revalidation round-trips included. See `src/pwa/sw-policy.ts`
+ * for the exact classification rules.
+ *
+ * Off by default while the feature proves itself: the failure mode of
+ * cache-first (an asset edited without a `ver` bump staying pinned) is
+ * silent, so users opt in deliberately — via **OpenStation Preferences →
+ * Features → Beta features** (`adminAssetCacheEnabled`, per user), or
+ * site-wide via the filter below.
+ *
+ * Per-user works even though a service worker is origin-wide because
+ * the answer never travels in the worker's own bytes. It is resolved
+ * per request here and pushed to the running worker as an `os-sw-config`
+ * message when the shell boots, and again whenever the preference
+ * changes — see {@see openstation_pwa_sw_config_preamble()} for why
+ * baking it into the script was abandoned. The worker starts with the
+ * cache off, so until that message lands it does less, never more.
+ *
+ * @return bool
+ */
+function openstation_pwa_admin_asset_cache_enabled() {
+	$settings = openstation_get_os_settings( get_current_user_id() );
+	$enabled  = ! empty( $settings['adminAssetCacheEnabled'] );
+
+	/**
+	 * Filters whether the SW's shared admin-asset cache is enabled.
+	 *
+	 * Return `true` to let the service worker cache versioned admin
+	 * static assets in a shared, origin-wide bucket, or `false` to
+	 * veto it site-wide regardless of per-user opt-ins. The value
+	 * reaches the worker as an `os-sw-config` message on the next shell
+	 * boot, so a change takes effect without altering the served script
+	 * — no SW update, no URL change, no re-registration.
+	 *
+	 * @param bool $enabled Defaults to the requesting user's
+	 *                      `adminAssetCacheEnabled` OpenStation
+	 *                      preference (`false` until they opt in).
+	 */
+	return (bool) apply_filters( 'openstation_pwa_admin_asset_cache', $enabled );
+}
+
+/**
+ * Builds the `self.__OS_SW_CONFIG` preamble line injected ahead of the
+ * service-worker bundle bytes by {@see openstation_pwa_serve_service_worker()}.
+ *
+ * The preamble is how per-site PHP state reaches the SW: the script is
+ * a static build artifact, but the *served response* is assembled per
+ * request, and the browser's byte-equality update check treats any
+ * change in these values as a new SW version (`updateViaCache: 'none'`
+ * at registration makes that check unconditional). The SW URL never
+ * changes, so the foreign-SW `scriptURL` comparison in
+ * `src/pwa/sw-register.ts` is unaffected.
+ *
+ * `pluginUrl` also lets the SW resolve its own asset paths on hosts
+ * with a non-default `wp-content` layout (Bedrock, moved
+ * `WP_CONTENT_DIR`) instead of hardcoding the conventional path.
+ *
+ * @return string One line of JavaScript, newline-terminated.
+ */
+function openstation_pwa_sw_config_preamble() {
+	/*
+	 * Site-level values ONLY. Nothing here may depend on who is asking.
+	 *
+	 * `adminAssetCache` and `windowPrewarm` are per-user preferences,
+	 * and a service worker is origin-wide. Putting them in the served
+	 * bytes made the body differ between an anonymous and a logged-in
+	 * request, so any in-scope logged-out navigation — the interim-login
+	 * iframe, logging out — served a different script. The browser
+	 * treats different bytes as an update, installs it, activates it,
+	 * and the shell's `controllerchange` handler hard-reloads the
+	 * desktop out from under the user.
+	 *
+	 * The shell pushes both flags to the running worker at boot instead
+	 * (`os-sw-config`), and the toggle pushes changes as they happen.
+	 * The worker starts with both off, so until that message lands it
+	 * simply does less — never more.
+	 */
+	$config = array(
+		'pluginUrl' => OPENSTATION_URL,
+	);
+	return sprintf( "self.__OS_SW_CONFIG = %s;\n", wp_json_encode( $config ) );
 }
 
 /**
@@ -134,6 +253,25 @@ function openstation_pwa_endpoint_kind() {
 	}
 	if ( $path === $portal . OPENSTATION_PWA_SW_FRAGMENT ) {
 		return 'sw';
+	}
+	// Extensionless fallback (`/?openstation_sw=1`) for hosts whose web
+	// server 404s virtual `.js` paths before WordPress runs.
+	//
+	// Pinned to the site root — the one URL
+	// {@see openstation_pwa_sw_fallback_url()} builds and the only one
+	// the registration ever requests. Matching the query alone would
+	// have turned *any* path into a service-worker endpoint, which is
+	// harmless in practice (the handler streams a static file from
+	// disk and reflects nothing from the request) but wider than the
+	// contract this function documents, and a service worker's scope
+	// is decided by the path it is served from — so the path is not an
+	// incidental detail here.
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- public read-only endpoint selector, same trust level as the path match above.
+	if ( isset( $_GET[ OPENSTATION_PWA_SW_QUERY ] ) && '1' === $_GET[ OPENSTATION_PWA_SW_QUERY ] ) {
+		$home_root = '' === $home_path ? '/' : $home_path . '/';
+		if ( $path === $home_root || $path === $home_path ) {
+			return 'sw';
+		}
 	}
 	return '';
 }
@@ -416,6 +554,14 @@ function openstation_pwa_serve_service_worker() {
 	// inline comment stays under one line.
 	$stamp = substr( md5( $body ), 0, 16 );
 	printf( "/* openstation SW build: %s */\n", esc_html( $stamp ) );
+	// Per-request config, injected ahead of the bundle. Deliberately
+	// NOT part of the stamp hash above: the stamp identifies the
+	// *bundle*, while a config change carries itself to the browser's
+	// update check through its own bytes. Don't "fix" the hash to
+	// cover the full response — identical bundles must keep identical
+	// stamps (see the phantom-reload note above).
+	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JS assembled via wp_json_encode; HTML escaping would corrupt the script.
+	echo openstation_pwa_sw_config_preamble();
 	// `$body` is the SW JavaScript bundle read off disk — escaping
 	// would corrupt the script. Suppress the sniff with the standard
 	// `--` separator (an em-dash silently fails to satisfy phpcs).

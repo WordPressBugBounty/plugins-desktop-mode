@@ -1584,9 +1584,14 @@ function openstation_build_menu_payload() {
 
 	$dock = array_merge( $core, $plugin );
 
+	// One collector call feeds both halves: the slim entry list and
+	// the handle-keyed script data the shell joins them with.
+	$native_windows = openstation_collect_native_windows_payload();
+
 	$payload = array(
-		'dockItems'     => $dock,
-		'nativeWindows' => openstation_build_native_windows_payload(),
+		'dockItems'              => $dock,
+		'nativeWindows'          => $native_windows['windows'],
+		'nativeWindowScriptData' => $native_windows['scriptData'],
 	);
 
 	// Optional per-surface payload builders — each module ships a
@@ -1727,6 +1732,138 @@ function openstation_menu_signature() {
 	}
 
 	return md5( implode( "\n", $parts ) );
+}
+
+/**
+ * A handle's dependency closure, in load order.
+ *
+ * Post-order depth-first: a handle is emitted only after everything it
+ * declares, which is the order `WP_Scripts::do_item()` would have
+ * printed them in. A handle is marked visited *before* its own
+ * dependencies are walked, so a dependency cycle unwinds instead of
+ * recursing forever, and an unregistered handle is skipped rather than
+ * being fatal — it contributes nothing and stops nothing.
+ *
+ * **Deliberately not `WP_Dependencies::all_deps()`.** Three reasons,
+ * each of which has bitten this codebase:
+ *
+ * 1. `WP_Scripts::all_deps()` applies `print_scripts_array` to its
+ * result whenever `$recursion` is falsy. That filter is where the
+ * chromeless palette trim and the asset guard live, so resolving a
+ * payload through it would run a print-time trim across a dependency
+ * list and let the guard splice this plugin's own bundles into it.
+ * Called from inside one of those filters it is an infinite loop.
+ *
+ * 2. Passing `$recursion = true` silences that filter but changes the
+ * contract: the first handle that fails aborts the entire call
+ * (`return false`), abandoning every handle after it in the list. The
+ * caller is left with a `$to_do` that is a truncated prefix of the real
+ * closure and indistinguishable from a complete one — a silent, partial
+ * answer conditional on unrelated registrations elsewhere on the page.
+ * A lazily-delivered bundle resolved that way loses packages it
+ * declared and throws on an undefined global at mount, which is the
+ * exact bug this whole mechanism exists to prevent.
+ *
+ * 3. `all_deps()` reports missing dependencies through
+ * `_doing_it_wrong()`. This is read-only analysis; the real print pass
+ * raises those anyway, and raising them twice turns someone else's
+ * pre-existing warning into our noise.
+ *
+ * O(V+E) over the graph, allocates one set, and clones nothing.
+ *
+ * @param WP_Dependencies $dependencies The scripts or styles registry.
+ * @param string[]        $handles      Roots to walk.
+ * @return string[] Registered handles, dependencies before dependents.
+ */
+function openstation_script_dependency_closure( $dependencies, $handles ) {
+	$seen = array();
+	$out  = array();
+	openstation_collect_script_dependency_closure( $dependencies, (array) $handles, $seen, $out );
+
+	return $out;
+}
+
+/**
+ * Recursive half of {@see openstation_script_dependency_closure()}.
+ *
+ * @param WP_Dependencies $dependencies The scripts or styles registry.
+ * @param string[]        $handles      Handles to walk.
+ * @param array           $seen         Handle => true, by reference.
+ * @param string[]        $out          Ordered result, by reference.
+ */
+function openstation_collect_script_dependency_closure( $dependencies, $handles, &$seen, &$out ) {
+	foreach ( (array) $handles as $handle ) {
+		if ( isset( $seen[ $handle ] ) ) {
+			continue;
+		}
+		// Marked BEFORE recursing, so a cycle meets itself as visited
+		// and unwinds rather than recursing forever.
+		$seen[ $handle ] = true;
+		if ( ! isset( $dependencies->registered[ $handle ] ) ) {
+			continue;
+		}
+		openstation_collect_script_dependency_closure(
+			$dependencies,
+			$dependencies->registered[ $handle ]->deps,
+			$seen,
+			$out
+		);
+		$out[] = $handle;
+	}
+}
+
+/**
+ * Resolve a handle's dependency closure, in load order.
+ *
+ * **Why a lazily-delivered handle needs this at all.** WordPress
+ * normally resolves a script's dependencies when it enqueues it — the
+ * packages a bundle declares are on the page before its own body runs.
+ * A handle that is only ever delivered lazily never goes through that:
+ * `loadVendorScript()` injects one URL, and a bundle declaring
+ * `wp-api-fetch` found `wp.apiFetch` undefined at mount.
+ *
+ * That used to work by accident. Core's ⌘K palette was enqueued on
+ * every admin page and its closure is the whole Gutenberg runtime, so
+ * `wp.apiFetch`, `wp.element` and friends happened to be globals.
+ * Deferring the palette took the accident away and left the contract
+ * exposed — see `docs/migration-wp-package-globals.md`.
+ *
+ * The closure comes from {@see openstation_script_dependency_closure()}
+ * rather than `WP_Dependencies::all_deps()`; that function's docblock
+ * records why, and the short version is that `all_deps()` answers a
+ * question like this one with a silently truncated list. The handle
+ * itself is excluded — the caller loads it separately, after these.
+ *
+ * @param string $handle Script handle.
+ * @return array<int,array<string,mixed>> Ordered dependency payloads.
+ */
+function openstation_resolve_script_dependencies( $handle ) {
+	$handle     = (string) $handle;
+	$wp_scripts = wp_scripts();
+	if ( '' === $handle || ! $wp_scripts || ! isset( $wp_scripts->registered[ $handle ] ) ) {
+		return array();
+	}
+	$deps = $wp_scripts->registered[ $handle ]->deps;
+	if ( empty( $deps ) ) {
+		return array();
+	}
+
+	$out = array();
+	foreach ( openstation_script_dependency_closure( $wp_scripts, $deps ) as $dep_handle ) {
+		if ( $dep_handle === $handle ) {
+			continue;
+		}
+		$payload = openstation_resolve_script_payload( $dep_handle );
+		if ( '' === $payload['url']
+			&& empty( $payload['before'] )
+			&& empty( $payload['after'] )
+			&& empty( $payload['l10n'] ) ) {
+			continue;
+		}
+		$payload['handle'] = (string) $dep_handle;
+		$out[]             = $payload;
+	}
+	return $out;
 }
 
 /**
@@ -2024,6 +2161,34 @@ function openstation_build_command_palette_assets_payload() {
 				continue;
 			}
 		}
+		// Core's `initializeCommandPalette( {…} )` inline embeds the
+		// serialized admin-menu command list — ~20 KB that the boot
+		// page ALREADY carries as `window.__openStationMenuCommands`
+		// (the shell harvester's lookup, attached as a `before`
+		// inline on the main bundle, and the richer of the two: its
+		// URL derivation routes legacy file-path slugs through
+		// `menu_page_url()` where Core's regex takes them literally).
+		// Ship the list once: strip Core's embedded copy and
+		// synthesize the same call against the global, which is
+		// guaranteed present long before the manifest replays — it
+		// prints at boot, the replay waits for the first ⌘K.
+		if ( 'wp-core-commands' === $handle ) {
+			foreach ( array( 'before', 'after' ) as $position ) {
+				$payload[ $position ] = array_values(
+					array_filter(
+						$payload[ $position ],
+						static function ( $snippet ) {
+							return false === strpos( (string) $snippet, 'initializeCommandPalette(' );
+						}
+					)
+				);
+			}
+			$payload['after'][] = sprintf(
+				'wp.coreCommands.initializeCommandPalette({"is_network_admin":%s,"menu_commands":window.__openStationMenuCommands||[]});',
+				is_network_admin() ? 'true' : 'false'
+			);
+		}
+
 		$out['scripts'][] = array(
 			'handle'       => (string) $handle,
 			'url'          => $payload['url'],
@@ -2158,38 +2323,78 @@ function openstation_flush_script_handle_registries() {
 }
 
 /**
- * Serialize the server-declared native-window registry into the
- * payload shape the shell consumes. For each entry registered via
- * `openstation_register_window()`, we capture: the window's
- * metadata (id/title/icon/placement/dimensions/autofocus), the
- * rendered template HTML (by running the template callback into an
- * output buffer), and the URL of the enqueued script handle (so
- * mid-session activations can load the plugin's JS dynamically
- * without a full shell reload).
+ * Collect the native-window payload: slim per-window entries plus a
+ * handle-keyed script-data map.
  *
- * @return array[]
+ * For each entry registered via `openstation_register_window()` the
+ * `windows` list captures the window's metadata
+ * (id/title/icon/placement/dimensions/autofocus), the rendered
+ * template HTML, and the HANDLE NAMES of its script, companions and
+ * tab scripts. The resolved data those handles stand for — URL plus
+ * harvested `wp_localize_script` / `wp_add_inline_script` /
+ * translations, see `openstation_resolve_script_payload()` — lives
+ * ONCE per handle in `scriptData`, and the shell joins the two on
+ * receipt (`hydrateServerEntries()` in `src/native-windows.ts`).
+ *
+ * The split exists because script data is a property of the HANDLE,
+ * not of the window: Posts, Pages, Users and Profile all ride
+ * `os-posts-window`, and inlining each entry's resolved copy
+ * serialized the same localize blobs and the same shared config set
+ * four times over — `scriptL10n` alone was ~100 KB of the boot
+ * payload, most of it repetition. The synthesized
+ * `openStationWindowConfig[ id ]` assignments group by handle for
+ * the same reason they used to ride every sharing entry: the shell
+ * fetches a URL once, and a bundle can serve one window from inside
+ * another (the Users window mounts the Profile form, which reads the
+ * user-edit config), so whichever entry loads the bundle must
+ * deliver the whole handle's config set.
+ *
+ * Style data stays inline on the entries — it never had a
+ * duplication problem worth a second map ( companion styles across
+ * the whole registry total ~2 KB ).
+ *
+ * @return array{windows:array[],scriptData:array<string,array{url:string,before:string[],after:string[],l10n:string[],translations:string}>}
  */
-function openstation_build_native_windows_payload() {
+function openstation_collect_native_windows_payload() {
+	$empty = array(
+		'windows'    => array(),
+		'scriptData' => array(),
+	);
 	if ( ! function_exists( 'openstation_native_window_registry' ) ) {
-		return array();
+		return $empty;
 	}
 	$registry = openstation_native_window_registry();
 	if ( ! is_array( $registry ) ) {
-		return array();
+		return $empty;
 	}
 
+	$script_data = array();
+
+	// Resolve a handle into the map, once. Returns the handle when it
+	// resolved to something loadable, '' when it did not (never
+	// registered, no src) — the same silent drop the inline shape
+	// applied to companions and tab scripts.
+	$collect_handle = static function ( $handle ) use ( &$script_data ) {
+		$handle = (string) $handle;
+		if ( '' === $handle ) {
+			return '';
+		}
+		if ( isset( $script_data[ $handle ] ) ) {
+			return $handle;
+		}
+		$payload = openstation_resolve_script_payload( $handle );
+		if ( '' === $payload['url'] ) {
+			return '';
+		}
+		$script_data[ $handle ] = $payload;
+		return $handle;
+	};
+
 	// Synthesized `openStationWindowConfig[ id ]` assignments, grouped
-	// by SCRIPT HANDLE rather than kept per window. Several windows
-	// share one bundle (Posts / Pages / Users / Profile all ride
-	// `os-posts-window`), and the shell fetches a URL once — so a
-	// config that only travels with its own window's entry is dropped
-	// for every sibling after the first, and a bundle whose code
-	// serves one window from inside another (the Users window mounts
-	// the Profile form, which reads the user-edit config) never sees
-	// it at all. Shipping the whole handle's config set on every entry
-	// that names the handle means whichever entry loads the bundle
-	// delivers all of them; the assignments are keyed by id, so
-	// replaying a sibling's copy is idempotent.
+	// by script handle (see the function docblock). Collected first so
+	// they can be appended to each handle's map entry exactly once,
+	// after its own harvested data — the same order the print pipeline
+	// would have used.
 	$config_snippets_by_handle = array();
 	foreach ( $registry as $entry ) {
 		$handle = isset( $entry['script'] ) ? (string) $entry['script'] : '';
@@ -2221,38 +2426,32 @@ function openstation_build_native_windows_payload() {
 		// reload.
 		$template_html = openstation_build_native_window_template_html( $entry );
 
-		// Resolve script handle → full payload (URL + harvested
-		// `extra` data) so the shell can inject a `<script>` tag
-		// dynamically on mid-session activation WITHOUT dropping
-		// `wp_localize_script` / `wp_add_inline_script` data the way
-		// the bare `<script src>` lazy-load path would. See
-		// `openstation_resolve_script_payload()` for shape.
-		$script_handle  = isset( $entry['script'] ) ? (string) $entry['script'] : '';
-		$script_payload = openstation_resolve_script_payload( $script_handle );
+		// `$collect_handle()` answers "is there a bundle to fetch?", and
+		// returns '' when the handle resolves to no URL — a src-less
+		// alias handle registered only to carry `preload_script` or
+		// inline data, for instance. That is the right answer for
+		// `scriptHandle`, which names something to load. It is the
+		// wrong answer for `ownerHandle`, which names WHO the window
+		// belongs to: attribution does not depend on whether the owner
+		// happens to ship a file. Shipping '' there broke the
+		// documented "always populated" contract and blanked
+		// `wp.os.debug.window()`.
+		$declared_script = isset( $entry['script'] ) ? (string) $entry['script'] : '';
+		$script_handle   = $collect_handle( $declared_script );
+		$owner_handle    = '' !== $script_handle ? $script_handle : $declared_script;
 
 		// Companion handles (`scripts` arg) — bundles that extend the
 		// window from outside it and must be in the tab before its
-		// render callback paints. Same resolved shape as the main
-		// script, kept as a list so the shell loads them in the
-		// declared order ahead of it. Handles that resolve to nothing
-		// (never registered) are dropped rather than shipped as an
-		// entry the loader would skip anyway.
+		// render callback paints. Kept as an ordered handle list; the
+		// shell loads them in declared order ahead of the window's
+		// own script, resolving each through `scriptData`.
 		$companion_scripts = array();
 		if ( ! empty( $entry['scripts'] ) && is_array( $entry['scripts'] ) ) {
 			foreach ( $entry['scripts'] as $companion_handle ) {
-				$companion_handle  = (string) $companion_handle;
-				$companion_payload = openstation_resolve_script_payload( $companion_handle );
-				if ( '' === $companion_payload['url'] ) {
-					continue;
+				$companion_handle = $collect_handle( $companion_handle );
+				if ( '' !== $companion_handle ) {
+					$companion_scripts[] = $companion_handle;
 				}
-				$companion_scripts[] = array(
-					'scriptUrl'          => $companion_payload['url'],
-					'scriptHandle'       => $companion_handle,
-					'scriptBefore'       => $companion_payload['before'],
-					'scriptAfter'        => $companion_payload['after'],
-					'scriptL10n'         => $companion_payload['l10n'],
-					'scriptTranslations' => $companion_payload['translations'],
-				);
 			}
 		}
 
@@ -2288,104 +2487,94 @@ function openstation_build_native_windows_payload() {
 			}
 		}
 
-		// `config` arg on `openstation_register_window()` — discoverable
-		// alternative to `wp_localize_script`. We synthesize a localize
-		// snippet so it lands through the same delivery path as native
-		// `wp_localize_script`. The bundle reads
-		// `window.openStationWindowConfig[id]` (or via
-		// `wp.os.getWindowConfig(id)`).
-		//
-		// The whole HANDLE's config set rides along, own window first —
-		// see `$config_snippets_by_handle` above for why a shared
-		// bundle must carry its siblings' configs too.
-		if ( '' !== $script_handle && isset( $config_snippets_by_handle[ $script_handle ] ) ) {
-			$handle_snippets = $config_snippets_by_handle[ $script_handle ];
-			if ( isset( $handle_snippets[ $entry['id'] ] ) ) {
-				$script_payload['l10n'][] = $handle_snippets[ $entry['id'] ];
-				unset( $handle_snippets[ $entry['id'] ] );
-			}
-			foreach ( $handle_snippets as $sibling_snippet ) {
-				$script_payload['l10n'][] = $sibling_snippet;
-			}
-		} elseif ( '' === $script_handle ) {
-			// A window with no bundle keeps the old shape: its config
-			// snippet is synthesized onto the (never-delivered) script
-			// payload, preserving behavior for declarative windows.
-			$window_config = openstation_filter_native_window_config( $entry );
-			if ( ! empty( $window_config ) ) {
-				$script_payload['l10n'][] = sprintf(
-					'window.openStationWindowConfig=window.openStationWindowConfig||{};window.openStationWindowConfig[%s]=%s;',
-					wp_json_encode( $entry['id'] ),
-					wp_json_encode( $window_config )
-				);
-			}
-		}
-
-		// Tab metadata (label + extra script payloads) ships alongside
-		// the template so the shell can render a picker UI or load
-		// additional tab scripts when a tab's activation is late.
+		// Tab metadata ships alongside the template so the shell can
+		// render a picker UI, and each tab's script handle joins the
+		// map so a late tab activation can still load its bundle.
 		$tab_descriptors = array();
 		if ( function_exists( 'openstation_get_native_window_tabs' ) ) {
 			foreach ( openstation_get_native_window_tabs( $entry['id'] ) as $tab ) {
-				// The resolver returns the empty payload shape itself
-				// for an empty handle — no need to hand-write it here.
-				$tab_payload       = openstation_resolve_script_payload( $tab['script'] );
 				$tab_descriptors[] = array(
-					'value'              => $tab['value'],
-					'label'              => $tab['label'],
-					'isMain'             => $tab['is_main'],
-					'scriptUrl'          => $tab_payload['url'],
-					'scriptHandle'       => $tab['script'],
-					'scriptBefore'       => $tab_payload['before'],
-					'scriptAfter'        => $tab_payload['after'],
-					'scriptL10n'         => $tab_payload['l10n'],
-					'scriptTranslations' => $tab_payload['translations'],
+					'value'        => $tab['value'],
+					'label'        => $tab['label'],
+					'isMain'       => $tab['is_main'],
+					'scriptHandle' => $collect_handle( $tab['script'] ),
 				);
 			}
 		}
 
 		$out[] = array(
-			'id'                 => $entry['id'],
-			'title'              => $entry['title'],
-			'icon'               => $entry['icon'],
-			'placement'          => $entry['placement'],
+			'id'               => $entry['id'],
+			'title'            => $entry['title'],
+			'icon'             => $entry['icon'],
+			'placement'        => $entry['placement'],
 			// `'app'` or `'control'` — the navigation kind, which
 			// decides the launcher's default placement and its dock
 			// zone. See `src/nav/defaults.ts`.
-			'navKind'            => isset( $entry['nav_kind'] ) ? $entry['nav_kind'] : 'app',
+			'navKind'          => isset( $entry['nav_kind'] ) ? $entry['nav_kind'] : 'app',
 			// Sort key among system tiles. Absent / 0 puts a plugin's
 			// launcher ahead of the shell's own trailing cluster.
-			'dockOrder'          => isset( $entry['dock_order'] ) ? (int) $entry['dock_order'] : 0,
-			'placeable'          => ! empty( $entry['placeable'] ),
-			'width'              => $entry['width'],
-			'height'             => $entry['height'],
-			'minWidth'           => $entry['min_width'],
-			'minHeight'          => $entry['min_height'],
-			'autofocus'          => $entry['autofocus'],
-			'templateId'         => 'os-native-window-' . $entry['id'],
-			'templateHtml'       => $template_html,
-			'scriptUrl'          => $script_payload['url'],
-			'scriptHandle'       => $script_handle,
-			'ownerHandle'        => $script_handle,
-			'scriptBefore'       => $script_payload['before'],
-			'scriptAfter'        => $script_payload['after'],
-			'scriptL10n'         => $script_payload['l10n'],
-			'scriptTranslations' => $script_payload['translations'],
-			'companionScripts'   => $companion_scripts,
+			'dockOrder'        => isset( $entry['dock_order'] ) ? (int) $entry['dock_order'] : 0,
+			'placeable'        => ! empty( $entry['placeable'] ),
+			'width'            => $entry['width'],
+			'height'           => $entry['height'],
+			'minWidth'         => $entry['min_width'],
+			'minHeight'        => $entry['min_height'],
+			'autofocus'        => $entry['autofocus'],
+			'templateId'       => 'os-native-window-' . $entry['id'],
+			'templateHtml'     => $template_html,
+			'scriptHandle'     => $script_handle,
+			'ownerHandle'      => $owner_handle,
+			'companionScripts' => $companion_scripts,
 			// Whether the shell loads the bundle at boot rather than on
 			// first open. Off by default: a window's script is dead
 			// weight on every admin page until the window is actually
 			// opened.
-			'preloadScript'      => ! empty( $entry['preload_script'] ),
-			'styleUrl'           => $style_payload['url'],
-			'styleHandle'        => $style_handle,
-			'styleInline'        => $style_payload['inline'],
-			'companionStyles'    => $companion_styles,
-			'tabs'               => $tab_descriptors,
+			'preloadScript'    => ! empty( $entry['preload_script'] ),
+			'styleUrl'         => $style_payload['url'],
+			'styleHandle'      => $style_handle,
+			'styleInline'      => $style_payload['inline'],
+			'companionStyles'  => $companion_styles,
+			'tabs'             => $tab_descriptors,
 		);
 	}
 
-	return $out;
+	// Append each handle's synthesized config set to its map entry —
+	// once, after the handle's own harvested data. The snippets land
+	// in REGISTRY-ITERATION order for every consumer of the handle;
+	// the old per-entry shape put each window's own config first, an
+	// ordering nothing could observe (each snippet assigns a distinct
+	// `openStationWindowConfig[ id ]` key and none reads another), so
+	// it is deliberately not preserved. Configs for handles that
+	// resolved to nothing are undeliverable and drop, exactly as they
+	// always did.
+	foreach ( $config_snippets_by_handle as $handle => $snippets ) {
+		if ( ! isset( $script_data[ $handle ] ) ) {
+			continue;
+		}
+		foreach ( $snippets as $snippet ) {
+			$script_data[ $handle ]['l10n'][] = $snippet;
+		}
+	}
+
+	return array(
+		'windows'    => $out,
+		'scriptData' => $script_data,
+	);
+}
+
+/**
+ * The `windows` half of {@see openstation_collect_native_windows_payload()}.
+ *
+ * Kept as the historical entry point — tests and older call sites
+ * ask for the entry list alone. Anything that also needs the
+ * script-data map (everything that actually LOADS a bundle) should
+ * call the collector and take both halves from one build.
+ *
+ * @return array[]
+ */
+function openstation_build_native_windows_payload() {
+	$bundle = openstation_collect_native_windows_payload();
+	return $bundle['windows'];
 }
 
 /**

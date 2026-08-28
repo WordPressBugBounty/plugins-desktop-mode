@@ -223,6 +223,25 @@ function openstation_enqueue_assets() {
 	$native_windows                    = isset( $menu_payload['nativeWindows'] )
 		? $menu_payload['nativeWindows']
 		: array();
+
+	// The BOOT page prints every registry window's template as a real
+	// `<template>` tag (`openstation_render_native_window_templates()`,
+	// admin_footer @ 20 — before footer scripts, so the tags are in
+	// the DOM before the shell boots and `ensureTemplate()` adopts
+	// them by id). The payload's `templateHtml` copy exists for the
+	// MID-SESSION path — a bridge or probe payload delivering a
+	// window whose plugin activated after the page rendered — so on
+	// the boot config it is ~27 KB of the same markup twice. Strip it
+	// here, and only here: the bridge and probe payloads keep theirs.
+	foreach ( $native_windows as &$native_window_row ) {
+		if ( is_array( $native_window_row ) ) {
+			$native_window_row['templateHtml'] = '';
+		}
+	}
+	unset( $native_window_row );
+	$native_window_script_data         = isset( $menu_payload['nativeWindowScriptData'] )
+		? $menu_payload['nativeWindowScriptData']
+		: array();
 	$server_widgets                    = isset( $menu_payload['serverWidgets'] )
 		? $menu_payload['serverWidgets']
 		: array();
@@ -291,6 +310,26 @@ function openstation_enqueue_assets() {
 	$server_desktop_themes = isset( $menu_payload['serverDesktopThemes'] )
 		? $menu_payload['serverDesktopThemes']
 		: array();
+
+	// Slim the theme library for BOOT: `cssText` and `tokens` are
+	// each ~20 KB per theme, and neither is read at boot — the ACTIVE
+	// theme's stylesheet is server-delivered (see
+	// `openstation_enqueue_desktop_theme_style()`, whose stamp
+	// `bootAlreadyApplied()` detects), and an inactive theme's CSS
+	// only matters at the moment the user picks it in the Preferences
+	// picker — which fetches the full entries from
+	// `GET desktop-mode/v1/desktop-themes` (`ensureFullDesktopThemes()`
+	// client-side). `cssDeferred` marks the gap so the shell can tell
+	// a slimmed entry from a theme that genuinely ships no CSS.
+	// Bridge and probe payloads keep full entries.
+	foreach ( $server_desktop_themes as &$desktop_theme_row ) {
+		if ( is_array( $desktop_theme_row ) ) {
+			$desktop_theme_row['cssText']     = '';
+			$desktop_theme_row['tokens']      = new stdClass();
+			$desktop_theme_row['cssDeferred'] = true;
+		}
+	}
+	unset( $desktop_theme_row );
 	$desktop_icons         = isset( $menu_payload['desktopIcons'] )
 		? $menu_payload['desktopIcons']
 		: array();
@@ -469,6 +508,10 @@ function openstation_enqueue_assets() {
 			// (vs. this boot state) is caught without a wasted probe. GH#325.
 			'menuSig'                       => isset( $menu_payload['menuSig'] ) ? (string) $menu_payload['menuSig'] : '',
 			'nativeWindows'                 => $native_windows,
+			// Handle-keyed script data the entries above reference —
+			// one copy per bundle, not one per window. See
+			// `openstation_collect_native_windows_payload()`.
+			'nativeWindowScriptData'        => $native_window_script_data,
 			'serverWidgets'                 => $server_widgets,
 			'serverWallpapers'              => $server_wallpapers,
 			'serverCommandScripts'          => $server_command_scripts,
@@ -550,6 +593,22 @@ function openstation_enqueue_assets() {
 			// overlays (toast, confirm dialog, context menus) feel
 			// instant the first time they fire.
 			'shellOverlaysBundleUrl'        => $lazy_bundle_url( 'shell-overlays' ),
+			// The shell-bundle diet: features whose right moment is a
+			// user gesture (or a presence signal) ride their own
+			// bundles instead of the boot-critical `desktop[.min].js`.
+			// Each sentinel in the shell loads its bundle at that
+			// moment — see the entry file each bundle names.
+			'fileDropBundleUrl'             => $lazy_bundle_url( 'file-drop' ),
+			'filesOverlaysBundleUrl'        => $lazy_bundle_url( 'files-overlays' ),
+			'notesBundleUrl'                => $lazy_bundle_url( 'notes' ),
+			'dockConstellationBundleUrl'    => $lazy_bundle_url( 'dock-constellation' ),
+			'windowLinkVisualsBundleUrl'    => $lazy_bundle_url( 'window-link-visuals' ),
+			// Presence hint for the notes sentinel: a desktop with no
+			// notes skips the notes bundle AND the boot-time list
+			// request. Two id-only existence probes at most.
+			'hasNotes'                      => function_exists( 'openstation_notes_user_has_any' )
+				? openstation_notes_user_has_any()
+				: false,
 			// URL of the full `<os-*>` component kit. The shell
 			// never loads this — its own bundles import the
 			// components they render. It exists for
@@ -655,6 +714,30 @@ function openstation_enqueue_assets() {
 			'pwa'                           => array(
 				'manifestUrl'    => esc_url_raw( openstation_pwa_manifest_url() ),
 				'swUrl'          => esc_url_raw( openstation_pwa_sw_url() ),
+				// Extensionless retry target for hosts whose nginx 404s
+				// virtual .js paths before WordPress runs (WordPress.com).
+				'swFallbackUrl'  => esc_url_raw( openstation_pwa_sw_fallback_url() ),
+				// The worker's per-user flags, computed HERE rather than
+				// baked into the served `sw.js`.
+				//
+				// A service worker is origin-wide but these are per-user
+				// preferences, so putting them in the script bytes made
+				// the body differ between an anonymous and a logged-in
+				// request — and any in-scope logged-out navigation then
+				// installed a "new" worker and tripped the shell's
+				// `controllerchange` reload. The bytes are identical for
+				// everyone now; the shell posts these to the worker at
+				// boot.
+				//
+				// Computed server-side, not read from the settings
+				// snapshot client-side, because
+				// `openstation_pwa_admin_asset_cache_enabled()` applies
+				// the `openstation_pwa_admin_asset_cache` filter — an
+				// operator's site-wide veto has to keep working.
+				'swConfig'       => array(
+					'adminAssetCache' => (bool) openstation_pwa_admin_asset_cache_enabled(),
+					'windowPrewarm'   => ! empty( openstation_get_os_settings( get_current_user_id() )['windowPrewarmEnabled'] ),
+				),
 				'stateUrl'       => esc_url_raw( rest_url( 'desktop-mode/v1/pwa-state' ) ),
 				'state'          => openstation_pwa_get_user_state( get_current_user_id() ),
 				// Mirrors the manifest's `name` field — used by the
@@ -685,11 +768,37 @@ function openstation_enqueue_assets() {
 			// `ensureDeferredStyle()` in `src/deferred-styles.ts`.
 			// Same resolved shape a native window's `styleUrl` /
 			// `styleInline` travels in.
+			// Which of the `deferredStyles` entries a game needs.
+			// `launchGame()` injects these before the window paints.
+			'gameStyleHandles'              => function_exists( 'openstation_games_style_handles' )
+				? openstation_games_style_handles()
+				: array(),
 			'deferredStyles'                => openstation_build_deferred_styles(
-				array(
-					'os-settings',
-					'desktop-mode-ai-assistant',
-					'desktop-mode-bug-report',
+				array_merge(
+					array(
+						'os-settings',
+						'desktop-mode-ai-assistant',
+						'desktop-mode-bug-report',
+						// WP Explorer's sheet. It rides that window as a
+						// companion style, but the desktop FOLDER window
+						// paints its preview pane with the same
+						// `os-my-wordpress__*` classes and — being a
+						// native window opened straight from JS — carries
+						// no companion styles of its own. Without this,
+						// the pane rendered unstyled until WP Explorer
+						// had been opened once in the session.
+						'desktop-mode-my-wordpress',
+					),
+					// The Games sheets. They also ride the hub window as
+					// companion styles, but a game is reachable without
+					// the hub — the challenge toast, solo mode, and
+					// `wp.os.games.launch()` all land in `launchGame()`
+					// with no hub window in the tab. Listing them here
+					// costs a URL each in the boot config and no CSS
+					// until `launchGame()` asks.
+					function_exists( 'openstation_games_style_handles' )
+						? openstation_games_style_handles()
+						: array()
 				)
 			),
 		)
@@ -718,10 +827,17 @@ add_action( 'admin_enqueue_scripts', 'openstation_enqueue_assets' );
  * capture the chain instead, and the shell loads it on the first
  * palette invocation.
  *
- * Deliberately scoped: chromeless iframes and classic-mode requests
- * keep Core's default — inside an iframe the runtime powers the
- * command harvest the bridge streams to the parent, and a classic
- * page is Core's own UI where Core's palette is the right one.
+ * Deliberately scoped: classic-mode requests keep Core's default,
+ * because a classic page is Core's own UI where Core's palette is the
+ * right one.
+ *
+ * Windows are handled separately by
+ * {@see openstation_chromeless_should_trim_command_palette()} in
+ * `includes/render/chromeless-trim.php` — same idea, but it has to
+ * drop the whole palette *family* rather than just unhook Core's
+ * callback, and it exempts block-editor screens. Unhooking alone is
+ * not enough there: a third-party palette extension that declares
+ * `wp-commands` keeps the entire chain queued as its dependency.
  *
  * Priority 0, ahead of Core's default 10, so the removal lands
  * before the callback fires. On WP 6.9 (function exists, no default
