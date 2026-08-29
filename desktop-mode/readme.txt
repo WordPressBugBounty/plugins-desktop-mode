@@ -4,7 +4,7 @@ Tags: admin, dashboard, desktop, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.4
+Stable tag: 1.1.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,21 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * **[LDNOOBW English list](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)** (CC-BY 4.0) — used as an exclusion filter.
 
 == Changelog ==
+
+= 1.1.5 =
+* Add OpenStation Beta: install builds from PR branches, trunk, or stable
+* Pin every action to a commit SHA, prune closed PRs' zips from ci-artifacts
+* Shell screen: boot the desktop from its own admin page instead of riding on the Dashboard
+* Register --wp-admin-theme-color so chromeless documents never compute it to transparent
+* Sync active Post/Page tab when navigating to Add Post from the Dock
+* Attribute columns save to active window id
+* Hotfix: a dock flyout holds a rail out, it never summons a parked one
+* Revisions: open the revision browser in its own window
+* Two low-contrast fixes in native windows: the shell document leaves quirks mode, and a neutral crumb stops pinning its paint inline
+* Window channels: one set of books, so a window can leave its loading overlay
+* Command palette: a harvested command that throws says so, instead of nothing at all
+* Widgets: declare the card's token contract, so a widget's muted text stops landing at 3.81:1
+* In-window navigation: ask before painting, so a cancelled "Leave site?" stops stranding the window
 
 = 1.1.4 =
 * Tooling: a deterministic boot-cost measurement for the shell document

@@ -83,6 +83,36 @@
 }
 
 /*
+ * ---- Registered, so "undeclared" never means transparent ---------
+ *
+ * The scope note below keeps this palette out of iframe documents on
+ * purpose: an admin page inside a window renders with the values its
+ * own stylesheets were written with. That promise has one hole CSS
+ * digs by itself — a stylesheet that consumes
+ * `var(--wp-admin-theme-color)` with no fallback, in a document where
+ * nothing declares it, does not fall back to an earlier declaration
+ * in the cascade. An unresolved `var()` is invalid at computed-value
+ * time, so the property computes to `initial` — and an unregistered
+ * custom property's initial value is the guaranteed-invalid value,
+ * which for a `background` means transparent. Core's own scheme files
+ * declare the property, but a third-party admin scheme that consumes
+ * it without declaring it renders `.button-primary` white-on-white
+ * inside every chromeless window (#702).
+ *
+ * Registering the property gives "undeclared" a real answer:
+ * WordPress's default admin colour, the same value Core's fallbacks
+ * reach for. Declarations are untouched — a scheme, the palette
+ * below, or the accent picker's inline style all keep winning exactly
+ * as before. Registration only decides what the absence of all of
+ * them computes to.
+ */
+@property --wp-admin-theme-color {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: #3858e9;
+}
+
+/*
  * ---- Scope: the shell document, and nothing else -----------------
  *
  * `body.os-active` rather than `:root`, and that is
@@ -1036,7 +1066,6 @@ body.os-active {
 	   text keeps its own colour, so the wash has to stay light enough
 	   for Starlight to carry over it. */
 	--os-ui-search-highlight-bg: rgba(248, 242, 182, 0.3);
-	--os-ui-color-accent: #f252fc;
 	/*
 	 * The content graph's cluster hue is NOT retinted. Graph node
 	 * colours are composed artwork that encodes meaning — the docs list
@@ -1052,6 +1081,55 @@ body.os-active {
 	 * take, and for the same reason.
 	 */
 	--os-ui-cg-chip-count-fg-active: #0c0b0f;
+
+	/*
+	 * ---- The widget card's public token contract ----------------
+	 *
+	 * Five names a third-party widget stylesheet is told to read.
+	 * The list lives in `src/plugins/starter-widget/styles.css`,
+	 * which is the file plugin authors copy — so it is a contract,
+	 * not a convenience, and four of the five were documented
+	 * without ever being declared. Every consumer fell through to
+	 * the light-mode grey in its own `var()` fallback, on a card
+	 * whose glass is dark: Post Stats' metadata measured 3.81:1
+	 * where `.os-widgets__title` on the same surface measures 18.4.
+	 *
+	 * They are mostly literals rather than aliases of the text ramp,
+	 * and that is the point. `.os-widgets__card` paints a fixed dark
+	 * glass — `--os-ui-color-surface` below IS that colour, and the
+	 * card reads it — under every desktop theme, so a name that
+	 * flips with the theme is the wrong chain here: Legacy's
+	 * `--os-ui-fg-muted` is `#50575e`, which lands at 2.54:1 on the
+	 * glass and makes the bug WORSE for anyone wearing it. The two
+	 * text names below do chain, but through the two names Legacy
+	 * keeps light — the ones describing the same on-dark chrome
+	 * this card is.
+	 *
+	 * A theme that wants to move a widget card declares these names
+	 * itself, the way Legacy already declares the accent.
+	 */
+	--os-ui-color-surface: rgba(20, 20, 22, 0.55);
+	/* What the card's own `color` already resolves to — so a widget
+	   asking for "primary text" gets the text it inherited. */
+	--os-ui-color-text: var(--os-ui-fg-on-accent, #fffbff);
+	/* The shell's muted-on-dark. 9.2:1 on the glass, and Legacy
+	   keeps it at `rgba( 255, 255, 255, 0.7 )`. */
+	--os-ui-color-text-subtle: var(--os-fg-muted, rgba(255, 251, 255, 0.7));
+	/* A hairline INSIDE the card, so a touch stronger than the
+	   card's own 0.08 edge, which is drawn against the wallpaper.
+	   Literal because no general on-dark hairline exists: the ones
+	   Legacy keeps light are `--os-dock-border` and
+	   `--os-cn-border`, and borrowing either is the right value at
+	   the wrong scope. It reads quieter than what it replaces —
+	   the widgets' own fallback was `#e5e7eb`, a light-theme
+	   divider that on dark glass drew the loudest line in the
+	   station. 0.12 is what the window and dock edges use. */
+	--os-ui-color-border: rgba(255, 251, 255, 0.12);
+	/* The one name that has to reach the accent picker. It was a
+	   hard `#f252fc`, so a widget told to "use the accent for
+	   buttons and links" stayed brand pink after the user chose
+	   teal, while every control around it moved. */
+	--os-ui-color-accent: var(--os-ui-accent, #f252fc);
 
 	/*
 	 * ---- Typography --------------------------------------------

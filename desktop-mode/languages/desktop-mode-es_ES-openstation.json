@@ -2343,6 +2343,9 @@
             "No instructions yet: the agent will improvise. You can add them any time in Define.": [
                 ""
             ],
+            "No live callback for command “%s” — the palette and the command registry are out of step. Reload the page.": [
+                ""
+            ],
             "No media attached to this post.": [
                 ""
             ],
@@ -2372,6 +2375,9 @@
             ],
             "No readable log files found": [
                 ""
+            ],
+            "No revisions are available for this content.": [
+                "Lo sentimos, no tienes permiso para acceder al escritorio de WordPress."
             ],
             "No revisions yet.": [
                 ""
@@ -3092,6 +3098,9 @@
             ],
             "Revisions": [
                 ""
+            ],
+            "Revisions: %s": [
+                "Vista general"
             ],
             "Right": [
                 ""
@@ -4091,6 +4100,12 @@
             ],
             "View post": [
                 "Acciones de ventana"
+            ],
+            "View revisions": [
+                "Acciones de ventana"
+            ],
+            "View revisions (%d)": [
+                ""
             ],
             "View the project": [
                 "Acciones de ventana"

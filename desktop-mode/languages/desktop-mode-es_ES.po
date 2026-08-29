@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: OpenStation 0.9.8\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/desktop-mode\n"
-"POT-Creation-Date: 2026-08-28T08:14:28+00:00\n"
+"POT-Creation-Date: 2026-08-29T14:00:12+00:00\n"
 "PO-Revision-Date: 2026-04-19 20:42+0200\n"
 "Last-Translator: OpenStation team\n"
 "Language-Team: Español\n"
@@ -85,7 +85,7 @@ msgid "Ask the agent to do something…"
 msgstr ""
 
 #: src/agent-run-window.ts:545 src/agent-run-window.ts:548
-#: src/ai-assistant/impl.ts:1850
+#: src/ai-assistant/impl.ts:1889
 msgid "Send"
 msgstr ""
 
@@ -135,14 +135,14 @@ msgstr ""
 msgid "The agent finished without a text answer."
 msgstr ""
 
-#: src/agents-entity-window.ts:66 src/ai-assistant/impl.ts:1712
+#: src/agents-entity-window.ts:66 src/ai-assistant/impl.ts:1751
 msgid "Page"
 msgstr ""
 
 #: src/agents-entity-window.ts:68 src/content-graph/panel.ts:417
 #: src/content-graph/panel.ts:890 includes/desktop-files/built-in-types.php:30
 #: includes/my-wordpress/window.php:160 includes/recycle-bin/store.php:597
-#: includes/recycle-bin/window.php:160 includes/window-links.php:603
+#: includes/recycle-bin/window.php:160 includes/window-links.php:749
 msgid "Media"
 msgstr ""
 
@@ -151,14 +151,14 @@ msgstr ""
 msgid "User"
 msgstr ""
 
-#: src/agents-entity-window.ts:72 src/ai-assistant/impl.ts:1714
+#: src/agents-entity-window.ts:72 src/ai-assistant/impl.ts:1753
 #: src/content-graph/panel.ts:842 src/content-graph/panel.ts:851
 #: src/content-graph/panel.ts:880 includes/desktop-files/built-in-types.php:54
 #: includes/recycle-bin/store.php:486
 msgid "Comment"
 msgstr ""
 
-#: src/agents-entity-window.ts:74 src/ai-assistant/impl.ts:1716
+#: src/agents-entity-window.ts:74 src/ai-assistant/impl.ts:1755
 #: includes/desktop-files/built-in-types.php:24
 msgid "Post"
 msgstr ""
@@ -180,7 +180,7 @@ msgstr ""
 msgid "Take me to plugin settings"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:480 src/ai-assistant/impl.ts:1845
+#: src/ai-assistant/impl.ts:480 src/ai-assistant/impl.ts:1884
 msgid "How can I help?"
 msgstr ""
 
@@ -190,125 +190,125 @@ msgid "Search commands…"
 msgstr "Buscar medios"
 
 #. %s: command slug, without the leading slash.
-#: src/ai-assistant/impl.ts:697 src/ai-assistant/impl.ts:834
+#: src/ai-assistant/impl.ts:697 src/ai-assistant/impl.ts:835
 msgid "Unknown command: /%s"
 msgstr ""
 
 #. %s: command slug, without the leading slash.
-#: src/ai-assistant/impl.ts:873
+#: src/ai-assistant/impl.ts:875
 msgid "Command /%s was cancelled."
 msgstr ""
 
 #. %s: command slug, without the leading slash.
-#: src/ai-assistant/impl.ts:882
+#: src/ai-assistant/impl.ts:884
 msgid "Running /%s…"
 msgstr ""
 
 #. 1: command slug, without the leading slash. 2: error message.
-#: src/ai-assistant/impl.ts:917
+#: src/ai-assistant/impl.ts:919
 #, fuzzy
 msgid "Command /%1$s failed: %2$s"
 msgstr "Error al subir."
 
-#: src/ai-assistant/impl.ts:1002 src/ai-assistant/impl.ts:1580
+#: src/ai-assistant/impl.ts:1030 src/ai-assistant/impl.ts:1619
 #: src/plugins/drafts-widget/index.ts:192
 #, fuzzy
 msgid "Thinking…"
 msgstr "Subiendo…"
 
 #. %d: HTTP status code.
-#: src/ai-assistant/impl.ts:1062
+#: src/ai-assistant/impl.ts:1090
 msgid "Server returned %d"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1073
+#: src/ai-assistant/impl.ts:1101
 msgid "Network error — please check your connection and try again."
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1133
+#: src/ai-assistant/impl.ts:1161
 msgid "(No title)"
 msgstr ""
 
 #. %s: the text the user typed, wrapped in <strong>.
-#: src/ai-assistant/impl.ts:1245
+#: src/ai-assistant/impl.ts:1273
 msgid "No commands matching %s."
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1301
+#: src/ai-assistant/impl.ts:1329
 msgid "Suggested commands"
 msgstr ""
 
 #. %s: the Enter key, rendered as a <kbd> glyph.
-#: src/ai-assistant/impl.ts:1448
+#: src/ai-assistant/impl.ts:1487
 msgid "Press %s to run"
 msgstr ""
 
 #. %s: the Enter key, rendered as a <kbd> glyph.
-#: src/ai-assistant/impl.ts:1462
+#: src/ai-assistant/impl.ts:1501
 msgid "No suggestions — press %s to run with the text you typed."
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1556
+#: src/ai-assistant/impl.ts:1595
 msgid "Try asking"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1604
+#: src/ai-assistant/impl.ts:1643
 msgid "Open Preferences"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1724
+#: src/ai-assistant/impl.ts:1763
 #, fuzzy
 msgid "Open page in desktop"
 msgstr "Añadir nuevo escritorio"
 
-#: src/ai-assistant/impl.ts:1726
+#: src/ai-assistant/impl.ts:1765
 #, fuzzy
 msgid "Open comment in desktop"
 msgstr "Añadir nuevo escritorio"
 
-#: src/ai-assistant/impl.ts:1728
+#: src/ai-assistant/impl.ts:1767
 #, fuzzy
 msgid "Open post in desktop"
 msgstr "Añadir nuevo escritorio"
 
 #. %s: title of the post the comment was left on.
-#: src/ai-assistant/impl.ts:1737
+#: src/ai-assistant/impl.ts:1776
 #, fuzzy
 msgid "Comment on “%s”"
 msgstr "Buscar medios"
 
-#: src/ai-assistant/impl.ts:1743
+#: src/ai-assistant/impl.ts:1782
 #, fuzzy
 msgid "Untitled"
 msgstr "Organizar ventanas"
 
-#: src/ai-assistant/impl.ts:1816 src/ai-assistant/impl.ts:1825
+#: src/ai-assistant/impl.ts:1855 src/ai-assistant/impl.ts:1864
 msgid "Site Assistant"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1827
+#: src/ai-assistant/impl.ts:1866
 msgid "Assistant mode"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1830
+#: src/ai-assistant/impl.ts:1869
 msgid "Ask AI"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1833
+#: src/ai-assistant/impl.ts:1872
 msgid "Commands"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1836 src/games/alphabet-soup/game.ts:630
+#: src/ai-assistant/impl.ts:1875 src/games/alphabet-soup/game.ts:630
 #: src/games/inkfall/game.ts:394 src/plugins-window/upload-dialog.ts:397
 #: src/window-chrome/controls/built-ins.ts:76
 msgid "Close"
 msgstr "Cerrar"
 
-#: src/ai-assistant/impl.ts:1848
+#: src/ai-assistant/impl.ts:1887
 msgid "Ask the assistant"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:1858
+#: src/ai-assistant/impl.ts:1897
 msgid "Your assistant to quickly navigate and manage your entire site."
 msgstr ""
 
@@ -601,6 +601,13 @@ msgstr ""
 msgid ""
 "Define WP_DEBUG and WP_DEBUG_LOG in wp-config.php (or point the error_log "
 "PHP directive at a file) and errors will start collecting here."
+msgstr ""
+
+#. %s: the `core/commands` command name.
+#: src/commands/shell-harvester.ts:686
+msgid ""
+"No live callback for command “%s” — the palette and the command registry are "
+"out of step. Reload the page."
 msgstr ""
 
 #: src/comments-window/conversation.ts:187
@@ -984,7 +991,7 @@ msgstr ""
 #: src/posts-window/index.ts:458 src/posts-window/user-edit-render.ts:1045
 #: src/posts-window/users-render.ts:415 includes/ai-copilot/search.php:111
 #: includes/comments-window/window.php:99 includes/recycle-bin/window.php:164
-#: includes/window-links.php:523 includes/window-links.php:524
+#: includes/window-links.php:669 includes/window-links.php:670
 msgid "Comments"
 msgstr ""
 
@@ -993,7 +1000,7 @@ msgid "Taxonomies"
 msgstr ""
 
 #: src/content-graph/panel.ts:418 src/my-wordpress/index.ts:644
-#: src/my-wordpress/index.ts:2690
+#: src/my-wordpress/index.ts:2690 src/revisions/index.ts:199
 msgid "Revisions"
 msgstr ""
 
@@ -1151,7 +1158,7 @@ msgstr ""
 msgid "Revision"
 msgstr ""
 
-#: src/content-graph/panel.ts:945 src/window/index.ts:3411
+#: src/content-graph/panel.ts:945 src/window/index.ts:3533
 msgid "Saved"
 msgstr ""
 
@@ -1360,7 +1367,7 @@ msgstr "Escritorio 1"
 
 #. %d is the number of pending items in a desktop-icon badge.
 #. %d is the number of pending items in a dock badge.
-#: src/desktop-icons.ts:539 src/dock.ts:2803 src/dock.ts:2816
+#: src/desktop-icons.ts:539 src/dock.ts:2808 src/dock.ts:2821
 msgid "%d notification"
 msgid_plural "%d notifications"
 msgstr[0] ""
@@ -1402,7 +1409,7 @@ msgstr "Minimizar"
 #: src/my-wordpress/integrations/woocommerce.ts:836
 #: src/my-wordpress/integrations/woocommerce.ts:913
 #: src/my-wordpress/integrations/woocommerce.ts:1052
-#: src/station-home/index.ts:369 src/window/tabs.ts:490
+#: src/station-home/index.ts:369 src/window/tabs.ts:497
 msgid "Open"
 msgstr "Abrir"
 
@@ -1429,7 +1436,7 @@ msgid "New %s"
 msgstr ""
 
 #. %d is the number of pending updates / items.
-#: src/dock.ts:1370
+#: src/dock.ts:1371
 msgid "%d update"
 msgid_plural "%d updates"
 msgstr[0] "%d actualización"
@@ -6598,6 +6605,28 @@ msgid ""
 "page behind it."
 msgstr ""
 
+#. %d: number of revisions.
+#: src/revisions/index.ts:110
+msgid "View revisions (%d)"
+msgstr ""
+
+#: src/revisions/index.ts:114
+#, fuzzy
+msgid "View revisions"
+msgstr "Acciones de ventana"
+
+#: src/revisions/index.ts:193
+#, fuzzy
+msgid "No revisions are available for this content."
+msgstr ""
+"Lo sentimos, no tienes permiso para acceder al escritorio de WordPress."
+
+#. %s: post title.
+#: src/revisions/index.ts:203
+#, fuzzy
+msgid "Revisions: %s"
+msgstr "Vista general"
+
 #. 1: action label, e.g. "Open". 2: number of selected items.
 #: src/selection/actions.ts:102
 msgid "%1$s (%2$d items)"
@@ -6776,6 +6805,8 @@ msgstr ""
 #. Plugin Name of the plugin
 #: src/settings/sections/about.ts:116 src/settings/sections/navigation.ts:58
 #: desktop-mode.php includes/ai-copilot/abilities.php:39
+#: includes/shell-screen.php:243 includes/shell-screen.php:244
+#: includes/shell-screen.php:286 includes/shell-screen.php:307
 #: includes/wp-icon-registry.php:90
 msgid "OpenStation"
 msgstr ""
@@ -7874,87 +7905,87 @@ msgstr "Minimizar"
 msgid "Maximize"
 msgstr "Maximizar"
 
-#: src/window-chrome/controls/built-ins.ts:63 src/window/index.ts:2219
+#: src/window-chrome/controls/built-ins.ts:63 src/window/index.ts:2245
 #: includes/admin-bar.php:69 includes/admin-bar.php:705
 msgid "Enter fullscreen"
 msgstr "Entrar en pantalla completa"
 
-#: src/window/dom.ts:243
+#: src/window/dom.ts:250
 msgid "Loading window content"
 msgstr ""
 
-#: src/window/dom.ts:458
+#: src/window/dom.ts:465
 msgid "Window actions"
 msgstr "Acciones de ventana"
 
-#: src/window/dom.ts:482
+#: src/window/dom.ts:489
 msgid "Open on startup"
 msgstr "Abrir al iniciar"
 
 #. %s is the window's admin-page name (e.g., "Posts")
-#: src/window/dom.ts:496
+#: src/window/dom.ts:503
 msgid "Open another %s"
 msgstr "Abrir otra ventana de %s"
 
-#: src/window/dom.ts:512
+#: src/window/dom.ts:519
 #, fuzzy
 msgid "Open in new window"
 msgstr "Abrir en una nueva pestaña del navegador"
 
-#: src/window/dom.ts:537
+#: src/window/dom.ts:544
 msgid "Reload"
 msgstr ""
 
-#: src/window/dom.ts:552
+#: src/window/dom.ts:559
 #, fuzzy
 msgid "Open in browser tab"
 msgstr "Abrir en una nueva pestaña del navegador"
 
 #. %s is the window's title (e.g., "OpenStation Preferences")
-#: src/window/dom.ts:844
+#: src/window/dom.ts:851
 #, fuzzy
 msgid "%s sections"
 msgstr "Acciones de ventana"
 
 #. %s is the window's admin-page title (e.g., "Posts")
-#: src/window/dom.ts:847
+#: src/window/dom.ts:854
 msgid "%s sub-pages"
 msgstr "Subpáginas de %s"
 
-#: src/window/iframe-bridge.ts:245
+#: src/window/iframe-bridge.ts:273
 msgid "Unsaved changes"
 msgstr ""
 
-#: src/window/iframe-bridge.ts:246
+#: src/window/iframe-bridge.ts:274
 msgid "You have unsaved changes. Are you sure you want to close this window?"
 msgstr ""
 
-#: src/window/iframe-bridge.ts:247
+#: src/window/iframe-bridge.ts:275
 #, fuzzy
 msgid "Close window"
 msgstr "Organizar ventanas"
 
-#: src/window/iframe-bridge.ts:567
+#: src/window/iframe-bridge.ts:595
 #, fuzzy
 msgid "Request failed."
 msgstr "Error al subir."
 
 #. %d: HTTP status code of the failed request.
-#: src/window/iframe-bridge.ts:570
+#: src/window/iframe-bridge.ts:598
 msgid "Request failed (HTTP %d)."
 msgstr ""
 
-#: src/window/index.ts:2219 includes/admin-bar.php:704
+#: src/window/index.ts:2245 includes/admin-bar.php:704
 #: includes/admin-bar.php:706
 msgid "Exit fullscreen"
 msgstr "Salir de pantalla completa"
 
-#: src/window/index.ts:3414
+#: src/window/index.ts:3536
 msgid "Not saved."
 msgstr ""
 
 #. %s: error message explaining why the change could not be saved.
-#: src/window/index.ts:3417
+#: src/window/index.ts:3539
 msgid "Not saved. %s"
 msgstr ""
 
@@ -8003,23 +8034,23 @@ msgid_plural "· %d open tabs"
 msgstr[0] "· %d pestaña abierta"
 msgstr[1] "· %d pestañas abiertas"
 
-#: src/window/tabs.ts:272 src/window/tabs.ts:273
+#: src/window/tabs.ts:279 src/window/tabs.ts:280
 msgid "Open in a new browser tab"
 msgstr "Abrir en una nueva pestaña del navegador"
 
-#: src/window/tabs.ts:280 src/window/tabs.ts:281
+#: src/window/tabs.ts:287 src/window/tabs.ts:288
 msgid "Close tab"
 msgstr "Cerrar pestaña"
 
 #. %s is the external site's title or URL.
-#: src/window/tabs.ts:484
+#: src/window/tabs.ts:491
 #, fuzzy
 msgid "Opened \"%s\" in a new browser tab — this site doesn't allow embedding."
 msgstr ""
 "Se ha abierto «%s» en una nueva pestaña del navegador — este sitio no "
 "permite incrustarse."
 
-#: src/ai-assistant/impl.ts:1740
+#: src/ai-assistant/impl.ts:1779
 #, fuzzy
 msgctxt "fallback name for the post a comment was left on"
 msgid "post"
@@ -8692,7 +8723,7 @@ msgstr "Imagen personalizada"
 msgid "Live-preview theme customisation: colors, fonts, layout."
 msgstr ""
 
-#: includes/ai-copilot/search.php:129 includes/render/shell.php:89
+#: includes/ai-copilot/search.php:129 includes/render/shell.php:90
 #: includes/wp-icon-registry.php:48
 msgid "Widgets"
 msgstr "Widgets"
@@ -10594,7 +10625,7 @@ msgstr ""
 msgid "Plugin details"
 msgstr ""
 
-#: includes/portal.php:121
+#: includes/portal.php:124
 msgid "Sorry, you are not allowed to access the WordPress desktop."
 msgstr ""
 "Lo sentimos, no tienes permiso para acceder al escritorio de WordPress."
@@ -10620,7 +10651,7 @@ msgid "Whether this term is the taxonomy's default (fallback) term."
 msgstr ""
 
 #. translators: %s: site name
-#: includes/pwa.php:397
+#: includes/pwa.php:401
 #, php-format
 msgid "%s — installed as a desktop app."
 msgstr ""
@@ -10838,16 +10869,16 @@ msgid ""
 msgstr ""
 
 #. translators: 1: parent menu label, 2: submenu label
-#: includes/render/assets.php:1224
+#: includes/render/assets.php:1234
 #, php-format
 msgid "%1$s > %2$s"
 msgstr ""
 
-#: includes/render/shell.php:54
+#: includes/render/shell.php:55
 msgid "Desktop shell"
 msgstr "Interfaz de escritorio"
 
-#: includes/render/shell.php:76
+#: includes/render/shell.php:77
 msgid "Admin navigation"
 msgstr "Navegación del administrador"
 
@@ -10867,6 +10898,25 @@ msgstr ""
 
 #: includes/settings-tabs.php:134
 msgid "Settings tab registration requires a non-empty `label`."
+msgstr ""
+
+#: includes/shell-screen.php:309
+#, fuzzy
+msgid "OpenStation is not active for your account on this request."
+msgstr ""
+"Lo sentimos, no tienes permiso para acceder al escritorio de WordPress."
+
+#: includes/shell-screen.php:310
+#, fuzzy
+msgid "Open the desktop"
+msgstr "Añadir nuevo escritorio"
+
+#. translators: 1: script or style handle, 2: script or style
+#: includes/shell-screen.php:523
+#, php-format
+msgid ""
+"The %2$s handle \"%1$s\" cannot leave the shell screen: something still "
+"enqueued depends on it."
 msgstr ""
 
 #: includes/station-home/cards.php:68
@@ -11388,7 +11438,7 @@ msgid "Your unfinished posts — click to reopen in the editor."
 msgstr ""
 
 #: includes/widgets/widget-drafts.php:150
-#: includes/widgets/widget-drafts.php:455 includes/window-links.php:756
+#: includes/widgets/widget-drafts.php:455 includes/window-links.php:902
 #, fuzzy
 msgid "You are not allowed to edit this post."
 msgstr ""
@@ -11517,37 +11567,43 @@ msgid "Window chrome registration requires a non-empty `id`."
 msgstr ""
 
 #. translators: %s: post title.
-#: includes/window-links.php:162
+#: includes/window-links.php:105
+#, fuzzy, php-format
+msgid "Revisions of %s"
+msgstr "Vista general"
+
+#. translators: %s: post title.
+#: includes/window-links.php:205
 #, fuzzy, php-format
 msgid "Comments on %s"
 msgstr "Buscar medios"
 
 #. translators: %d: attachment ID.
-#: includes/window-links.php:598
+#: includes/window-links.php:744
 #, fuzzy, php-format
 msgid "Media item %d"
 msgstr "Biblioteca de medios"
 
 #. translators: %d: post ID.
-#: includes/window-links.php:632
+#: includes/window-links.php:778
 #, php-format
 msgid "Post %d"
 msgstr ""
 
-#: includes/window-links.php:637
+#: includes/window-links.php:783
 #, fuzzy
 msgid "Linked posts"
 msgstr "Tamaño del dock"
 
-#: includes/window-links.php:729
+#: includes/window-links.php:875
 msgid "Post ID to recompute the content identity for."
 msgstr ""
 
-#: includes/window-links.php:775
+#: includes/window-links.php:921
 msgid "No content identity for this object."
 msgstr ""
 
-#: includes/window-links.php:848
+#: includes/window-links.php:1004
 msgid ""
 "Window-link renderer script registration requires a non-empty script handle."
 msgstr ""
