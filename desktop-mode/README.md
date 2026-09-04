@@ -73,10 +73,13 @@ Zero Core patches. Every feature is wired through public WordPress hooks.
   Shell-level toasts rendered via the `<os-toast>` component. Plugins register their own tone/icon via the `openstation_toast_types` filter. Iframe pages raise a toast through the `os-notification` bridge message — it survives the iframe's own lifecycle.
 
 - **OpenStation Preferences**
-  Native-window settings panel: wallpaper picker (with HD-only media filter), accent color swatches + custom gradient editor, dock size slider, AI platform config, and per-user default-on-startup window. Persisted via `/desktop-mode/v1/os-settings`.
+  The settings window, an App Framework app (`apps/os-settings/`): wallpaper picker (with HD-only media filter), accent color swatches + custom gradient editor, desktop layout and dock controls, themes, window effects, navigation placement, feature switches and the component reference. Persisted via `/desktop-mode/v1/os-settings`.
 
 - **Session persistence**
   Full window stack (including desktops, focus, state) is debounce-saved to `/desktop-mode/v1/session` and restored without layout flicker. Viewport-shrink clamping keeps off-screen windows reachable.
+
+- **Mobile — the phone layer**
+  Below 768px the same window manager renders a phone: a home screen of the navigation's tiles with search, one full-screen app at a time under a slim top bar, a swipeable app switcher, a five-slot tab bar, edge-swipe Back. `wp.os.mode` reports `desktop | tablet | mobile`; a head stamp makes the first paint right; a phone restores one window and hands the desktop its session back untouched. Lazy bundle, wallpaper suspended, widgets skipped. See [`docs/mobile.md`](./docs/mobile.md).
 
 - **postMessage bridge**
   Typed messages for title changes, navigation (same-origin validated), focus, color-scheme sync, screen-meta panels (Screen Options / Help), external-link capture, iframe-ready handshake, and observability (`iframe-error`, `iframe-network`).
@@ -97,8 +100,8 @@ Zero Core patches. Every feature is wired through public WordPress hooks.
 
 ## Still ahead
 
-- **Mobile (phone OS)** — purpose-built home-screen grid, full-screen apps, app switcher, gesture nav, bottom tab bar.
-- **Tablet hybrid** — split view, slide-over, horizontal dock. `wp.os.mode = 'desktop' | 'tablet' | 'mobile'` surface.
+- **Mobile, the next pass** — the phone layer ships (`docs/mobile.md`: home-screen grid, full-screen apps, app switcher, edge-swipe back, bottom tab bar, `wp.os.mode`); still ahead are pull-to-refresh and a pass on real devices.
+- **Tablet hybrid** — split view, slide-over, horizontal dock, on the `wp.os.mode` primitive that already reports `'tablet'`.
 - **Cross-window drag & drop (the North Star)** — extend the current drag bridge to Media → Gutenberg block insertion, with pluggable mime-type negotiation.
 - **Polish** — color-scheme-aware variables across all shell surfaces, View Transitions API animations, full a11y audit (ARIA, focus traps, keyboard nav).
 - **…and a whole lot more hooks, filters, and actions** — every new surface lands with its own extension points, so this list keeps growing.
@@ -120,6 +123,9 @@ See [`docs/architecture.md`](./docs/architecture.md) for how the pieces fit toge
 │   ├── accents.php              wallpapers.php      toast-types.php
 │   ├── media-query.php
 │   └── ai-copilot/              # AI assistant (OpenAI client, analysis, search, jobs)
+├── apps/                  # App Framework apps: <name>.os.php (window, state, actions,
+│                          #   data) + optional <name>.os.ts (client view) + <name>.css;
+│                          #   Code Blue lives here — see docs/app-framework.md
 ├── assets/                # hand-authored CSS + JS build output
 │   ├── css/  desktop.css, windows.css, dock.css, chromeless.css, variables.css
 │   │          variables.css carries the OpenStation palette — every design
@@ -204,8 +210,6 @@ Writes one `assets/js/<target>.js` / `.min.js` pair per target, including:
 
 - `assets/js/desktop.js` / `.min.js` — main shell bundle (loaded based on `SCRIPT_DEBUG`).
 - `assets/js/iframe-bridge.js` / `.min.js` — opt-in bridge that gives any same-origin iframe access to `wp.os.iframe.*`.
-- `assets/js/recycle-bin.js` / `.min.js` — Recycle Bin native window.
-- `assets/js/station-home.js` / `.min.js` — Station Home native Dashboard.
 - `assets/js/posts-window.js` / `.min.js` — Native Posts window (the `<os-table>` replacement for the `edit.php` iframe; opt-in per user via OpenStation Preferences → Features).
 
 **Development watch** — auto-recompiles the unminified bundle on save:

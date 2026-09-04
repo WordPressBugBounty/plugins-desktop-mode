@@ -63,6 +63,16 @@ const OPENSTATION_OS_SETTINGS_DOCK_PLACEMENTS = array( 'bottom', 'left', 'right'
 const OPENSTATION_OS_SETTINGS_DOCK_BEHAVIORS = array( 'static', 'dynamic' );
 
 /**
+ * `mobileLayout` — which experience the shell renders. `auto`
+ * follows the viewport; the other two force it either way.
+ * Mirrors `OsModePreference` in `src/mode/index.ts`.
+ */
+const OPENSTATION_OS_SETTINGS_MOBILE_LAYOUTS = array( 'auto', 'desktop', 'mobile' );
+
+/** `mobileTabs` — at most this many ids pinned to the phone tab bar. */
+const OPENSTATION_OS_SETTINGS_MOBILE_TABS_MAX = 3;
+
+/**
  * Playable range for the window-reveal duration override, in ms.
  * Mirrors `MIN_REVEAL_DURATION_MS` / `MAX_REVEAL_DURATION_MS` in
  * `src/reveals/registry.ts`.
@@ -244,6 +254,11 @@ function openstation_default_os_settings() {
 		// the entry stays in the menu and left clicks on the wallpaper
 		// do nothing. Per-user.
 		'showDesktopOnWallpaperClick' => false,
+		// Whether the close-all-windows shortcut (Alt+Cmd/Ctrl+W) asks
+		// before it closes. The dialog's "Don't ask again" checkbox is
+		// what writes false; OpenStation Preferences -> Windows is what
+		// turns it back on. Per-user.
+		'confirmCloseAllWindows'      => true,
 		// Mio — a soft-body companion that floats over
 		// the wallpaper, settles onto nearby windows, and watches the
 		// pointer. Off by default; toggled from the wallpaper context
@@ -301,6 +316,12 @@ function openstation_default_os_settings() {
 		// not in the list keep their registration order and render
 		// after the listed ones. Unknown ids are tolerated.
 		'navOrder'                    => array(),
+		// Which experience the shell renders: 'auto' follows the
+		// viewport, 'desktop' / 'mobile' force it. See `includes/mobile.php`.
+		'mobileLayout'                => 'auto',
+		// Ids pinned to the phone tab bar, at most three. Empty means
+		// the server default (`openstation_mobile_tab_bar`).
+		'mobileTabs'                  => array(),
 		// Persisted desktop position for every item the user has
 		// promoted to the wallpaper via `navPlacement[id]=desktop|both`.
 		// Keyed by item id, value is `{ x: int, y: int }`. The JS
@@ -798,6 +819,10 @@ function openstation_sanitize_os_settings( $raw ) {
 		? (bool) $raw['showDesktopOnWallpaperClick']
 		: $defaults['showDesktopOnWallpaperClick'];
 
+	$confirm_close_all_windows = isset( $raw['confirmCloseAllWindows'] )
+		? (bool) $raw['confirmCloseAllWindows']
+		: $defaults['confirmCloseAllWindows'];
+
 	$mio_enabled = isset( $raw['mioEnabled'] )
 		? (bool) $raw['mioEnabled']
 		: $defaults['mioEnabled'];
@@ -816,6 +841,33 @@ function openstation_sanitize_os_settings( $raw ) {
 	$developer_mode_enabled = isset( $raw['developerModeEnabled'] )
 		? (bool) $raw['developerModeEnabled']
 		: $defaults['developerModeEnabled'];
+
+	// mobileLayout — the phone/desktop override.
+	$mobile_layout = isset( $raw['mobileLayout'] )
+		&& in_array( $raw['mobileLayout'], OPENSTATION_OS_SETTINGS_MOBILE_LAYOUTS, true )
+		? (string) $raw['mobileLayout']
+		: $defaults['mobileLayout'];
+
+	// mobileTabs — ordered nav ids pinned to the phone tab bar. Same
+	// id grammar as navOrder, capped at the tab bar's slot count.
+	$mobile_tabs = array();
+	if ( isset( $raw['mobileTabs'] ) && is_array( $raw['mobileTabs'] ) ) {
+		$seen_tabs = array();
+		foreach ( $raw['mobileTabs'] as $id ) {
+			if ( ! is_string( $id ) || '' === $id ) {
+				continue;
+			}
+			$slug = sanitize_key( openstation_canonical_nav_id( $id ) );
+			if ( '' === $slug || isset( $seen_tabs[ $slug ] ) ) {
+				continue;
+			}
+			$seen_tabs[ $slug ] = true;
+			$mobile_tabs[]      = $slug;
+			if ( count( $mobile_tabs ) >= OPENSTATION_OS_SETTINGS_MOBILE_TABS_MAX ) {
+				break;
+			}
+		}
+	}
 
 	$folders_sharing_enabled = isset( $raw['foldersSharingEnabled'] )
 		? (bool) $raw['foldersSharingEnabled']
@@ -968,6 +1020,7 @@ function openstation_sanitize_os_settings( $raw ) {
 		'adminAssetCacheEnabled'      => $admin_asset_cache_enabled,
 		'windowPrewarmEnabled'        => $window_prewarm_enabled,
 		'showDesktopOnWallpaperClick' => $show_desktop_on_wallpaper_click,
+		'confirmCloseAllWindows'      => $confirm_close_all_windows,
 		'mioEnabled'                  => $mio_enabled,
 		'mioStyle'                    => $mio_style,
 		'showPostStatusRibbons'       => $show_post_status_ribbons,
@@ -975,6 +1028,8 @@ function openstation_sanitize_os_settings( $raw ) {
 		'foldersSharingEnabled'       => $folders_sharing_enabled,
 		'navPlacement'                => $nav_placement,
 		'navOrder'                    => $nav_order,
+		'mobileLayout'                => $mobile_layout,
+		'mobileTabs'                  => $mobile_tabs,
 		'dockPromotedPositions'       => $dock_promoted_positions,
 	);
 }

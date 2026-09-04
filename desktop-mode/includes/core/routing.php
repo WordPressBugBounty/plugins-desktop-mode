@@ -16,10 +16,12 @@
  *
  * Functions in this file:
  *   - {@see openstation_url_is_same_admin()}      — same-origin admin URL predicate
+ *   - {@see openstation_url_is_page_less_admin_php()} — "renders nothing" predicate
  *   - {@see openstation_resolve_admin_target()}   — admin filename → URL resolver
  *   - {@see openstation_admin_target_allowlist()} — wp-admin filename allowlist
  *   - {@see openstation_is_chromeless_request()}  — chromeless request detection
  *   - {@see openstation_is_classic_request()}     — classic-override request detection
+ *   - {@see openstation_is_subresource_request()} — sub-resource fetch detection
  *   - {@see openstation_chromeless_hide_admin_bar()} — `show_admin_bar` filter
  *   - {@see openstation_chromeless_suppress_admin_bar()} — `admin_init` action
  *   - {@see openstation_chromeless_preserve_redirect()} — `wp_redirect` filter
@@ -75,6 +77,50 @@ function openstation_url_is_same_admin( $url ) {
 }
 
 /**
+ * Whether `$url` addresses `wp-admin/admin.php` with no `page` arg.
+ *
+ * `admin.php` is core's plugin-screen bootstrap, and the allowlist in
+ * {@see openstation_admin_target_allowlist()} accepts it for exactly
+ * that reason — every plugin screen in the admin lives there. Without
+ * a `page` arg, though, there is no screen to dispatch to: core falls
+ * through the last `else` in `wp-admin/admin.php`, fires a couple of
+ * back-compat `load-*` hooks, and returns 200 with an empty body,
+ * having required neither `admin-header.php` nor `admin-footer.php`.
+ *
+ * So the URL resolves, passes every same-origin and allowlist check,
+ * and renders nothing. Callers that are about to turn a URL into a
+ * window or a redirect target use this to refuse it and fall back.
+ *
+ * Accepts absolute URLs and request-URI-shaped paths, mirroring
+ * {@see openstation_url_is_shell_screen()}, whose guard this sits
+ * beside at every call site.
+ *
+ * @param string $url URL or path to test.
+ * @return bool
+ */
+function openstation_url_is_page_less_admin_php( $url ) {
+	if ( ! is_string( $url ) || '' === $url ) {
+		return false;
+	}
+
+	$path = wp_parse_url( $url, PHP_URL_PATH );
+	if ( ! is_string( $path ) || 'admin.php' !== basename( $path ) ) {
+		return false;
+	}
+
+	$query = wp_parse_url( $url, PHP_URL_QUERY );
+	if ( ! is_string( $query ) || '' === $query ) {
+		return true;
+	}
+
+	// `page=` present but empty is the same nothing: core only sets
+	// `$plugin_page` from a non-empty `?page=`. An array (`page[]=x`)
+	// is not a slug either.
+	parse_str( $query, $args );
+	return ! isset( $args['page'] ) || ! is_string( $args['page'] ) || '' === $args['page'];
+}
+
+/**
  * Resolves an admin-page filename (e.g. `edit.php`) to its
  * absolute admin URL, allowlisted against the canonical set of
  * wp-admin top-level filenames.
@@ -85,10 +131,11 @@ function openstation_url_is_same_admin( $url ) {
  * `custom_admin_page.php` if a plugin named something that way;
  * the explicit allowlist closes that.
  *
- * @param string $file Bare admin filename (no path, no query string).
+ * @param string $file    Bare admin filename (no path, no query string).
+ * @param bool   $network Resolve against the network admin's own screens.
  * @return string|WP_Error Absolute admin URL on success, `WP_Error` otherwise.
  */
-function openstation_resolve_admin_target( $file ) {
+function openstation_resolve_admin_target( $file, $network = false ) {
 	$file = is_string( $file ) ? trim( $file ) : '';
 	if ( '' === $file ) {
 		return new WP_Error(
@@ -115,6 +162,15 @@ function openstation_resolve_admin_target( $file ) {
 		);
 	}
 
+	if ( $network ) {
+		return in_array( strtolower( $file ), openstation_network_admin_target_allowlist(), true )
+			? network_admin_url( $file )
+			: new WP_Error(
+				'openstation_unknown_target',
+				__( 'Admin target does not exist.', 'desktop-mode' )
+			);
+	}
+
 	if ( ! in_array( strtolower( $file ), openstation_admin_target_allowlist(), true ) ) {
 		return new WP_Error(
 			'openstation_unknown_target',
@@ -123,6 +179,43 @@ function openstation_resolve_admin_target( $file ) {
 	}
 
 	return admin_url( $file );
+}
+
+/**
+ * Canonical `wp-admin/network/` filenames a target may resolve to.
+ *
+ * The network admin's own screens, and only those: the site allowlist
+ * cannot stand in for it, since the two directories share filenames
+ * that mean different things (`users.php` is everyone on the network
+ * here, one site's users there).
+ *
+ * @return string[]
+ */
+function openstation_network_admin_target_allowlist() {
+	return array(
+		'index.php',
+		'sites.php',
+		'site-new.php',
+		'site-info.php',
+		'site-users.php',
+		'site-themes.php',
+		'site-settings.php',
+		'users.php',
+		'user-new.php',
+		'themes.php',
+		'theme-install.php',
+		'plugins.php',
+		'plugin-install.php',
+		'plugin-editor.php',
+		'settings.php',
+		'setup.php',
+		'upgrade.php',
+		'update-core.php',
+		'about.php',
+		'credits.php',
+		'freedoms.php',
+		'privacy.php',
+	);
 }
 
 /**
@@ -329,6 +422,37 @@ function openstation_is_classic_request() {
 	}
 	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only request flag.
 	return '1' === sanitize_text_field( wp_unslash( $_GET[ OPENSTATION_CLASSIC_FLAG ] ) );
+}
+
+/**
+ * Checks whether the browser is fetching this request as a
+ * sub-resource of some page rather than navigating to it.
+ *
+ * Admin URLs serve more than pages. Jetpack's admin-bar sparkline is
+ * an `<img>` whose src is `admin.php?page=stats&noheader&proxy&chart=…`:
+ * core's `admin.php` skips the header on `noheader` and the page hook
+ * echoes PNG bytes. The Jetpack Stats screen loads its report body the
+ * same way, over XHR. Treating such a request as "a user landing on a
+ * plain admin page" and forwarding it into the desktop hands the
+ * consumer an HTML document instead: the admin bar then draws a broken
+ * image with the alt text where the chart should be.
+ *
+ * `Sec-Fetch-Mode` is the browser's own answer, set by the user agent
+ * and immune to script. `navigate` is a document or frame load, the
+ * only kind of request worth forwarding into the desktop; `cors`,
+ * `no-cors`, `same-origin` and `websocket` are sub-resource fetches.
+ * A missing header (an old browser, a proxy that strips it) answers
+ * false: not known to be a sub-resource, so callers keep behaving as
+ * they always did.
+ *
+ * @return bool True when the request is a sub-resource fetch.
+ */
+function openstation_is_subresource_request() {
+	if ( empty( $_SERVER['HTTP_SEC_FETCH_MODE'] ) ) {
+		return false;
+	}
+	$mode = strtolower( sanitize_text_field( wp_unslash( $_SERVER['HTTP_SEC_FETCH_MODE'] ) ) );
+	return '' !== $mode && 'navigate' !== $mode;
 }
 
 /**

@@ -23,27 +23,26 @@ All in-tree routes register under `desktop-mode/v1`. Extensions are expected to 
 | `/presence` | GET / POST | `includes/presence.php` | logged-in + OpenStation enabled |
 | `/oauth/start` | POST | `includes/oauth-relay.php` | logged-in |
 | `/oauth/callback` | GET | `includes/oauth-relay.php` | public (validated by the state nonce) |
-| `/term-counts` | GET | `includes/posts-window/window.php` | `edit_posts` |
-| `/tag-cooccurrence` | GET | `includes/posts-window/window.php` | `edit_posts` |
-| `/users` | POST | `includes/users-window/rest.php` | `create_users` |
-| `/users/bulk-role` | POST | `includes/users-window/rest.php` | `promote_users` |
-| `/users/bulk-delete` | POST | `includes/users-window/rest.php` | `delete_users` (`remove_users` on multisite) |
-| `/users/{id}/send-password-reset` | POST | `includes/users-window/rest.php` | `edit_users` |
-| `/users/{id}/resend-welcome` | POST | `includes/users-window/rest.php` | `edit_users` |
-| `/users/{id}/insights` | GET | `includes/user-edit-window/rest.php` | `edit_user` on the target user |
-| `/users/{id}/destroy-sessions` | POST | `includes/user-edit-window/rest.php` | `edit_user` on the target user |
-| `/users/{id}/application-passwords` | GET / POST | `includes/user-edit-window/rest.php` | `edit_user` on the target user |
-| `/users/{id}/application-passwords/{uuid}` | DELETE | `includes/user-edit-window/rest.php` | `edit_user` on the target user |
-| `/comments/bulk` | POST | `includes/comments-window/rest.php` | `moderate_comments` |
-| `/comments/reply` | POST | `includes/comments-window/rest.php` | `edit_posts` |
-| `/comments/insights/{email}` | GET | `includes/comments-window/rest.php` | `moderate_comments` |
-| `/comments/counts` | GET | `includes/comments-window/rest.php` | `edit_posts` |
-| `/comments/ai-settings` | GET / POST | `includes/comments-window/ai-moderation.php` | `manage_options` |
+| `/term-counts` | GET | `apps/posts/parts/terms-rest.php` | `edit_posts` |
+| `/tag-cooccurrence` | GET | `apps/posts/parts/terms-rest.php` | `edit_posts` |
+| `/users` | POST | `apps/users/parts/rest.php` | `create_users` |
+| `/users/bulk-role` | POST | `apps/users/parts/rest.php` | `promote_users` |
+| `/users/bulk-delete` | POST | `apps/users/parts/rest.php` | `delete_users` (`remove_users` on multisite) |
+| `/users/{id}/send-password-reset` | POST | `apps/users/parts/rest.php` | `edit_users` |
+| `/users/{id}/resend-welcome` | POST | `apps/users/parts/rest.php` | `edit_users` |
+| `/users/{id}/insights` | GET | `apps/user-edit/parts/insights.php` | `edit_user` on the target user |
+| `/users/{id}/destroy-sessions` | POST | `apps/user-edit/parts/account.php` | `edit_user` on the target user |
+| `/users/{id}/application-passwords` | GET / POST | `apps/user-edit/parts/account.php` | `edit_user` on the target user |
+| `/users/{id}/application-passwords/{uuid}` | DELETE | `apps/user-edit/parts/account.php` | `edit_user` on the target user |
+| `/comments/bulk` | POST | `apps/comments/parts/rest.php` | `moderate_comments` |
+| `/comments/reply` | POST | `apps/comments/parts/rest.php` | `edit_posts` |
+| `/comments/insights/{email}` | GET | `apps/comments/parts/rest.php` | `moderate_comments` |
+| `/comments/counts` | GET | `apps/comments/parts/rest.php` | `edit_posts` |
+| `/comments/ai-settings` | GET / POST | `apps/comments/parts/ai-moderation.php` | `manage_options` |
 | `/content-graph/post-types` | GET | `includes/content-graph/rest.php` | `edit_posts` (filterable via `openstation_content_graph_user_can_use`) |
 | `/content-graph/nodes` | GET | `includes/content-graph/rest.php` | `edit_posts` (filterable via `openstation_content_graph_user_can_use`) |
 | `/content-graph/post/{id}` | GET | `includes/content-graph/rest.php` | `edit_posts` (filterable via `openstation_content_graph_user_can_use`) |
-| `/code-blue/sources` | GET | `includes/code-blue/rest.php` | Developer mode + `manage_options` (`manage_network_options` on multisite; filterable via `openstation_code_blue_user_can_use`) |
-| `/code-blue/entries` | GET / DELETE | `includes/code-blue/rest.php` | Developer mode + `manage_options` (`manage_network_options` on multisite; filterable via `openstation_code_blue_user_can_use`) |
+| `/apps/(?P<app>[a-z0-9][a-z0-9_-]*)/dispatch` | POST | `includes/framework/wordpress.php` | Logged in + the app exists + `App::allows()` (its `capabilities()` and `can()` gate). Every `.os.php` window — Code Blue included, behind Developer mode + `manage_options` (`manage_network_options` on multisite), filterable via `openstation_code_blue_user_can_use` — is served by this one route; there are no per-app routes. |
 | `/comment-stats/{id}` | GET | `includes/my-wordpress/comment-stats.php` | logged-in |
 | `/term-stats/{taxonomy}/{id}` | GET | `includes/my-wordpress/term-stats.php` | logged-in + `read` |
 | `/user-stats/{id}` | GET | `includes/my-wordpress/user-stats.php` | logged-in |

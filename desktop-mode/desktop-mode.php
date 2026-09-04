@@ -3,7 +3,7 @@
  * Plugin Name:       OpenStation
  * Plugin URI:        https://github.com/WordPress/openstation
  * Description:       Renders the WordPress admin as a desktop OS. Admin screens become draggable, resizable, minimizable windows floating on a desktop with a dock. Purely opt-in per user.
- * Version:           1.1.5
+ * Version:           1.1.6
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Daniel López Sánchez
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'OPENSTATION_VERSION', '1.1.5' );
+define( 'OPENSTATION_VERSION', '1.1.6' );
 define( 'OPENSTATION_FILE', __FILE__ );
 define( 'OPENSTATION_DIR', plugin_dir_path( __FILE__ ) );
 define( 'OPENSTATION_URL', plugin_dir_url( __FILE__ ) );
@@ -96,10 +96,15 @@ require_once OPENSTATION_DIR . 'includes/helpers.php';
 require_once OPENSTATION_DIR . 'includes/core/payload.php';
 require_once OPENSTATION_DIR . 'includes/assets.php';
 require_once OPENSTATION_DIR . 'includes/admin-bar.php';
+// Loaded before the session: `openstation_sanitize_session()` calls
+// `openstation_sanitize_workspace_profile()` on every desktop it reads.
+require_once OPENSTATION_DIR . 'includes/workspaces.php';
 require_once OPENSTATION_DIR . 'includes/session.php';
+require_once OPENSTATION_DIR . 'includes/multisite.php';
 require_once OPENSTATION_DIR . 'includes/presence.php';
 require_once OPENSTATION_DIR . 'includes/nonce-refresh.php';
 require_once OPENSTATION_DIR . 'includes/os-settings.php';
+require_once OPENSTATION_DIR . 'includes/mobile.php';
 // The About journal is still lazy — this file only registers its authenticated
 // AJAX action. Load the registration unconditionally so alternate admin-ajax
 // bootstraps cannot skip it while classifying the request shape.
@@ -170,16 +175,22 @@ require_once OPENSTATION_DIR . 'includes/recycle-bin/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/desktop-files/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/desktop-themes/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/notes/bootstrap.php';
-require_once OPENSTATION_DIR . 'includes/posts-window/bootstrap.php';
-require_once OPENSTATION_DIR . 'includes/pages-window/bootstrap.php';
-require_once OPENSTATION_DIR . 'includes/users-window/bootstrap.php';
-require_once OPENSTATION_DIR . 'includes/user-edit-window/bootstrap.php';
-require_once OPENSTATION_DIR . 'includes/plugins-window/bootstrap.php';
-require_once OPENSTATION_DIR . 'includes/comments-window/bootstrap.php';
-require_once OPENSTATION_DIR . 'includes/station-home/bootstrap.php';
+// Posts, Pages, Users, User Edit, Plugins and Comments are App
+// Framework apps (`apps/posts/`, `apps/pages/`, `apps/users/`,
+// `apps/user-edit/`, `apps/plugins/`, `apps/comments/`): each `.os.php`
+// pulls in its own PHP parts (permissions, REST fields and routes,
+// AJAX handlers) when the framework loads it on `init`.
+// Station Home is an App Framework app (`apps/station-home/`); only
+// its plugin-card registry — a public API plugins call on `init` —
+// lives here, so it exists before any app loads.
+require_once OPENSTATION_DIR . 'includes/station-home/cards.php';
 require_once OPENSTATION_DIR . 'includes/my-wordpress/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/content-graph/bootstrap.php';
-require_once OPENSTATION_DIR . 'includes/code-blue/bootstrap.php';
+// The App Framework: `.os.php` windows under `apps/` (Code Blue lives
+// there) and any directory a plugin adds. Loads after the registries
+// it registers into and after the feature modules, so an app can
+// hook them.
+require_once OPENSTATION_DIR . 'includes/framework/wordpress.php';
 require_once OPENSTATION_DIR . 'includes/living-tree/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/games/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/agents/bootstrap.php';

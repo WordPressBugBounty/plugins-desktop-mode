@@ -296,10 +296,12 @@ function openstation_is_portal_request() {
  *      only what they resolve to moved.
  *
  * Narrowly scoped to bail on every automated or sub-request entry point
- * — AJAX, REST, cron, admin-post.php, non-GET methods — so the hook
- * can't corrupt a form submission or break an API call. The shell
- * screen itself, chromeless loads, solo boots and classic-flagged
- * requests pass through.
+ * — AJAX, REST, cron, admin-post.php, non-GET methods, and sub-resource
+ * fetches (an `<img>`, a script or an XHR whose URL is an admin page,
+ * see {@see openstation_is_subresource_request()}) — so the hook can't
+ * corrupt a form submission, break an API call or hand an image tag an
+ * HTML document. The shell screen itself, chromeless loads, solo boots
+ * and classic-flagged requests pass through.
  *
  * Disable via the `openstation_admin_redirect_to_portal` filter (return
  * false); plain admin pages then render as classic admin and the
@@ -323,6 +325,14 @@ function openstation_redirect_plain_admin_to_portal() {
 	if ( function_exists( 'openstation_is_solo_request' ) && openstation_is_solo_request() ) {
 		return;
 	}
+	// The user admin (`wp-admin/user/`, multisite's dashboard for users
+	// with no site role) renders classic. It has no shell screen of its
+	// own, and its URLs never survive the target allowlist — before
+	// this pass-through the redirect claimed the request anyway and
+	// silently forwarded the user to the site desktop's default entry.
+	if ( is_multisite() && is_user_admin() ) {
+		return;
+	}
 	if ( wp_doing_ajax() || wp_doing_cron() ) {
 		return;
 	}
@@ -330,6 +340,14 @@ function openstation_redirect_plain_admin_to_portal() {
 		return;
 	}
 	if ( ! empty( $_SERVER['REQUEST_METHOD'] ) && 'GET' !== strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) ) {
+		return;
+	}
+	// The browser says what it is fetching for. An <img>, a script or
+	// an XHR aimed at an admin URL (Jetpack's admin-bar sparkline is
+	// admin.php?page=stats&noheader&proxy&chart=…) is not a user
+	// landing on a plain admin page, and forwarding it into the desktop
+	// only swaps the bytes it asked for with the shell's HTML.
+	if ( openstation_is_subresource_request() ) {
 		return;
 	}
 
@@ -602,6 +620,16 @@ function openstation_sanitize_portal_target( $raw ) {
 
 	$file = substr( $path, strlen( $admin_path ) );
 	$file = ltrim( (string) $file, '/' );
+
+	// The network admin's own screens live one directory down and are
+	// resolved against their own list. Without this a network URL came
+	// back empty and the user was quietly forwarded to the site
+	// dashboard, which is a different admin.
+	$network = 0 === strpos( $file, 'network/' );
+	if ( $network ) {
+		$file = substr( $file, strlen( 'network/' ) );
+	}
+
 	if ( '' === $file ) {
 		$file = 'index.php';
 	}
@@ -612,7 +640,7 @@ function openstation_sanitize_portal_target( $raw ) {
 	// isn't a real core admin page (e.g. `custom_admin_page.php`)
 	// and effectively become an open redirect to a 404 page served
 	// under the admin path; the explicit allowlist closes that.
-	$target = openstation_resolve_admin_target( $file );
+	$target = openstation_resolve_admin_target( $file, $network );
 	if ( is_wp_error( $target ) ) {
 		return '';
 	}
@@ -629,6 +657,19 @@ function openstation_sanitize_portal_target( $raw ) {
 	// shell would open itself in a window, and a redirect chain built
 	// from it would loop. Fall back to the entry resolver instead.
 	if ( openstation_url_is_shell_screen( $target ) ) {
+		return '';
+	}
+
+	// `admin.php` is a bootstrap, not a page. Without a `page` arg core
+	// falls through the last `else` in `wp-admin/admin.php`, never
+	// requires `admin-header.php`, and answers 200 with an empty body —
+	// so the URL becomes a window showing nothing. The allowlist above
+	// matches filenames and cannot see the query, which is why the
+	// check belongs here, beside the shell-screen one: both are URLs
+	// that resolve but must not become a target. Returning '' hands the
+	// caller back to the entry resolver (session's focused window, else
+	// the default window, else the Dashboard).
+	if ( openstation_url_is_page_less_admin_php( $target ) ) {
 		return '';
 	}
 

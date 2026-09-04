@@ -90,10 +90,14 @@ function openstation_enqueue_assets() {
 	wp_enqueue_style( 'os-dock' );
 	wp_enqueue_style( 'os-dock-peek' );
 	wp_enqueue_style( 'os-notch' );
+	wp_enqueue_style( 'os-workspaces' );
 	wp_enqueue_style( 'os-shortcuts' );
 	wp_enqueue_style( 'os-openstation-layout' );
 	wp_enqueue_style( 'os-files' );
 	wp_enqueue_style( 'os-notes' );
+	// Unconditional like the layout sheet: a live crossing into the
+	// phone band must not find the phone layer unstyled.
+	wp_enqueue_style( 'os-mobile' );
 
 	// Solo mode — a single window freed into a native OS window by the
 	// desktop host. Same shell, everything but that one window hidden.
@@ -218,9 +222,9 @@ function openstation_enqueue_assets() {
 	// is the per-item filter escape hatch for hiding. Shared with the
 	// REST menu endpoint so live refreshes (post plugin-activation)
 	// produce the same ordering as the boot payload.
-	$menu_payload                      = openstation_build_menu_payload();
-	$dock_items                        = $menu_payload['dockItems'];
-	$native_windows                    = isset( $menu_payload['nativeWindows'] )
+	$menu_payload   = openstation_build_menu_payload();
+	$dock_items     = $menu_payload['dockItems'];
+	$native_windows = isset( $menu_payload['nativeWindows'] )
 		? $menu_payload['nativeWindows']
 		: array();
 
@@ -330,7 +334,7 @@ function openstation_enqueue_assets() {
 		}
 	}
 	unset( $desktop_theme_row );
-	$desktop_icons         = isset( $menu_payload['desktopIcons'] )
+	$desktop_icons = isset( $menu_payload['desktopIcons'] )
 		? $menu_payload['desktopIcons']
 		: array();
 
@@ -508,7 +512,11 @@ function openstation_enqueue_assets() {
 			'currentPage'                   => esc_url( $current_page ),
 			'currentTitle'                  => $current_title,
 			'currentIcon'                   => sanitize_html_class( $menu_icon ),
-			'adminUrl'                      => esc_url( admin_url() ),
+			// `self_admin_url()`: the base a window id is derived from,
+			// and the URL the shell leaves for on exit. Both want the
+			// admin the screen is in, which is the network one when the
+			// network shell screen is what rendered.
+			'adminUrl'                      => esc_url( self_admin_url() ),
 			'homeUrl'                       => esc_url( home_url( '/' ) ),
 			// Decoded: the shell assigns this to `window.location`,
 			// where `&amp;` would make `_wpnonce` arrive as
@@ -571,7 +579,15 @@ function openstation_enqueue_assets() {
 			'pluginNotices'                 => openstation_get_plugin_notices(),
 			'defaultWallpaper'              => openstation_get_default_wallpaper(),
 			'session'                       => openstation_get_session( get_current_user_id() ),
-			'sessionUrl'                    => esc_url_raw( rest_url( 'desktop-mode/v1/session' ) ),
+			// The session route runs in the main site's blog context
+			// whichever desktop posts to it, so the network screen's
+			// URL says which session it is addressing — see
+			// `openstation_rest_session_network()`.
+			'sessionUrl'                    => esc_url_raw(
+				is_network_admin()
+					? add_query_arg( 'network', '1', rest_url( 'desktop-mode/v1/session' ) )
+					: rest_url( 'desktop-mode/v1/session' )
+			),
 			'restUrl'                       => esc_url_raw( rest_url() ),
 			'mediaUrl'                      => esc_url_raw( rest_url( 'wp/v2/media' ) ),
 			'dropConfig'                    => $drop_config,
@@ -596,13 +612,6 @@ function openstation_enqueue_assets() {
 			// opens the assistant. Picking `.js` vs `.min.js` here keeps
 			// the SCRIPT_DEBUG gate server-side, matching iframeBridgeUrl.
 			'aiAssistantBundleUrl'          => $lazy_bundle_url( 'ai-assistant' ),
-			// URL of the OS Settings panel lazy bundle. Injected by
-			// the main bundle's `OsSettings.renderPanel()` stub on
-			// the user's first Settings open. Holds every section
-			// renderer + the `<os-*>` components only the panel
-			// uses, so nothing about Settings ships in
-			// `desktop.min.js` for users who never open it.
-			'osSettingsPanelBundleUrl'      => $lazy_bundle_url( 'os-settings-panel' ),
 			// URL of the shell-overlays lazy bundle. Pre-loaded by
 			// the main bundle after first paint so action-triggered
 			// overlays (toast, confirm dialog, context menus) feel
@@ -659,10 +668,27 @@ function openstation_enqueue_assets() {
 			// by the shell after first paint when no session is being
 			// restored and no `openCurrentPage` will fire.
 			'windowSystemBundleUrl'         => $lazy_bundle_url( 'window-system' ),
+			// URL of the lazy phone-layer bundle. Injected by the main
+			// bundle only when the mode resolves to `mobile`, so a
+			// desktop never fetches it. `mode` carries the preference
+			// and breakpoints the first-paint head stamp already used,
+			// plus the server's default tab-bar pins — see
+			// `includes/mobile.php`.
+			'mobileBundleUrl'               => $lazy_bundle_url( 'mobile' ),
+			'mode'                          => openstation_mode_config( get_current_user_id() ),
 			// URL of the item-visibility-menu lazy bundle — the
 			// right-click "hide from dock / desktop" menu. Injected by
 			// the main bundle's loader shim on the first right-click.
 			'itemVisibilityMenuBundleUrl'   => $lazy_bundle_url( 'item-visibility-menu' ),
+			// URL of the workspace-wizard lazy bundle — the modal
+			// behind "Edit this workspace…". Injected by the main
+			// bundle's loader shim on first open.
+			'workspaceWizardBundleUrl'      => $lazy_bundle_url( 'workspace-wizard' ),
+			// Server-side view of the workspace templates, so a plugin
+			// can add or drop one from PHP. The client merges these
+			// with its own built-ins by id — see
+			// `src/workspaces/server-sync.ts`.
+			'workspacePresets'              => openstation_workspace_presets(),
 			// URL of the release-card lazy bundle — the vinyl core-
 			// update announcement. Injected by `maybeShowUpdate()` only
 			// when a core update is actually pending.
@@ -723,15 +749,26 @@ function openstation_enqueue_assets() {
 				)
 				: null,
 			'currentUserIsAdmin'            => current_user_can( 'manage_options' ),
+			// Null on single-site installs; its `networkAdmin` null
+			// without `manage_network`, which is what keeps the dock
+			// tile from registering.
+			'multisite'                     => openstation_multisite_payload(),
 			'portalUrl'                     => esc_url( openstation_portal_url() ),
 			'fromPortal'                    => $from_portal,
 			'fromPortalIntent'              => $from_portal_intent,
+			// One-shot like the boot target: a switch from another
+			// site's overview lands in this one's.
+			'landInOverview'                => openstation_shell_lands_in_overview(),
 			'pwa'                           => array(
 				'manifestUrl'    => esc_url_raw( openstation_pwa_manifest_url() ),
 				'swUrl'          => esc_url_raw( openstation_pwa_sw_url() ),
 				// Extensionless retry target for hosts whose nginx 404s
 				// virtual .js paths before WordPress runs (WordPress.com).
 				'swFallbackUrl'  => esc_url_raw( openstation_pwa_sw_fallback_url() ),
+				// The site's home path — the scope the registration
+				// asks for, so a subdirectory network's sites each get
+				// their own worker instead of fighting over the root.
+				'swScope'        => openstation_pwa_sw_scope(),
 				// The worker's per-user flags, computed HERE rather than
 				// baked into the served `sw.js`.
 				//
@@ -739,10 +776,9 @@ function openstation_enqueue_assets() {
 				// preferences, so putting them in the script bytes made
 				// the body differ between an anonymous and a logged-in
 				// request — and any in-scope logged-out navigation then
-				// installed a "new" worker and tripped the shell's
-				// `controllerchange` reload. The bytes are identical for
-				// everyone now; the shell posts these to the worker at
-				// boot.
+				// installed a "new" worker, which at the time reloaded
+				// the shell. The bytes are identical for everyone now;
+				// the shell posts these to the worker at boot.
 				//
 				// Computed server-side, not read from the settings
 				// snapshot client-side, because
@@ -753,6 +789,12 @@ function openstation_enqueue_assets() {
 					'adminAssetCache' => (bool) openstation_pwa_admin_asset_cache_enabled(),
 					'windowPrewarm'   => ! empty( openstation_get_os_settings( get_current_user_id() )['windowPrewarmEnabled'] ),
 				),
+				// The build this shell document belongs to. When a new
+				// worker takes over mid-session the shell asks it for
+				// the stamp it was served with and compares; only a
+				// difference — the shell's own files changed on the
+				// server — offers the user a reload. Never automatic.
+				'shellBuild'     => openstation_shell_build_stamp(),
 				'stateUrl'       => esc_url_raw( rest_url( 'desktop-mode/v1/pwa-state' ) ),
 				'state'          => openstation_pwa_get_user_state( get_current_user_id() ),
 				// Mirrors the manifest's `name` field — used by the
@@ -791,17 +833,17 @@ function openstation_enqueue_assets() {
 			'deferredStyles'                => openstation_build_deferred_styles(
 				array_merge(
 					array(
-						'os-settings',
 						'desktop-mode-ai-assistant',
 						'desktop-mode-bug-report',
-						// WP Explorer's sheet. It rides that window as a
-						// companion style, but the desktop FOLDER window
-						// paints its preview pane with the same
-						// `os-my-wordpress__*` classes and — being a
-						// native window opened straight from JS — carries
-						// no companion styles of its own. Without this,
-						// the pane rendered unstyled until WP Explorer
-						// had been opened once in the session.
+						// The explorer's shared sheet. It rides the WP
+						// Explorer APP as a companion style, but the
+						// desktop FOLDER window paints its preview pane
+						// with the same `os-my-wordpress__*` classes and
+						// — being a native window opened straight from
+						// JS — carries no companion styles of its own.
+						// Without this, the pane rendered unstyled until
+						// the explorer had been opened once in the
+						// session.
 						'desktop-mode-my-wordpress',
 					),
 					// The Games sheets. They also ride the hub window as
@@ -956,6 +998,19 @@ function openstation_print_preload_hints() {
 		),
 	);
 
+	// The phone layer is needed at boot on a phone and never on a
+	// desktop; the server cannot see the viewport, so the user agent
+	// decides whether the hint is worth its bytes. A wrong guess costs
+	// one low-priority fetch, never a wrong layout — the stamp and the
+	// bundle loader read the real viewport.
+	if ( openstation_mode_hint_is_mobile( get_current_user_id() ) ) {
+		$hints[] = array(
+			'href' => $build_url( 'assets/js/mobile' . $suffix . '.js' ),
+			'as'   => 'script',
+			'rel'  => 'prefetch',
+		);
+	}
+
 	/**
 	 * Filters the list of resource preload hints emitted in `<head>`.
 	 *
@@ -1074,7 +1129,6 @@ function openstation_defer_non_critical_styles( $html, $handle, $href, $media ) 
 			'desktop-mode-ai-assistant',
 			'desktop-mode-bug-report',
 			'os-window-overview',
-			'os-settings',
 		)
 	);
 

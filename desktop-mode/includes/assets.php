@@ -123,11 +123,12 @@ function openstation_register_assets() {
 	 *   window-chrome → window-states → effects → window-links
 	 *   → windows
 	 *
-	 * `window-overview` and `os-settings` are deliberately NOT in this
-	 * chain — they are registered below, after `os-windows`,
-	 * so they can load deferred. Adding a sheet here means splicing it
-	 * into the chain, not appending an unrelated dependency: order is
-	 * the contract.
+	 * `window-overview` is deliberately NOT in this chain — it is
+	 * registered below, after `os-windows`, so it can load deferred.
+	 * Adding a sheet here means splicing it into the chain, not
+	 * appending an unrelated dependency: order is the contract.
+	 * (The Preferences window's sheet is not here at all: it rides
+	 * the `apps/os-settings/` app as a first-open companion style.)
 	 */
 	$window_sheets = array(
 		'os-window-chrome' => 'assets/css/window-chrome.css',
@@ -155,23 +156,17 @@ function openstation_register_assets() {
 		$previous,
 		$built_version( 'assets/css/windows.css' )
 	);
-	// These two load DEFERRED (see `openstation_defer_non_critical_styles()`):
-	// the UI they style — the OS Settings panel and the window
-	// overview — is lazy-loaded JS that can never be on screen at
-	// first paint, so ~47 KB of CSS has no business blocking render.
-	// They depend on `os-windows` so they print after it,
-	// preserving the cascade position they had as `@import`s.
+	// Loads DEFERRED (see `openstation_defer_non_critical_styles()`):
+	// the UI it styles — the window overview — is lazy-loaded JS that
+	// can never be on screen at first paint, so its CSS has no
+	// business blocking render. It depends on `os-windows` so it
+	// prints after it, preserving the cascade position it had as an
+	// `@import`.
 	wp_register_style(
 		'os-window-overview',
 		OPENSTATION_URL . 'assets/css/window-overview.css',
 		array( 'os-windows' ),
 		$built_version( 'assets/css/window-overview.css' )
-	);
-	wp_register_style(
-		'os-settings',
-		OPENSTATION_URL . 'assets/css/os-settings.css',
-		array( 'os-windows' ),
-		$built_version( 'assets/css/os-settings.css' )
 	);
 	// Solo mode — one window, no desk around it. Loads last so it can
 	// hide surfaces the sheets above declared, and only enqueues on a
@@ -194,6 +189,17 @@ function openstation_register_assets() {
 		array( 'os-dock' ),
 		$built_version( 'assets/css/dock-peek.css' )
 	);
+	// The phone layer. Every rule is scoped to
+	// `html[data-os-mode="mobile"]`, so the sheet is inert on a
+	// desktop and the first paint on a phone is already right (the
+	// head stamp writes the attribute before any stylesheet applies).
+	// Depends on the dock and window sheets because it overrides them.
+	wp_register_style(
+		'os-mobile',
+		OPENSTATION_URL . 'assets/css/mobile.css',
+		array( 'os-variables', 'dashicons', 'os-dock', 'os-windows' ),
+		$built_version( 'assets/css/mobile.css' )
+	);
 	// The notch — the shell's top-centre voice and the site
 	// assistant's front door. Scoped to `.os-notch`.
 	wp_register_style(
@@ -201,6 +207,16 @@ function openstation_register_assets() {
 		OPENSTATION_URL . 'assets/css/notch.css',
 		array( 'os-variables' ),
 		$built_version( 'assets/css/notch.css' )
+	);
+	// The workspace wizard. Scoped to `.os-workspace-wizard`, so it is
+	// inert until the user opens it from the overview bar's `+` or a
+	// tile's Edit. Those controls are styled with the rest of the bar
+	// in `window-overview.css`.
+	wp_register_style(
+		'os-workspaces',
+		OPENSTATION_URL . 'assets/css/workspaces.css',
+		array( 'os-variables', 'dashicons' ),
+		$built_version( 'assets/css/workspaces.css' )
 	);
 	// Keyboard-shortcuts window. Scoped to `.os-shortcuts`, so it is
 	// inert until the System menu opens the window, and unconditional
@@ -268,38 +284,8 @@ function openstation_register_assets() {
 		file_exists( $recycle_bin_css ) ? (string) filemtime( $recycle_bin_css ) : $version
 	);
 
-	// `filemtime` for the native Posts window CSS — same rationale as
-	// the recycle-bin CSS: bundle iterates faster than the plugin
-	// version and stale caches are worse than the cost of a 304.
-	$posts_window_css = OPENSTATION_DIR . 'assets/css/posts-window.css';
-	wp_register_style(
-		'os-posts-window',
-		OPENSTATION_URL . 'assets/css/posts-window.css',
-		array( 'os-variables', 'dashicons' ),
-		file_exists( $posts_window_css ) ? (string) filemtime( $posts_window_css ) : $version
-	);
-
-	// Native Plugins window CSS — same `filemtime`-cache-bust posture
-	// as the Posts/Recycle Bin styles.
-	$plugins_window_css = OPENSTATION_DIR . 'assets/css/plugins-window.css';
-	wp_register_style(
-		'os-plugins-window',
-		OPENSTATION_URL . 'assets/css/plugins-window.css',
-		array( 'os-variables', 'dashicons' ),
-		file_exists( $plugins_window_css ) ? (string) filemtime( $plugins_window_css ) : $version
-	);
-
-	// Native Comments window CSS — same `filemtime` posture.
-	$comments_window_css = OPENSTATION_DIR . 'assets/css/comments-window.css';
-	wp_register_style(
-		'os-comments-window',
-		OPENSTATION_URL . 'assets/css/comments-window.css',
-		array( 'os-variables', 'dashicons' ),
-		file_exists( $comments_window_css ) ? (string) filemtime( $comments_window_css ) : $version
-	);
-
 	// Files-on-the-Desktop tile + layer styles. `filemtime` for the
-	// same reason as the recycle-bin / posts-window CSS: this file
+	// same reason as the recycle-bin CSS: this file
 	// iterates faster than the plugin version, and a stale cache
 	// would mask a real fix.
 	$desktop_files_css = OPENSTATION_DIR . 'assets/css/desktop-files.css';
@@ -443,28 +429,11 @@ function openstation_register_assets() {
 		true
 	);
 
-	// `desktop-mode-recycle-bin` — small bundle for the Recycle Bin
-	// native window. Lazy-loaded by the native-window sync the first
-	// time the bin opens; registers a render callback on
-	// `window.openStationNativeWindows['desktop-mode-recycle-bin']`.
-	$recycle_bin_js = OPENSTATION_DIR . 'assets/js/recycle-bin' . $suffix . '.js';
-	wp_register_script(
-		'desktop-mode-recycle-bin',
-		OPENSTATION_URL . 'assets/js/recycle-bin' . $suffix . '.js',
-		// `heartbeat` + `jquery` — the bin opts in to the WordPress
-		// Heartbeat API while its window is open as the catch-all
-		// real-time channel for deletes that don't render an admin
-		// footer (REST/AJAX/other tabs/WP-CLI). See
-		// `src/recycle-bin/realtime.ts` for the subscriber.
-		array( 'wp-i18n', 'heartbeat', 'jquery' ),
-		file_exists( $recycle_bin_js ) ? (string) filemtime( $recycle_bin_js ) : $version,
-		true
-	);
-	wp_set_script_translations(
-		'desktop-mode-recycle-bin',
-		'desktop-mode',
-		OPENSTATION_DIR . 'languages'
-	);
+	// The Recycle Bin window is an App Framework app (`apps/trash/`);
+	// its client view rides the app-bundle pipeline, so no dedicated
+	// script handle. The `desktop-mode-recycle-bin` STYLE handle above
+	// stays — the drag-to-trash drop-target highlight must be present
+	// at boot (dropping on the closed bin's dock tile), not window-open.
 
 	// `desktop-mode-games` — bundle for the Games hub native window
 	// (launcher grid, scoreboard, challenges client). Lazy-loaded by
@@ -518,63 +487,6 @@ function openstation_register_assets() {
 	);
 	wp_set_script_translations(
 		'os-game-alphabet-soup',
-		'desktop-mode',
-		OPENSTATION_DIR . 'languages'
-	);
-
-	// `os-posts-window` — small bundle for the native Posts
-	// window. Lazy-loaded by the native-window sync the first time the
-	// window opens (via the dock-click swap when the user opts in);
-	// registers a render callback on
-	// `window.openStationNativeWindows['desktop-mode-posts']`.
-	$posts_window_js = OPENSTATION_DIR . 'assets/js/posts-window' . $suffix . '.js';
-	wp_register_script(
-		'os-posts-window',
-		OPENSTATION_URL . 'assets/js/posts-window' . $suffix . '.js',
-		array( 'wp-i18n' ),
-		file_exists( $posts_window_js ) ? (string) filemtime( $posts_window_js ) : $version,
-		true
-	);
-	wp_set_script_translations(
-		'os-posts-window',
-		'desktop-mode',
-		OPENSTATION_DIR . 'languages'
-	);
-
-	// `os-plugins-window` — small bundle for the native
-	// Plugins window. Lazy-loaded by the native-window sync the first
-	// time the window opens (via the dock-click swap when the user
-	// opts in); registers a render callback on
-	// `window.openStationNativeWindows['desktop-mode-plugins']`.
-	$plugins_window_js = OPENSTATION_DIR . 'assets/js/plugins-window' . $suffix . '.js';
-	wp_register_script(
-		'os-plugins-window',
-		OPENSTATION_URL . 'assets/js/plugins-window' . $suffix . '.js',
-		array( 'wp-i18n' ),
-		file_exists( $plugins_window_js ) ? (string) filemtime( $plugins_window_js ) : $version,
-		true
-	);
-	wp_set_script_translations(
-		'os-plugins-window',
-		'desktop-mode',
-		OPENSTATION_DIR . 'languages'
-	);
-
-	// `os-comments-window` — small bundle for the native
-	// Comments window. Lazy-loaded by the native-window sync the first
-	// time the window opens (via the dock-click swap when the user
-	// opts in); registers a render callback on
-	// `window.openStationNativeWindows['desktop-mode-comments']`.
-	$comments_window_js = OPENSTATION_DIR . 'assets/js/comments-window' . $suffix . '.js';
-	wp_register_script(
-		'os-comments-window',
-		OPENSTATION_URL . 'assets/js/comments-window' . $suffix . '.js',
-		array( 'wp-i18n' ),
-		file_exists( $comments_window_js ) ? (string) filemtime( $comments_window_js ) : $version,
-		true
-	);
-	wp_set_script_translations(
-		'os-comments-window',
 		'desktop-mode',
 		OPENSTATION_DIR . 'languages'
 	);
