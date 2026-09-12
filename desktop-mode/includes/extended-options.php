@@ -7,6 +7,9 @@
  * they affect every user on the site. Admin-only to read or write.
  *
  * Current options:
+ *   - window_prewarm: preload windows on hover. Defaults to true.
+ *   - admin_asset_cache: share cached admin assets across windows.
+ *     Defaults to true. Both performance options apply on shell reload.
  *   - media_library_enhanced: when true, enqueues a small JS shim on
  *     every admin page that makes Media Library .attachment tiles
  *     draggable — users can drag images out of the library into any
@@ -29,6 +32,13 @@
  *     **Defaults to `false`** — agents are opt-IN. While off,
  *     `includes/agents/bootstrap.php` skips every module file (see
  *     `openstation_agents_enabled()`).
+ *   - network: when true, the OpenStation Network module loads — the
+ *     keypair, the identity and list routes, the registry, the Network
+ *     window, and the hop token that logs a user in on arrival at
+ *     another install. **Defaults to `false`** — the network is
+ *     opt-IN. While off, `includes/network/bootstrap.php` skips every
+ *     module file (see `openstation_network_enabled()`), and a
+ *     multisite keeps the site switcher it has on its own.
  *
  * @package OpenStation
  */
@@ -53,13 +63,16 @@ const OPENSTATION_EXTENDED_OPTIONS_KEY = 'desktop_mode_extended_options';
 /**
  * Returns the extended options with defaults filled in.
  *
- * @return array{ media_library_enhanced: bool, games: bool, agents: bool }
+ * @return array{ media_library_enhanced: bool, games: bool, agents: bool, network: bool, window_prewarm: bool, admin_asset_cache: bool }
  */
 function openstation_get_extended_options() {
 	$defaults = array(
 		'media_library_enhanced' => true,
+		'window_prewarm'         => true,
+		'admin_asset_cache'      => true,
 		'games'                  => false,
 		'agents'                 => false,
+		'network'                => false,
 	);
 	$raw      = get_option( OPENSTATION_EXTENDED_OPTIONS_KEY, array() );
 	if ( ! is_array( $raw ) ) {
