@@ -4,7 +4,7 @@ Tags: admin, dashboard, desktop, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.8
+Stable tag: 1.1.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -169,6 +169,15 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * **[LDNOOBW English list](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)** (CC-BY 4.0) — used as an exclusion filter.
 
 == Changelog ==
+
+= 1.1.9 =
+* Add saved Plugins table view and fix preserved table rendering
+* OS Settings: let a registered settings tab name its sidebar glyph
+* Fix timeout stalled plugin updates
+* Fix dock overlap on maximized and snapped windows
+* Posts: paint plugin columns on the writing-desk cards
+* My WordPress: gate the user dossier aggregates on the viewer
+* Add window-scoped MIO assistance and private Settings actions
 
 = 1.1.8 =
 * Files: add uploaded files to the Media Library, and start a post or page from an image

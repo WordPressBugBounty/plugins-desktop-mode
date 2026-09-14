@@ -9,11 +9,26 @@
  * categories, role + member-since) without forcing the client to
  * make N parallel REST calls.
  *
- * Permissions: anyone with `list_users` — or the subject user
- * viewing their own dossier — sees full data; everyone else sees
+ * Permissions: the My WordPress module's gate,
+ * `openstation_my_wordpress_user_can_use()` (`edit_posts` unless a site
+ * filters it), so a site that narrows WP Explorer narrows this data
+ * with it. Past that gate, anyone with `list_users` (or the subject
+ * user viewing their own dossier) sees full data; everyone else sees
  * the public subset (display name, avatar, post archive link,
- * published-only counts and recent posts). Sensitive fields
- * (email, registered date, role) are gated on the cap.
+ * published-only counts and recent posts). Sensitive fields (email,
+ * registered date, role) are gated on the cap.
+ *
+ * For the unprivileged subset, `publish` alone is not the test for
+ * the counts that reach beyond the subject's own posts and pages
+ * (`cpt`, `commentsReceived`, `commentsLeft`): a type with no readable
+ * front end holds `publish` rows a visitor could never open, so those
+ * counts ask `is_post_type_viewable()` as well. The comment counts also
+ * skip password-protected and deleted parents, and ask the comment
+ * dossier's gate of every parent they count, so a plugin that filters
+ * `read_post` for a single published post takes its comments out of
+ * them. For every viewer, `cpt` leaves out the post types Core
+ * registers (`_builtin`). The payload is viewer-dependent: never cache
+ * it under a subject-only key.
  *
  * @package OpenStation
  */
@@ -31,9 +46,10 @@ function openstation_my_wordpress_register_user_stats_route() {
 			'methods'             => WP_REST_Server::READABLE,
 			'callback'            => 'openstation_my_wordpress_user_stats_callback',
 			'permission_callback' => static function () {
-				// Logged-in users only — author archives are public,
-				// but the dossier mixes counts that aren't.
-				return is_user_logged_in();
+				// The module's gate, so a site that narrows WP Explorer
+				// narrows this data with it. The per-viewer scoping lives
+				// in the callback, which in-process callers invoke directly.
+				return openstation_my_wordpress_user_can_use();
 			},
 			'args'                => array(
 				'id' => array(
@@ -46,6 +62,49 @@ function openstation_my_wordpress_register_user_stats_route() {
 	);
 }
 add_action( 'rest_api_init', 'openstation_my_wordpress_register_user_stats_route' );
+
+/**
+ * Sum per-parent comment counts over the parents the viewer may read.
+ *
+ * The query behind the rows has already kept only published, unsealed
+ * parents of a viewable type. That settles the parent's status, type
+ * and password, but not the post itself: `read_post` is filterable per
+ * post, and the comment dossier asks it of a published parent too, so a
+ * plugin can withhold one post and `/comment-stats` then refuses its
+ * comments. Every parent goes through that same gate,
+ * openstation_my_wordpress_can_read_comment_post(), so a count never
+ * reports comments the dossier withholds. The parents are loaded in one
+ * query, and each is decided once per request.
+ *
+ * @param array[]|null $rows     Rows carrying the parent's `post_id` and its comment count `n`.
+ * @param bool[]       $verdicts Gate answers already reached in this request, keyed by post id.
+ * @return int
+ */
+function openstation_my_wordpress_user_stats_readable_comment_count( $rows, array &$verdicts ) {
+	$rows   = (array) $rows;
+	$unseen = array();
+	foreach ( $rows as $row ) {
+		$id = (int) $row['post_id'];
+		if ( $id > 0 && ! isset( $verdicts[ $id ] ) ) {
+			$unseen[ $id ] = $id;
+		}
+	}
+	if ( $unseen ) {
+		_prime_post_caches( array_values( $unseen ), false, false );
+	}
+
+	$total = 0;
+	foreach ( $rows as $row ) {
+		$id = (int) $row['post_id'];
+		if ( ! isset( $verdicts[ $id ] ) ) {
+			$verdicts[ $id ] = openstation_my_wordpress_can_read_comment_post( $id > 0 ? get_post( $id ) : null );
+		}
+		if ( $verdicts[ $id ] ) {
+			$total += (int) $row['n'];
+		}
+	}
+	return $total;
+}
 
 /**
  * Aggregator callback. Returns the dossier shape (see file
@@ -167,51 +226,132 @@ function openstation_my_wordpress_user_stats_callback( $request ) {
 		);
 	}
 
+	// ----- Counts beyond the subject's own posts and pages -------------
+	// For a viewer without `list_users`, each count below takes two gates,
+	// because `publish` is not visibility on its own: the row has to be
+	// published, AND its post type has to be one a visitor could actually
+	// open. A plugin's internal type (an order, a submission log, an
+	// internal note) registers rows with a `publish` status and no front
+	// end at all, so the type list comes from `is_post_type_viewable()`,
+	// the question the comment tools and the term-stats endpoint settled
+	// on. A comment count also skips a password-protected parent, whose
+	// comments are sealed along with it, and a parent that no longer
+	// exists. Those three settle the parent's status, type and password,
+	// but not the post itself: `read_post` is filterable per post, so each
+	// comment count also asks the comment dossier's gate of every parent
+	// it counts, through
+	// openstation_my_wordpress_user_stats_readable_comment_count().
+	// Privileged viewers keep every count whole.
+	$viewable_types = array_values( array_filter( get_post_types(), 'is_post_type_viewable' ) );
+	$viewable_list  = implode( ', ', array_fill( 0, count( $viewable_types ), '%s' ) );
+
+	// Gate answers per parent post, shared by both comment counts.
+	$comment_verdicts = array();
+
 	// Comments received on posts authored by this user, approved only.
-	// Non-privileged viewers only see engagement on published content.
-	$received_status_sql = $can_see_private
-		? "p.post_status NOT IN ( 'auto-draft', 'trash' )"
-		: "p.post_status = 'publish'";
-	$comments_received   = (int) $wpdb->get_var(
-		$wpdb->prepare(
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- literal status clause chosen above.
-			"SELECT COUNT(c.comment_ID)
-			FROM {$wpdb->comments} c
-			INNER JOIN {$wpdb->posts} p ON c.comment_post_ID = p.ID
-			WHERE p.post_author = %d
-				AND c.comment_approved = '1'
-				AND {$received_status_sql}",
-			$user_id
-		)
-	);
+	if ( $can_see_private ) {
+		$comments_received = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(c.comment_ID)
+				FROM {$wpdb->comments} c
+				INNER JOIN {$wpdb->posts} p ON c.comment_post_ID = p.ID
+				WHERE p.post_author = %d
+					AND c.comment_approved = '1'
+					AND p.post_status NOT IN ( 'auto-draft', 'trash' )",
+				$user_id
+			)
+		);
+	} elseif ( $viewable_types ) {
+		$received_rows     = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT p.ID AS post_id, COUNT(c.comment_ID) AS n
+				FROM {$wpdb->comments} c
+				INNER JOIN {$wpdb->posts} p ON c.comment_post_ID = p.ID
+				WHERE p.post_author = %d
+					AND c.comment_approved = '1'
+					AND p.post_status = 'publish'
+					AND p.post_password = ''
+					AND p.post_type IN ( {$viewable_list} )
+				GROUP BY p.ID",
+				array_merge( array( $user_id ), $viewable_types )
+			),
+			ARRAY_A
+		);
+		$comments_received = openstation_my_wordpress_user_stats_readable_comment_count( $received_rows, $comment_verdicts );
+	} else {
+		$comments_received = 0;
+	}
 
 	// Comments left BY this user (regardless of post author).
-	$comments_left = (int) $wpdb->get_var(
-		$wpdb->prepare(
-			"SELECT COUNT(*)
-			FROM {$wpdb->comments}
-			WHERE user_id = %d
-				AND comment_approved = '1'",
-			$user_id
-		)
-	);
+	if ( $can_see_private ) {
+		$comments_left = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*)
+				FROM {$wpdb->comments}
+				WHERE user_id = %d
+					AND comment_approved = '1'",
+				$user_id
+			)
+		);
+	} elseif ( $viewable_types ) {
+		$left_rows     = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT p.ID AS post_id, COUNT(c.comment_ID) AS n
+				FROM {$wpdb->comments} c
+				INNER JOIN {$wpdb->posts} p ON c.comment_post_ID = p.ID
+				WHERE c.user_id = %d
+					AND c.comment_approved = '1'
+					AND p.post_status = 'publish'
+					AND p.post_password = ''
+					AND p.post_type IN ( {$viewable_list} )
+				GROUP BY p.ID",
+				array_merge( array( $user_id ), $viewable_types )
+			),
+			ARRAY_A
+		);
+		$comments_left = openstation_my_wordpress_user_stats_readable_comment_count( $left_rows, $comment_verdicts );
+	} else {
+		$comments_left = 0;
+	}
 
-	// Total content (posts + pages + any custom public post types).
-	// Same gating as above: published-only unless privileged.
-	$cpt_status_sql = $can_see_private
-		? "post_status NOT IN ( 'auto-draft', 'inherit', 'trash' )"
-		: "post_status = 'publish'";
-	$cpt_count      = (int) $wpdb->get_var(
-		$wpdb->prepare(
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- literal status clause chosen above.
-			"SELECT COUNT(*)
-			FROM {$wpdb->posts}
-			WHERE post_author = %d
-				AND post_type NOT IN ( 'post', 'page', 'attachment', 'revision', 'nav_menu_item' )
-				AND {$cpt_status_sql}",
-			$user_id
-		)
-	);
+	// Total content in custom post types. Every type Core registers is
+	// left out (`_builtin`): posts and pages because they are counted
+	// above, and the rest (attachments, revisions, menu items, synced
+	// patterns, templates, navigation menus, global styles, changesets,
+	// oEmbed caches, ...) because none of it is a custom post type. An
+	// exclusion list naming a handful of them counted every one it did
+	// not name.
+	$builtin_types = array_values( get_post_types( array( '_builtin' => true ) ) );
+	if ( $can_see_private ) {
+		$builtin_list = implode( ', ', array_fill( 0, count( $builtin_types ), '%s' ) );
+		$cpt_count    = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*)
+				FROM {$wpdb->posts}
+				WHERE post_author = %d
+					AND post_type NOT IN ( {$builtin_list} )
+					AND post_status NOT IN ( 'auto-draft', 'inherit', 'trash' )",
+				array_merge( array( $user_id ), $builtin_types )
+			)
+		);
+	} else {
+		$cpt_types = array_values( array_diff( $viewable_types, $builtin_types ) );
+		if ( $cpt_types ) {
+			$cpt_list  = implode( ', ', array_fill( 0, count( $cpt_types ), '%s' ) );
+			$cpt_count = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*)
+					FROM {$wpdb->posts}
+					WHERE post_author = %d
+						AND post_type IN ( {$cpt_list} )
+						AND post_status = 'publish'",
+					array_merge( array( $user_id ), $cpt_types )
+				)
+			);
+		} else {
+			$cpt_count = 0;
+		}
+	}
 
 	$counts = array(
 		'posts'            => $post_counts,

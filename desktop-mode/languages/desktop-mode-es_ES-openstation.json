@@ -253,6 +253,12 @@
             "Ask AI": [
                 ""
             ],
+            "Ask MIO": [
+                ""
+            ],
+            "Ask about this window, or tell me what to change.": [
+                ""
+            ],
             "Ask the agent to do something…": [
                 ""
             ],
@@ -388,6 +394,9 @@
             "Chat window config is missing.": [
                 ""
             ],
+            "Chat with MIO": [
+                ""
+            ],
             "Choose an app…": [
                 ""
             ],
@@ -405,6 +414,9 @@
             ],
             "Close %s": [
                 "Cerrar %s"
+            ],
+            "Close MIO chat": [
+                ""
             ],
             "Close all": [
                 ""
@@ -478,6 +490,12 @@
             "Contributors": [
                 ""
             ],
+            "Conversation": [
+                ""
+            ],
+            "Conversation stays in this session. Messages are sent to your configured AI provider.": [
+                ""
+            ],
             "Convert to a draft post": [
                 ""
             ],
@@ -494,6 +512,9 @@
                 ""
             ],
             "Could not apply the suggestion.": [
+                ""
+            ],
+            "Could not complete this action. Try again.": [
                 ""
             ],
             "Could not convert the note to a post.": [
@@ -598,6 +619,9 @@
             "Description": [
                 ""
             ],
+            "Desktop": [
+                "Escritorio %d"
+            ],
             "Desktop %d": [
                 "Escritorio %d"
             ],
@@ -619,7 +643,13 @@
             "Dim unfocused windows so the focused one stands out.": [
                 ""
             ],
+            "Disable MIO in this window": [
+                ""
+            ],
             "Dismiss": [
+                ""
+            ],
+            "Dismiss MIO tip": [
                 ""
             ],
             "Dismiss notice": [
@@ -638,6 +668,9 @@
                 ""
             ],
             "Done": [
+                ""
+            ],
+            "Done.": [
                 ""
             ],
             "Double-click to open.": [
@@ -695,6 +728,12 @@
                 ""
             ],
             "Eight vertical slats retract at once, letting the page through between them.": [
+                ""
+            ],
+            "Enable MIO in the dock first": [
+                ""
+            ],
+            "Enable MIO in this window": [
                 ""
             ],
             "Enter fullscreen": [
@@ -865,6 +904,9 @@
             "Heart": [
                 ""
             ],
+            "Hide MIO on wallpaper": [
+                ""
+            ],
             "Hide everywhere": [
                 ""
             ],
@@ -988,7 +1030,25 @@
             "Loop the gradient (no seam)": [
                 ""
             ],
+            "MIO could not complete this request.": [
+                ""
+            ],
+            "MIO could not open.": [
+                ""
+            ],
+            "MIO in this window": [
+                ""
+            ],
+            "MIO is thinking…": [
+                ""
+            ],
+            "MIO tip": [
+                ""
+            ],
             "Make it yours": [
+                ""
+            ],
+            "Make this space yours…": [
                 ""
             ],
             "Make this workspace open the way the desk is now — these windows where they are, these widgets, these apps.": [
@@ -1001,6 +1061,9 @@
                 ""
             ],
             "Medium": [
+                ""
+            ],
+            "Message MIO": [
                 ""
             ],
             "Message the agent": [
@@ -1600,6 +1663,9 @@
             "Shortcut": [
                 ""
             ],
+            "Show MIO on wallpaper": [
+                ""
+            ],
             "Show only the apps I pick": [
                 ""
             ],
@@ -1675,7 +1741,16 @@
             "Steps to reproduce (bug only)": [
                 ""
             ],
+            "Stop": [
+                ""
+            ],
             "Stop alarm": [
+                ""
+            ],
+            "Stopped.": [
+                ""
+            ],
+            "Stopped. A submitted save may still complete.": [
                 ""
             ],
             "Streak": [
@@ -1685,6 +1760,9 @@
                 ""
             ],
             "Suggest title, excerpt & tags": [
+                ""
+            ],
+            "Suggested actions": [
                 ""
             ],
             "Suggested commands": [
@@ -1799,6 +1877,9 @@
                 ""
             ],
             "Thinking…": [
+                ""
+            ],
+            "This action is no longer available.": [
                 ""
             ],
             "This note was changed in another session — showing the latest version.": [

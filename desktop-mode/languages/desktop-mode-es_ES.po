@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: OpenStation 0.9.8\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/desktop-mode\n"
-"POT-Creation-Date: 2026-09-12T10:53:52+00:00\n"
+"POT-Creation-Date: 2026-09-14T15:38:14+00:00\n"
 "PO-Revision-Date: 2026-04-19 20:42+0200\n"
 "Last-Translator: OpenStation team\n"
 "Language-Team: Español\n"
@@ -71,7 +71,7 @@ msgid "Ask the agent to do something…"
 msgstr ""
 
 #: src/agent-run-window.ts:548 src/agent-run-window.ts:551
-#: src/ai-assistant/impl.ts:1889
+#: src/ai-assistant/impl.ts:1889 src/mio/assistant/chat.ts:70
 msgid "Send"
 msgstr ""
 
@@ -105,7 +105,7 @@ msgid ""
 "Handle it according to your instructions, using your tools as needed."
 msgstr ""
 
-#: src/agents-dispatch.ts:286
+#: src/agents-dispatch.ts:286 src/mio/assistant/response-actions.ts:146
 msgid "Working…"
 msgstr ""
 
@@ -132,7 +132,7 @@ msgstr ""
 #: src/agents-entity-window.ts:68 src/content-graph/panel.ts:411
 #: src/content-graph/panel.ts:881 apps/my-wordpress/parts/sections.php:66
 #: includes/desktop-files/built-in-types.php:30
-#: includes/my-wordpress/window.php:179 includes/recycle-bin/store.php:597
+#: includes/my-wordpress/window.php:185 includes/recycle-bin/store.php:597
 #: includes/window-links.php:749
 msgid "Media"
 msgstr ""
@@ -554,13 +554,13 @@ msgstr ""
 #: src/content-graph/panel.ts:623 src/content-graph/panel.ts:711
 #: src/content-graph/panel.ts:725 src/desktop-files/preview.ts:389
 #: src/desktop-files/preview.ts:464 apps/my-wordpress/parts/sections.php:42
-#: apps/posts/posts.os.php:39 includes/my-wordpress/window.php:156
+#: apps/posts/posts.os.php:39 includes/my-wordpress/window.php:162
 msgid "Posts"
 msgstr ""
 
 #: src/content-graph/panel.ts:624 src/desktop-files/preview.ts:395
 #: apps/my-wordpress/parts/sections.php:54 apps/pages/pages.os.php:35
-#: includes/my-wordpress/window.php:164
+#: includes/my-wordpress/window.php:170
 msgid "Pages"
 msgstr ""
 
@@ -643,7 +643,7 @@ msgstr ""
 msgid "Revision"
 msgstr ""
 
-#: src/content-graph/panel.ts:936 src/window/index.ts:4000
+#: src/content-graph/panel.ts:936 src/window/index.ts:3993
 msgid "Saved"
 msgstr ""
 
@@ -851,13 +851,13 @@ msgid "Retry"
 msgstr ""
 
 #. %1$s is the workspace name, %2$d the windows kept, %3$d the windows on the desk.
-#: src/desktop.ts:2795
+#: src/desktop.ts:2804
 msgid ""
 "%1$s will open like this — the top %2$d of %3$d windows, where they are."
 msgstr ""
 
 #. %1$s is the workspace name, %2$d a number of windows.
-#: src/desktop.ts:2803
+#: src/desktop.ts:2812
 msgid "%1$s will open like this — %2$d windows, where they are."
 msgstr ""
 
@@ -1260,7 +1260,7 @@ msgstr ""
 msgid "Find a player…"
 msgstr ""
 
-#: src/games/challenge-dialog.ts:93 src/item-visibility-menu.ts:412
+#: src/games/challenge-dialog.ts:93 src/item-visibility-menu.ts:424
 #: src/workspaces/wizard.ts:1023
 msgid "Cancel"
 msgstr ""
@@ -1531,80 +1531,171 @@ msgstr ""
 msgid "Oldest first"
 msgstr ""
 
-#: src/item-visibility-menu.ts:65
+#: src/item-visibility-menu.ts:66
 msgid "sidebar"
 msgstr ""
 
-#: src/item-visibility-menu.ts:65
+#: src/item-visibility-menu.ts:66
 msgid "dock"
 msgstr ""
 
+#: src/item-visibility-menu.ts:180
+msgid "Hide MIO on wallpaper"
+msgstr ""
+
+#: src/item-visibility-menu.ts:180 src/mio/style-panel.ts:338
+msgid "Show MIO on wallpaper"
+msgstr ""
+
 #. %s: "dock" or "sidebar".
-#: src/item-visibility-menu.ts:179
+#: src/item-visibility-menu.ts:191
 msgid "Hide from %s"
 msgstr ""
 
 #. %s: "dock" or "sidebar".
-#: src/item-visibility-menu.ts:190
+#: src/item-visibility-menu.ts:202
 msgid "Keep in %s"
 msgstr ""
 
-#: src/item-visibility-menu.ts:198
+#: src/item-visibility-menu.ts:210
 msgid "Also show on desktop"
 msgstr ""
 
-#: src/item-visibility-menu.ts:206
+#: src/item-visibility-menu.ts:218
 msgid "Hide from desktop"
 msgstr ""
 
 #. %s: "dock" or "sidebar".
-#: src/item-visibility-menu.ts:214
+#: src/item-visibility-menu.ts:226
 msgid "Also show on %s"
 msgstr ""
 
-#: src/item-visibility-menu.ts:226
+#: src/item-visibility-menu.ts:238
 msgid "Hide everywhere"
 msgstr ""
 
-#: src/item-visibility-menu.ts:235
+#: src/item-visibility-menu.ts:247
 msgid "Navigation settings…"
 msgstr ""
 
 #. %s is the owning plugin's display name.
-#: src/item-visibility-menu.ts:258
+#: src/item-visibility-menu.ts:270
 msgid "Deactivate %s…"
 msgstr ""
 
 #. %s: plugin title.
-#: src/item-visibility-menu.ts:407
+#: src/item-visibility-menu.ts:419
 msgid "Deactivate %s?"
 msgstr ""
 
-#: src/item-visibility-menu.ts:408
+#: src/item-visibility-menu.ts:420
 msgid ""
 "This plugin will stop running on the site. You can re-activate it later from "
 "the Plugins screen."
 msgstr ""
 
-#: src/item-visibility-menu.ts:411
+#: src/item-visibility-menu.ts:423
 msgid "Deactivate"
 msgstr ""
 
 #. %s: plugin title.
-#: src/item-visibility-menu.ts:469
+#: src/item-visibility-menu.ts:481
 msgid "Could not deactivate %s."
 msgstr ""
 
 #. 1: plugin title. 2: number of windows that were closed.
-#: src/item-visibility-menu.ts:493
+#: src/item-visibility-menu.ts:505
 msgid "%1$s deactivated. Closed %2$d window(s)."
 msgstr ""
 
 #. %s: plugin title.
 #. translators: %s: plugin name
-#: src/item-visibility-menu.ts:499 apps/plugins/plugins.os.php:174
+#: src/item-visibility-menu.ts:511 apps/plugins/plugins.os.php:175
 #, php-format
 msgid "%s deactivated."
+msgstr ""
+
+#: src/mio/assistant/chat.ts:22
+msgid "Chat with MIO"
+msgstr ""
+
+#: src/mio/assistant/chat.ts:30 src/mio/assistant/chat.ts:36
+msgid "Close MIO chat"
+msgstr ""
+
+#: src/mio/assistant/chat.ts:44 includes/agents/conversations.php:218
+msgid "Conversation"
+msgstr ""
+
+#: src/mio/assistant/chat.ts:48
+msgid "Ask about this window, or tell me what to change."
+msgstr ""
+
+#: src/mio/assistant/chat.ts:61
+msgid "Message MIO"
+msgstr ""
+
+#: src/mio/assistant/chat.ts:66
+msgid "Make this space yours…"
+msgstr ""
+
+#: src/mio/assistant/chat.ts:73
+msgid "Stop"
+msgstr ""
+
+#: src/mio/assistant/chat.ts:79
+msgid ""
+"Conversation stays in this session. Messages are sent to your configured AI "
+"provider."
+msgstr ""
+
+#: src/mio/assistant/chat.ts:149
+msgid "MIO is thinking…"
+msgstr ""
+
+#: src/mio/assistant/chat.ts:161
+msgid "Stopped. A submitted save may still complete."
+msgstr ""
+
+#: src/mio/assistant/chat.ts:161
+msgid "Stopped."
+msgstr ""
+
+#: src/mio/assistant/chat.ts:166
+msgid "MIO could not complete this request."
+msgstr ""
+
+#: src/mio/assistant/response-action-row.ts:12
+msgid "Suggested actions"
+msgstr ""
+
+#: src/mio/assistant/response-actions.ts:143
+#: src/mio/assistant/response-actions.ts:152
+msgid "This action is no longer available."
+msgstr ""
+
+#: src/mio/assistant/response-actions.ts:157
+msgid "Done."
+msgstr ""
+
+#: src/mio/assistant/response-actions.ts:159
+msgid "Could not complete this action. Try again."
+msgstr ""
+
+#: src/mio/callout.ts:25
+msgid "MIO tip"
+msgstr ""
+
+#: src/mio/callout.ts:30 src/mio/callout.ts:36
+msgid "Dismiss MIO tip"
+msgstr ""
+
+#: src/mio/residency.ts:114
+msgid "Ask MIO"
+msgstr ""
+
+#: src/mio/residency.ts:188
+msgid "MIO could not open."
 msgstr ""
 
 #: src/mio/style-panel.ts:201
@@ -1651,11 +1742,11 @@ msgstr ""
 msgid "Polygon"
 msgstr ""
 
-#: src/mio/style-panel.ts:221 src/mio/style-panel.ts:337
+#: src/mio/style-panel.ts:221 src/mio/style-panel.ts:342
 msgid "Shape"
 msgstr ""
 
-#: src/mio/style-panel.ts:301 src/mio/style-panel.ts:727
+#: src/mio/style-panel.ts:301 src/mio/style-panel.ts:732
 msgid "Make it yours"
 msgstr ""
 
@@ -1663,141 +1754,161 @@ msgstr ""
 msgid "Corners"
 msgstr ""
 
-#: src/mio/style-panel.ts:349
+#: src/mio/style-panel.ts:337
+msgid "Desktop"
+msgstr "Escritorio %d"
+
+#: src/mio/style-panel.ts:354
 msgid "Shape strength"
 msgstr ""
 
-#: src/mio/style-panel.ts:360
+#: src/mio/style-panel.ts:365
 msgid "Rotation"
 msgstr ""
 
-#: src/mio/style-panel.ts:369
+#: src/mio/style-panel.ts:374
 msgid "Change shape on its own"
 msgstr ""
 
-#: src/mio/style-panel.ts:383
+#: src/mio/style-panel.ts:388
 msgid "Idle"
 msgstr ""
 
-#: src/mio/style-panel.ts:385
+#: src/mio/style-panel.ts:390
 msgid "Wobble when idle"
 msgstr ""
 
-#: src/mio/style-panel.ts:405
+#: src/mio/style-panel.ts:410
 msgid "Wobble strength"
 msgstr ""
 
-#: src/mio/style-panel.ts:416
+#: src/mio/style-panel.ts:421
 msgid "Wobble speed"
 msgstr ""
 
-#: src/mio/style-panel.ts:427 src/workspaces/wizard.ts:561
+#: src/mio/style-panel.ts:432 src/workspaces/wizard.ts:561
 #: src/workspaces/wizard.ts:596
 msgid "Colour"
 msgstr ""
 
-#: src/mio/style-panel.ts:431
+#: src/mio/style-panel.ts:436
 msgid "Hue"
 msgstr ""
 
-#: src/mio/style-panel.ts:442
+#: src/mio/style-panel.ts:447
 msgid "Hue spread"
 msgstr ""
 
-#: src/mio/style-panel.ts:453
+#: src/mio/style-panel.ts:458
 msgid "Saturation"
 msgstr ""
 
-#: src/mio/style-panel.ts:464
+#: src/mio/style-panel.ts:469
 msgid "Brightness"
 msgstr ""
 
-#: src/mio/style-panel.ts:473
+#: src/mio/style-panel.ts:478
 msgid "Ring"
 msgstr ""
 
-#: src/mio/style-panel.ts:477
+#: src/mio/style-panel.ts:482
 msgid "Thickness"
 msgstr ""
 
-#: src/mio/style-panel.ts:492
+#: src/mio/style-panel.ts:497
 msgid "Inner line"
 msgstr ""
 
-#: src/mio/style-panel.ts:500
+#: src/mio/style-panel.ts:505
 msgid "Inner line colour"
 msgstr ""
 
-#: src/mio/style-panel.ts:504
+#: src/mio/style-panel.ts:509
 msgid "Glow"
 msgstr ""
 
-#: src/mio/style-panel.ts:532
+#: src/mio/style-panel.ts:537
 msgid "Gradient"
 msgstr ""
 
-#: src/mio/style-panel.ts:536
+#: src/mio/style-panel.ts:541
 msgid "Gradient angle"
 msgstr ""
 
-#: src/mio/style-panel.ts:545
+#: src/mio/style-panel.ts:550
 msgid "Loop the gradient (no seam)"
 msgstr ""
 
-#: src/mio/style-panel.ts:552
+#: src/mio/style-panel.ts:557
 msgid "Spin the gradient"
 msgstr ""
 
-#: src/mio/style-panel.ts:563
+#: src/mio/style-panel.ts:568
 msgid "Cycle the colours"
 msgstr ""
 
-#: src/mio/style-panel.ts:572
+#: src/mio/style-panel.ts:577
 msgid "Hologram"
 msgstr ""
 
-#: src/mio/style-panel.ts:574
+#: src/mio/style-panel.ts:579
 msgid "Holographic"
 msgstr ""
 
-#: src/mio/style-panel.ts:591
+#: src/mio/style-panel.ts:596
 msgid "Iridescence"
 msgstr ""
 
-#: src/mio/style-panel.ts:602
+#: src/mio/style-panel.ts:607
 msgid "Body"
 msgstr ""
 
-#: src/mio/style-panel.ts:603
+#: src/mio/style-panel.ts:608
 msgid "Body colour"
 msgstr ""
 
-#: src/mio/style-panel.ts:607
+#: src/mio/style-panel.ts:612
 msgid "Body opacity"
 msgstr ""
 
-#: src/mio/style-panel.ts:616
+#: src/mio/style-panel.ts:621
 msgid "Eyes"
 msgstr ""
 
-#: src/mio/style-panel.ts:617
+#: src/mio/style-panel.ts:622
 msgid "Eye colour"
 msgstr ""
 
-#: src/mio/style-panel.ts:621
+#: src/mio/style-panel.ts:626
 msgid "Eye size"
 msgstr ""
 
-#: src/mio/style-panel.ts:645
+#: src/mio/style-panel.ts:650
 msgid "Surprise me"
 msgstr ""
 
-#: src/mio/style-panel.ts:655
+#: src/mio/style-panel.ts:660
 msgid "Restore Mio"
 msgstr ""
 
-#: src/mio/style-panel.ts:664
+#: src/mio/style-panel.ts:669
 msgid "Done"
+msgstr ""
+
+#: src/mio/window-toggle.ts:18
+msgid "Disable MIO in this window"
+msgstr ""
+
+#: src/mio/window-toggle.ts:18
+msgid "Enable MIO in this window"
+msgstr ""
+
+#: src/mio/window-toggle.ts:20
+msgid "Enable MIO in the dock first"
+msgstr ""
+
+#: src/mio/window-toggle.ts:34
+msgid "MIO in this window"
 msgstr ""
 
 #: src/mobile/home.ts:119 src/mobile/tab-bar.ts:178
@@ -3090,7 +3201,7 @@ msgstr "Minimizar"
 msgid "Maximize"
 msgstr "Maximizar"
 
-#: src/window-chrome/controls/built-ins.ts:63 src/window/index.ts:2712
+#: src/window-chrome/controls/built-ins.ts:63 src/window/index.ts:2705
 #: includes/admin-bar.php:69 includes/admin-bar.php:723
 msgid "Enter fullscreen"
 msgstr "Entrar en pantalla completa"
@@ -3151,17 +3262,17 @@ msgstr ""
 msgid "Request failed (HTTP %d)."
 msgstr ""
 
-#: src/window/index.ts:2712 includes/admin-bar.php:722
+#: src/window/index.ts:2705 includes/admin-bar.php:722
 #: includes/admin-bar.php:724
 msgid "Exit fullscreen"
 msgstr "Salir de pantalla completa"
 
-#: src/window/index.ts:4003
+#: src/window/index.ts:3996
 msgid "Not saved."
 msgstr ""
 
 #. %s: error message explaining why the change could not be saved.
-#: src/window/index.ts:4006
+#: src/window/index.ts:3999
 msgid "Not saved. %s"
 msgstr ""
 
@@ -3756,7 +3867,7 @@ msgstr ""
 msgid "Akismet verdict if the plugin is installed (null otherwise)."
 msgstr ""
 
-#: apps/comments/parts/rest.php:82 apps/plugins/plugins.os.php:203
+#: apps/comments/parts/rest.php:82 apps/plugins/plugins.os.php:204
 msgid "Unknown bulk action."
 msgstr ""
 
@@ -3884,7 +3995,7 @@ msgstr ""
 
 #: apps/my-wordpress/parts/sections.php:75 apps/users/users.os.php:108
 #: includes/ai-copilot/search.php:153 includes/multisite.php:114
-#: includes/my-wordpress/window.php:172
+#: includes/my-wordpress/window.php:178
 msgid "Users"
 msgstr ""
 
@@ -4224,11 +4335,11 @@ msgstr ""
 msgid "Security check failed. Refresh the window and try again."
 msgstr ""
 
-#: apps/plugins/parts/ajax.php:63 apps/plugins/plugins.os.php:125
+#: apps/plugins/parts/ajax.php:63 apps/plugins/plugins.os.php:126
 msgid "Plugins are managed from the network admin on this site."
 msgstr ""
 
-#: apps/plugins/parts/ajax.php:70 apps/plugins/plugins.os.php:126
+#: apps/plugins/parts/ajax.php:70 apps/plugins/plugins.os.php:127
 #: includes/seen-intros.php:225
 msgid "You are not allowed to do that."
 msgstr ""
@@ -4309,65 +4420,69 @@ msgstr ""
 msgid "Refused: temporary upload path is not trusted."
 msgstr ""
 
-#: apps/plugins/plugins.os.php:154
+#: apps/plugins/parts/view-preference.php:40
+msgid "Choose Cards or Table."
+msgstr ""
+
+#: apps/plugins/plugins.os.php:155
 msgid "Missing plugin."
 msgstr ""
 
 #. translators: %s: error message
-#: apps/plugins/plugins.os.php:161
+#: apps/plugins/plugins.os.php:162
 #, php-format
 msgid "Activation failed: %s"
 msgstr ""
 
 #. translators: %s: error message
-#: apps/plugins/plugins.os.php:163
+#: apps/plugins/plugins.os.php:164
 #, php-format
 msgid "Deactivation failed: %s"
 msgstr ""
 
 #. translators: %s: error message
-#: apps/plugins/plugins.os.php:165
+#: apps/plugins/plugins.os.php:166
 #, php-format
 msgid "Delete failed: %s"
 msgstr ""
 
 #. translators: %s: plugin name
-#: apps/plugins/plugins.os.php:172
+#: apps/plugins/plugins.os.php:173
 #, php-format
 msgid "%s activated."
 msgstr ""
 
 #. translators: %s: plugin name
-#: apps/plugins/plugins.os.php:176
+#: apps/plugins/plugins.os.php:177
 #, php-format
 msgid "%s deleted."
 msgstr ""
 
-#: apps/plugins/plugins.os.php:234
+#: apps/plugins/plugins.os.php:235
 msgid "activated"
 msgstr ""
 
-#: apps/plugins/plugins.os.php:235
+#: apps/plugins/plugins.os.php:236
 msgid "deactivated"
 msgstr ""
 
-#: apps/plugins/plugins.os.php:236
+#: apps/plugins/plugins.os.php:237
 msgid "deleted"
 msgstr ""
 
 #. translators: 1: count, 2: action verb (activated, deactivated, deleted)
-#: apps/plugins/plugins.os.php:240
+#: apps/plugins/plugins.os.php:241
 #, php-format
 msgid "%1$d plugin(s) %2$s."
 msgstr ""
 
 #. translators: 1: success count, 2: failure count, 3: action verb
-#: apps/plugins/plugins.os.php:243
+#: apps/plugins/plugins.os.php:244
 #, php-format
 msgid "%1$d %3$s, %2$d failed."
 msgstr ""
 
-#: apps/plugins/plugins.os.php:249 includes/ai-copilot/search.php:141
+#: apps/plugins/plugins.os.php:250 includes/ai-copilot/search.php:141
 #: includes/core-notices.php:177 includes/core-notices.php:206
 #: includes/multisite.php:116
 msgid "Plugins"
@@ -4390,7 +4505,7 @@ msgid "Whether this term is the taxonomy's default (fallback) term."
 msgstr ""
 
 #: apps/posts/parts/terms-rest.php:199 apps/posts/parts/terms-rest.php:341
-#: includes/my-wordpress/term-stats.php:85
+#: includes/my-wordpress/term-stats.php:89
 msgid "Unknown taxonomy."
 msgstr ""
 
@@ -4580,8 +4695,8 @@ msgid "Application password name is required."
 msgstr ""
 
 #: apps/user-edit/parts/insights.php:58 apps/users/parts/rest.php:122
-#: includes/my-wordpress/user-footprint.php:95
-#: includes/my-wordpress/user-stats.php:64
+#: includes/my-wordpress/user-footprint.php:240
+#: includes/my-wordpress/user-stats.php:123
 msgid "User not found."
 msgstr ""
 
@@ -4975,10 +5090,6 @@ msgstr ""
 
 #: includes/agents/conversations.php:73
 msgid "Agent conversations"
-msgstr ""
-
-#: includes/agents/conversations.php:218
-msgid "Conversation"
 msgstr ""
 
 #: includes/agents/conversations.php:294
@@ -5421,6 +5532,26 @@ msgstr ""
 
 #: includes/ai-copilot/client.php:140
 msgid "The AI provider returned no answer text."
+msgstr ""
+
+#: includes/ai-copilot/mio.php:37
+msgid "The MIO API is turned off in OpenStation Preferences → Features."
+msgstr ""
+
+#: includes/ai-copilot/mio.php:48
+msgid "Ask MIO requires a compatible AI connector in Settings → Connectors."
+msgstr ""
+
+#: includes/ai-copilot/mio.php:111
+msgid "The conversation is too large."
+msgstr ""
+
+#: includes/ai-copilot/mio.php:115
+msgid "Invalid MIO window context."
+msgstr ""
+
+#: includes/ai-copilot/mio.php:148
+msgid "MIO requested an unavailable action."
 msgstr ""
 
 #: includes/ai-copilot/search.php:63 includes/multisite.php:108
@@ -6973,7 +7104,7 @@ msgid ""
 "Empty for requesters who cannot edit the post."
 msgstr ""
 
-#: includes/my-wordpress/term-stats.php:94
+#: includes/my-wordpress/term-stats.php:98
 msgid "Term not found."
 msgstr ""
 
@@ -8545,9 +8676,6 @@ msgstr ""
 
 #~ msgid "Add Plugin"
 #~ msgstr "Subir nueva"
-
-#~ msgid "Desktop"
-#~ msgstr "Escritorio %d"
 
 #~ msgid "Preparing your station…"
 #~ msgstr "Subiendo…"
