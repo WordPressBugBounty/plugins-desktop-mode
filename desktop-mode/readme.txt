@@ -4,7 +4,7 @@ Tags: admin, dashboard, desktop, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.9
+Stable tag: 1.1.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -68,7 +68,7 @@ Extend OpenStation through documented PHP and JavaScript APIs. Register windows,
 
 = External services =
 
-No external service is required for OpenStation's desktop interface. The optional AI Assistant and two user-initiated enrichment features make the external requests described below.
+No external service is required for OpenStation's desktop interface. The optional AI Assistant, two user-initiated enrichment features and an optional feedback form on deactivation make the external requests described below.
 
 **AI Assistant**
 
@@ -77,13 +77,22 @@ The optional AI Assistant sends data to the **AI provider you configure in WordP
 When the AI Assistant is enabled and a user invokes it (via Cmd+K or the slash-command palette):
 
 * **What is sent:** the user's prompt, the conversation history for the active session, and tool-call metadata. The plugin's built-in tools (`search_posts`, `search_pages`, `search_comments`) run WordPress's native keyword search and may include excerpts of the matching posts/pages/comments in tool results, which are then sent back to the provider as part of the agentic loop.
-* **When it is sent:** on user-initiated AI requests, and (if an administrator enables "Score new comments with AI") on comment-save hooks for spam analysis. Posts, pages, and taxonomy terms are not sent automatically.
+* **When it is sent:** on user-initiated AI requests only. Nothing is sent automatically — posts, pages, comments and taxonomy terms are never analyzed in the background.
 * **Why it is sent:** to obtain model completions and tool-call decisions that drive the AI Assistant.
 * **Who provides the service:** whichever provider you configured in Settings → Connectors. Which provider (and endpoint) receives the data depends entirely on that configuration. Review the chosen provider's own terms and privacy policy (e.g. OpenAI, Anthropic, or Google).
 
 **URL shortcut favicons**
 
 When an authorized user creates a desktop shortcut to an external URL, OpenStation asks that URL for its page HTML and favicon so the shortcut can display the site's icon. The request is made from your WordPress server and sends the requested URL, the server's IP address, an OpenStation user-agent string, and normal HTTP request metadata to the operator of that site. This happens only when a user creates the shortcut. The destination site's terms and privacy policy apply.
+
+**Deactivation feedback**
+
+When an administrator deactivates OpenStation, a dialog asks one optional question about why. Nothing is sent unless you click **Send and deactivate**; **Skip and deactivate** sends nothing, and both deactivate the plugin.
+
+* **What is sent:** the reasons you ticked, the optional details you typed, the OpenStation, WordPress and PHP versions, your site language, whether the site is a network, how long OpenStation was installed, whether anyone on the site had turned it on (how many people, and how many days after install the first one did), whether the person deactivating had it on, the number of active plugins, and where the dialog was shown. Nothing that identifies you or your site: no URL, no site id, no email, no user name, no plugin names, and no IP address is stored. Each submission carries a random id used only to ignore an accidental retry.
+* **When it is sent:** only when you click Send in the dialog shown on deactivation. There is no background ping.
+* **Why it is sent:** to learn what did not work so it can be fixed.
+* **Who provides the service:** the request goes from your server to [openstation.blog](https://openstation.blog/), the plugin's own site, operated by Automattic. Review the [Automattic Privacy Policy](https://automattic.com/privacy/). Site owners can turn the dialog off with the `openstation_deactivation_feedback_enabled` filter.
 
 **WordPress.org plugin information**
 
@@ -124,7 +133,7 @@ Most plugin admin pages open as windows without special integration. Plugins tha
 
 = Does the plugin require an external service to function? =
 
-No. The desktop shell, windowing, dock, taskbar, virtual desktops, widgets, wallpapers, and extension APIs work without an external service. The optional AI Assistant requires a configured AI provider. OpenStation also makes limited, user-initiated requests to resolve URL-shortcut favicons and display WordPress.org plugin information. See "External services" in the description.
+No. The desktop shell, windowing, dock, taskbar, virtual desktops, widgets, wallpapers, and extension APIs work without an external service. The optional AI Assistant requires a configured AI provider. OpenStation also makes limited, user-initiated requests to resolve URL-shortcut favicons and display WordPress.org plugin information, and offers an optional, one-click feedback form when you deactivate. See "External services" in the description.
 
 = Does it patch WordPress core? =
 
@@ -169,6 +178,25 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * **[LDNOOBW English list](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)** (CC-BY 4.0) — used as an exclusion filter.
 
 == Changelog ==
+
+= 1.1.10 =
+* Fix: drop a plugin zip into Core's upload box, not the Media Library dialog
+* Multisite: Open sites without OpenStation in a browser tab
+* Preferences: Open from the network admin shell
+* Network app: Open from a desktop icon instead of a dock tile
+* Highlight the best matching control in Preferences search
+* Fix: External apps work on activation without needing to refresh
+* Multisite: Drop Site Spaces from the Network Admin tile comments
+* Multisite: Route My Sites and network Sites links out of the window
+* Remove AI comment scoring from the shell
+* Add responsive grid, app frame, and resizable split layouts
+* Default theme: toning down accent
+* Separate hidden columns for posts and pages
+* Fix: keep metabox screens two-column down to 796px
+* Overview: Merge the two edit controls on desktop tiles
+* Plugins: Add AllTerrain MAIA to the Featured tab
+* Ask one optional question when OpenStation is deactivated
+* Plugins: Add a Plugin File Editor tab to the native Plugins window
 
 = 1.1.9 =
 * Add saved Plugins table view and fix preserved table rendering

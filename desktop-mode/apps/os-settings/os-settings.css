@@ -742,7 +742,11 @@
    every card now holds a segmented control, and its picked segment
    is `aria-checked` too. */
 .os-settings__layout-card:has( .os-settings__layout-choice[ aria-checked='true' ] ) {
-	box-shadow: 0 0 0 2px var( --os-ui-accent, #2271b1 );
+	/* The same two layers a chosen swatch wears (an accent ring the
+	   palette can zero, and a lift it can declare), so every picked
+	   card on this page says "this one" the same way. */
+	box-shadow: 0 0 0 var( --os-ui-swatch-ring-width, 2px ) var( --os-ui-accent, #2271b1 ),
+		var( --os-ui-swatch-lift, 0 0 0 0 transparent );
 }
 
 /* The radio: everything in the card that means "this layout". */
@@ -2822,7 +2826,8 @@ html[data-os-mode="mobile"] .os-features__danger-row {
 
 .os-settings__theme-card[ aria-pressed="true" ] {
 	border-color: transparent;
-	box-shadow: 0 0 0 2px var( --os-ui-accent, #2271b1 );
+	box-shadow: 0 0 0 var( --os-ui-swatch-ring-width, 2px ) var( --os-ui-accent, #2271b1 ),
+		var( --os-ui-swatch-lift, 0 0 0 0 transparent );
 }
 
 .os-settings__theme-preview {
@@ -2968,4 +2973,22 @@ html[data-os-mode="mobile"] .os-features__danger-row {
 .os-settings__theme-upload-plus {
 	font-size: 22px;
 	line-height: 1;
+}
+
+/* The best search result: its page, enclosing section and one control. */
+.os-settings [ data-settings-search-page ] {
+	outline: 2px solid var( --os-ui-accent, #2271b1 );
+	outline-offset: -2px;
+	border-radius: 6px;
+}
+
+.os-settings os-section[ data-settings-search-section ]::part( body ) {
+	border-color: var( --os-ui-accent, #2271b1 );
+}
+
+.os-settings [ data-settings-search-control ] {
+	outline: 2px solid var( --os-ui-accent, #2271b1 );
+	outline-offset: 4px;
+	border-radius: 4px;
+	scroll-margin-block: 24px;
 }

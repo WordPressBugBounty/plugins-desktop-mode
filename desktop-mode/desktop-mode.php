@@ -3,7 +3,7 @@
  * Plugin Name:       OpenStation
  * Plugin URI:        https://github.com/WordPress/openstation
  * Description:       Renders the WordPress admin as a desktop OS. Admin screens become draggable, resizable, minimizable windows floating on a desktop with a dock. Purely opt-in per user.
- * Version:           1.1.9
+ * Version:           1.1.10
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Daniel López Sánchez
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'OPENSTATION_VERSION', '1.1.9' );
+define( 'OPENSTATION_VERSION', '1.1.10' );
 define( 'OPENSTATION_FILE', __FILE__ );
 define( 'OPENSTATION_DIR', plugin_dir_path( __FILE__ ) );
 define( 'OPENSTATION_URL', plugin_dir_url( __FILE__ ) );
@@ -195,6 +195,14 @@ require_once OPENSTATION_DIR . 'includes/living-tree/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/games/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/agents/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/network/bootstrap.php';
+// First run: the install / first-enable stamps. Loads on every request
+// because they are written from the AJAX toggle, the portal and the
+// activation hook, none of them an admin render.
+require_once OPENSTATION_DIR . 'includes/first-run/bootstrap.php';
+// Deactivation feedback: the dialog on the Plugins screen and the
+// REST route it posts to. Unconditional so the route registers on
+// REST requests; it stores nothing on the site.
+require_once OPENSTATION_DIR . 'includes/feedback/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/pwa.php';
 require_once OPENSTATION_DIR . 'includes/compat/divi.php';
 

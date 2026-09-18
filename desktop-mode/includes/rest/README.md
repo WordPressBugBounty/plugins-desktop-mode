@@ -19,6 +19,7 @@ All in-tree routes register under `desktop-mode/v1`. Extensions are expected to 
 | `/os-settings` | GET / POST | `includes/os-settings.php` | logged-in + OpenStation enabled |
 | `/extended-options` | GET / POST | `includes/extended-options.php` | `manage_options` |
 | `/pwa-state` | GET / POST | `includes/pwa.php` | logged-in + OpenStation enabled |
+| `/feedback/deactivation` | POST | `includes/feedback/rest.php` | `activate_plugins` + `openstation_deactivation_feedback_enabled()`; deliberately not `openstation_rest_require_enabled()` (the person deactivating usually has OpenStation off). No object-level checks: the route stores nothing on the site, it forwards an anonymous payload to the intake on openstation.blog and answers `{ sent }` |
 | `/debug` | GET | `includes/devtools.php` | `manage_options` (filterable via `openstation_debug_rest_permission`) |
 | `/presence` | GET / POST | `includes/presence.php` | logged-in + OpenStation enabled |
 | `/oauth/start` | POST | `includes/oauth-relay.php` | logged-in |
@@ -38,7 +39,6 @@ All in-tree routes register under `desktop-mode/v1`. Extensions are expected to 
 | `/comments/reply` | POST | `apps/comments/parts/rest.php` | `edit_posts` |
 | `/comments/insights/{email}` | GET | `apps/comments/parts/rest.php` | `moderate_comments` |
 | `/comments/counts` | GET | `apps/comments/parts/rest.php` | `edit_posts` |
-| `/comments/ai-settings` | GET / POST | `apps/comments/parts/ai-moderation.php` | `manage_options` |
 | `/content-graph/post-types` | GET | `includes/content-graph/rest.php` | `edit_posts` (filterable via `openstation_content_graph_user_can_use`) |
 | `/content-graph/nodes` | GET | `includes/content-graph/rest.php` | `edit_posts` (filterable via `openstation_content_graph_user_can_use`) |
 | `/content-graph/post/{id}` | GET | `includes/content-graph/rest.php` | `edit_posts` (filterable via `openstation_content_graph_user_can_use`) |

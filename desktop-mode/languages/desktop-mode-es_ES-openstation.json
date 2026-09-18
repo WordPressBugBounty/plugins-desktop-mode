@@ -232,6 +232,9 @@
             "Any image from your media library or an upload, sized to cover the whole desk.": [
                 ""
             ],
+            "Anything else? (optional)": [
+                ""
+            ],
             "Anything unsaved in them will ask before it goes.": [
                 ""
             ],
@@ -284,6 +287,9 @@
                 ""
             ],
             "Beat %1$s: %2$s": [
+                ""
+            ],
+            "Before you go, what didn't work?": [
                 ""
             ],
             "Big": [
@@ -631,6 +637,9 @@
             "Desktop icons": [
                 ""
             ],
+            "Details (optional)": [
+                ""
+            ],
             "Diagonal": [
                 ""
             ],
@@ -971,6 +980,15 @@
                 ""
             ],
             "Iris": [
+                ""
+            ],
+            "It changed WordPress too much": [
+                ""
+            ],
+            "It’s too buggy or unstable": [
+                ""
+            ],
+            "I’m missing features I need": [
                 ""
             ],
             "Just a new, empty desk. Turn it into a workspace later if you like.": [
@@ -1363,16 +1381,28 @@
             "OpenStation is no longer active. Returning to the WordPress dashboard…": [
                 ""
             ],
+            "OpenStation is not active on this site. Opens its admin in a new tab.": [
+                ""
+            ],
             "OpenStation’s own controls — Overview, System, Trash, Exit — always stay, so a desk can never be one you cannot leave.": [
                 ""
             ],
             "Opened \"%s\" in a new browser tab — this site doesn't allow embedding.": [
                 ""
             ],
+            "Opens in a new tab:": [
+                ""
+            ],
             "Opens with": [
                 ""
             ],
+            "Optional. One answer helps us fix what sent you away.": [
+                ""
+            ],
             "Or any colour": [
+                ""
+            ],
+            "Other": [
                 ""
             ],
             "Page": [
@@ -1531,6 +1561,9 @@
             "Reset to defaults": [
                 "Restablecer valores predeterminados"
             ],
+            "Resize panes": [
+                ""
+            ],
             "Restore": [
                 ""
             ],
@@ -1630,10 +1663,16 @@
             "Send a challenge": [
                 ""
             ],
+            "Send and deactivate": [
+                ""
+            ],
             "Send challenge": [
                 ""
             ],
             "Send to agent": [
+                ""
+            ],
+            "Sending…": [
                 ""
             ],
             "Server returned %d": [
@@ -1672,6 +1711,9 @@
             "Show pins": [
                 ""
             ],
+            "Show post types": [
+                ""
+            ],
             "Show remaining time while running": [
                 ""
             ],
@@ -1679,9 +1721,6 @@
                 ""
             ],
             "Site": [
-                ""
-            ],
-            "Site Assistant": [
                 ""
             ],
             "Site assistant": [
@@ -1694,6 +1733,9 @@
                 ""
             ],
             "Size": [
+                ""
+            ],
+            "Skip and deactivate": [
                 ""
             ],
             "Slats": [
@@ -2038,6 +2080,9 @@
             "What is this desktop for?": [
                 ""
             ],
+            "What we send: your answer, the plugin, WordPress and PHP versions, your site language, and a few anonymous site facts listed in the plugin readme. Nothing that identifies you or your site.": [
+                ""
+            ],
             "When": [
                 ""
             ],
@@ -2045,6 +2090,12 @@
                 ""
             ],
             "Which apps show here?": [
+                ""
+            ],
+            "Which features?": [
+                ""
+            ],
+            "Which page or plugin?": [
                 ""
             ],
             "Which widgets sit on it?": [

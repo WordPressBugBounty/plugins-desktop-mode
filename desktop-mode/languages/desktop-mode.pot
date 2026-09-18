@@ -2,14 +2,14 @@
 # This file is distributed under the GPLv2 or later.
 msgid ""
 msgstr ""
-"Project-Id-Version: OpenStation 1.1.9\n"
+"Project-Id-Version: OpenStation 1.1.10\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/desktop-mode\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-14T15:38:14+00:00\n"
+"POT-Creation-Date: 2026-09-18T19:58:12+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: desktop-mode\n"
@@ -134,6 +134,7 @@ msgstr ""
 #: includes/desktop-files/built-in-types.php:30
 #: includes/my-wordpress/window.php:185
 #: includes/recycle-bin/store.php:597
+#: includes/welcome-dialog.php:576
 #: includes/window-links.php:749
 msgid "Media"
 msgstr ""
@@ -295,7 +296,8 @@ msgstr ""
 
 #: src/ai-assistant/impl.ts:1855
 #: src/ai-assistant/impl.ts:1864
-msgid "Site Assistant"
+#: src/notch.ts:73
+msgid "Site assistant"
 msgstr ""
 
 #: src/ai-assistant/impl.ts:1866
@@ -487,7 +489,7 @@ msgstr ""
 #: src/content-graph/panel.ts:409
 #: src/content-graph/panel.ts:713
 #: src/desktop-files/preview.ts:470
-#: apps/comments/comments.os.php:38
+#: apps/comments/comments.os.php:37
 #: apps/my-wordpress/parts/dossiers.php:78
 #: apps/my-wordpress/parts/dossiers.php:167
 #: includes/ai-copilot/search.php:111
@@ -539,7 +541,6 @@ msgstr ""
 
 #: src/content-graph/panel.ts:532
 #: src/plugins/my-wordpress-woocommerce/index.ts:754
-#: src/window-manager/overview.ts:820
 msgid "Edit"
 msgstr ""
 
@@ -572,6 +573,7 @@ msgstr ""
 #: apps/my-wordpress/parts/sections.php:42
 #: apps/posts/posts.os.php:39
 #: includes/my-wordpress/window.php:162
+#: includes/welcome-dialog.php:562
 msgid "Posts"
 msgstr ""
 
@@ -719,52 +721,114 @@ msgstr ""
 msgid "Undated"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:85
-msgid "Search nodes…"
+#: src/content-graph/toolbar.ts:57
+msgid "Show post types"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:88
+#: src/content-graph/toolbar.ts:92
 msgid "Search posts and pages in the graph"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:154
+#: src/content-graph/toolbar.ts:96
+msgid "Search nodes…"
+msgstr ""
+
+#: src/content-graph/toolbar.ts:168
 msgid "Group by"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:155
+#: src/content-graph/toolbar.ts:169
 msgid "Group posts by a shared facet"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:188
+#: src/content-graph/toolbar.ts:201
 msgid "Fit"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:189
+#: src/content-graph/toolbar.ts:202
 msgid "Fit graph to view"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:157
+#: src/content-graph/toolbar.ts:171
 msgid "No grouping"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:158
+#: src/content-graph/toolbar.ts:172
 msgid "Group by category"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:159
+#: src/content-graph/toolbar.ts:173
 msgid "Group by tag"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:160
+#: src/content-graph/toolbar.ts:174
 msgid "Group by author"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:161
+#: src/content-graph/toolbar.ts:175
 msgid "Group by year"
 msgstr ""
 
-#: src/content-graph/toolbar.ts:162
+#: src/content-graph/toolbar.ts:176
 msgid "Group by year-month"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:53
+msgid "It changed WordPress too much"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:54
+msgid "I’m missing features I need"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:55
+msgid "It’s too buggy or unstable"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:56
+#: includes/my-wordpress/integrations/woocommerce.php:240
+msgid "Other"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:110
+msgid "Before you go, what didn't work?"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:115
+msgid "Optional. One answer helps us fix what sent you away."
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:142
+msgid "Details (optional)"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:143
+#: src/deactivation-feedback/index.ts:190
+msgid "Anything else? (optional)"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:148
+msgid "What we send: your answer, the plugin, WordPress and PHP versions, your site language, and a few anonymous site facts listed in the plugin readme. Nothing that identifies you or your site."
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:160
+msgid "Skip and deactivate"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:166
+msgid "Send and deactivate"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:186
+msgid "Which page or plugin?"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:188
+msgid "Which features?"
+msgstr ""
+
+#: src/deactivation-feedback/index.ts:299
+msgid "Sending…"
 msgstr ""
 
 #: src/desktop-files/breadcrumbs.ts:66
@@ -883,12 +947,12 @@ msgid "Retry"
 msgstr ""
 
 #. %1$s is the workspace name, %2$d the windows kept, %3$d the windows on the desk.
-#: src/desktop.ts:2804
+#: src/desktop.ts:2812
 msgid "%1$s will open like this — the top %2$d of %3$d windows, where they are."
 msgstr ""
 
 #. %1$s is the workspace name, %2$d a number of windows.
-#: src/desktop.ts:2812
+#: src/desktop.ts:2820
 msgid "%1$s will open like this — %2$d windows, where they are."
 msgstr ""
 
@@ -1246,6 +1310,7 @@ msgid "Replay anyway"
 msgstr ""
 
 #: src/games/alphabet-soup/game.ts:683
+#: includes/welcome-dialog.php:156
 msgid "Not now"
 msgstr ""
 
@@ -2048,7 +2113,7 @@ msgstr ""
 #. %s: window title.
 #. %s is the desktop label
 #: src/mobile/switcher.ts:156
-#: src/window-manager/overview.ts:745
+#: src/window-manager/overview.ts:768
 msgid "Close %s"
 msgstr ""
 
@@ -2070,7 +2135,7 @@ msgid "Close app"
 msgstr ""
 
 #: src/multisite/dock-tiles.ts:29
-#: src/multisite/site-switcher.ts:98
+#: src/multisite/site-switcher.ts:103
 msgid "Network Admin"
 msgstr ""
 
@@ -2087,24 +2152,28 @@ msgstr ""
 msgid "Link accounts"
 msgstr ""
 
-#: src/multisite/site-switcher.ts:246
+#: src/multisite/site-switcher.ts:261
 msgid "Site"
 msgstr ""
 
-#: src/multisite/site-switcher.ts:264
+#: src/multisite/site-switcher.ts:279
 msgid "External site"
 msgstr ""
 
-#: src/multisite/site-switcher.ts:268
+#: src/multisite/site-switcher.ts:283
 msgid "External site:"
+msgstr ""
+
+#: src/multisite/site-switcher.ts:287
+msgid "OpenStation is not active on this site. Opens its admin in a new tab."
+msgstr ""
+
+#: src/multisite/site-switcher.ts:291
+msgid "Opens in a new tab:"
 msgstr ""
 
 #: src/notch.ts:58
 msgid "Open the site assistant"
-msgstr ""
-
-#: src/notch.ts:73
-msgid "Site assistant"
 msgstr ""
 
 #: src/notes/convert.ts:58
@@ -3043,7 +3112,6 @@ msgid "Everything is already set up. You don't need to install any new plugins, 
 msgstr ""
 
 #: src/rebrand-notice.ts:174
-#: includes/welcome-dialog.php:108
 msgid "Got it"
 msgstr ""
 
@@ -3194,6 +3262,10 @@ msgstr ""
 
 #: src/ui/components/os-notice/os-notice.ts:172
 msgid "Dismiss notice"
+msgstr ""
+
+#: src/ui/components/os-split/os-split.ts:258
+msgid "Resize panes"
 msgstr ""
 
 #. 1: WordPress version, 2: release codename.
@@ -3377,36 +3449,36 @@ msgstr[1] ""
 msgid "Desktop %d"
 msgstr ""
 
-#: src/window-manager/overview.ts:588
+#: src/window-manager/overview.ts:587
 msgid "Add new desktop"
 msgstr ""
 
 #. %s is the desktop label
-#: src/window-manager/overview.ts:669
+#: src/window-manager/overview.ts:668
 msgid "Switch to %s"
 msgstr ""
 
+#. %s is the desktop name.
+#: src/window-manager/overview.ts:738
+msgid "Edit %s — its apps, widgets, look and windows"
+msgstr ""
+
 #. %s is the desktop label
-#: src/window-manager/overview.ts:729
+#: src/window-manager/overview.ts:742
 msgid "Rename %s"
 msgstr ""
 
 #. %s is the workspace name.
-#: src/window-manager/overview.ts:789
+#: src/window-manager/overview.ts:807
 msgid "Restore %s — reopen its windows, widgets and look"
 msgstr ""
 
-#: src/window-manager/overview.ts:792
+#: src/window-manager/overview.ts:810
 msgid "Restore"
 msgstr ""
 
-#. %s is the desktop name.
-#: src/window-manager/overview.ts:817
-msgid "Edit %s — its apps, widgets, look and windows"
-msgstr ""
-
 #. %d is the number of external sub-tabs open on this window.
-#: src/window-manager/overview.ts:990
+#: src/window-manager/overview.ts:980
 msgid "· %d open tab"
 msgid_plural "· %d open tabs"
 msgstr[0] ""
@@ -4314,48 +4386,48 @@ msgid "Network"
 msgstr ""
 
 #. translators: %s: site name.
-#: apps/network/network.os.php:469
+#: apps/network/network.os.php:473
 #, php-format
 msgid "%s is in the network. It is in the site switcher now, and on that site once it joins from its Network window."
 msgstr ""
 
-#: apps/network/network.os.php:487
+#: apps/network/network.os.php:491
 msgid "That site is not in the network."
 msgstr ""
 
-#: apps/network/network.os.php:488
+#: apps/network/network.os.php:492
 msgid "Removed from the network."
 msgstr ""
 
-#: apps/network/network.os.php:512
+#: apps/network/network.os.php:516
 msgid "That account is not linked."
 msgstr ""
 
-#: apps/network/network.os.php:513
+#: apps/network/network.os.php:517
 msgid "Unlinked. A switch from that account lands on the login screen now."
 msgstr ""
 
-#: apps/network/network.os.php:521
+#: apps/network/network.os.php:525
 msgid "Every site was checked."
 msgstr ""
 
 #. translators: %s: network name.
-#: apps/network/network.os.php:535
+#: apps/network/network.os.php:539
 #, php-format
 msgid "This site belongs to %s. The site switcher shows the network now."
 msgstr ""
 
 #. translators: %s: network name.
-#: apps/network/network.os.php:537
+#: apps/network/network.os.php:541
 #, php-format
 msgid "Pinned %s. It has not added this site yet; sync once it has."
 msgstr ""
 
-#: apps/network/network.os.php:549
+#: apps/network/network.os.php:553
 msgid "Left the network."
 msgstr ""
 
-#: apps/network/network.os.php:557
+#: apps/network/network.os.php:561
 msgid "Site list synced."
 msgstr ""
 
@@ -4363,12 +4435,12 @@ msgstr ""
 msgid "You are not allowed to change site-wide options."
 msgstr ""
 
-#: apps/os-settings/os-settings.os.php:160
+#: apps/os-settings/os-settings.os.php:134
 msgid "Files REST endpoint is not available."
 msgstr ""
 
 #. translators: %d: number of tables dropped.
-#: apps/os-settings/os-settings.os.php:168
+#: apps/os-settings/os-settings.os.php:142
 #, php-format
 msgid "Folder sharing data deleted. (%d tables)"
 msgstr ""
@@ -4392,6 +4464,7 @@ msgstr ""
 
 #: apps/plugins/parts/ajax.php:70
 #: apps/plugins/plugins.os.php:127
+#: includes/feedback/rest.php:72
 #: includes/seen-intros.php:225
 msgid "You are not allowed to do that."
 msgstr ""
@@ -4589,7 +4662,7 @@ msgstr ""
 #. translators: %s: update count.
 #. translators: %s: number of pending updates.
 #: apps/station-home/parts/snapshot.php:295
-#: includes/core/payload.php:1659
+#: includes/core/payload.php:1660
 #, php-format
 msgid "%s update available"
 msgid_plural "%s updates available"
@@ -4909,35 +4982,39 @@ msgstr ""
 msgid "Nebula"
 msgstr ""
 
-#: includes/accents.php:53
+#: includes/accents.php:54
 msgid "Sirius"
 msgstr ""
 
-#: includes/accents.php:58
+#: includes/accents.php:59
 msgid "Lagoon"
 msgstr ""
 
-#: includes/accents.php:63
+#: includes/accents.php:64
+msgid "Starlight"
+msgstr ""
+
+#: includes/accents.php:69
 msgid "WordPress Blue"
 msgstr ""
 
-#: includes/accents.php:68
+#: includes/accents.php:74
 msgid "Indigo"
 msgstr ""
 
-#: includes/accents.php:73
+#: includes/accents.php:79
 msgid "Teal"
 msgstr ""
 
-#: includes/accents.php:78
+#: includes/accents.php:84
 msgid "Emerald"
 msgstr ""
 
-#: includes/accents.php:83
+#: includes/accents.php:89
 msgid "Amber"
 msgstr ""
 
-#: includes/accents.php:88
+#: includes/accents.php:94
 msgid "Rose"
 msgstr ""
 
@@ -4946,7 +5023,7 @@ msgid "Switch to Classic Admin"
 msgstr ""
 
 #: includes/admin-bar.php:39
-#: includes/welcome-dialog.php:544
+#: includes/welcome-dialog.php:157
 msgid "Switch to OpenStation"
 msgstr ""
 
@@ -5543,11 +5620,11 @@ msgstr ""
 msgid "Read PHP error log"
 msgstr ""
 
-#: includes/ai-copilot/abilities.php:413
+#: includes/ai-copilot/abilities.php:416
 msgid "Analyze comment for spam"
 msgstr ""
 
-#: includes/ai-copilot/abilities.php:460
+#: includes/ai-copilot/abilities.php:463
 #: includes/my-wordpress/comment-stats.php:167
 #: includes/recycle-bin/store.php:752
 #: includes/recycle-bin/store.php:861
@@ -5923,7 +6000,7 @@ msgid "Go to Themes"
 msgstr ""
 
 #. translators: 1: kind ("Command"/"Settings-tab"/"Title-bar button"), 2: handle.
-#: includes/core/payload.php:2313
+#: includes/core/payload.php:2325
 #, php-format
 msgid "%1$s script handle \"%2$s\" could not be resolved: no `wp_register_script( '%2$s', … )` call had run by the time the shell harvested its payload. Register the handle on `admin_enqueue_scripts` at priority 5 or earlier — the harvest itself runs at priority 10, and a handle registered alongside it may or may not exist yet depending on plugin load order. Until then the script will not load."
 msgstr ""
@@ -6733,6 +6810,12 @@ msgstr ""
 msgid "Dock rail renderer script registration requires a non-empty script handle."
 msgstr ""
 
+#: includes/feedback/rest.php:65
+#: includes/helpers.php:112
+#: includes/seen-intros.php:218
+msgid "Authentication required."
+msgstr ""
+
 #: includes/framework/wordpress.php:701
 msgid "You must be logged in to use this window."
 msgstr ""
@@ -6866,11 +6949,6 @@ msgstr ""
 #: includes/games/window.php:152
 #: includes/games/window.php:204
 msgid "Games"
-msgstr ""
-
-#: includes/helpers.php:112
-#: includes/seen-intros.php:218
-msgid "Authentication required."
 msgstr ""
 
 #: includes/helpers.php:120
@@ -7013,10 +7091,6 @@ msgstr ""
 
 #: includes/my-wordpress/integrations/woocommerce.php:234
 msgid "Cancelled & refunded"
-msgstr ""
-
-#: includes/my-wordpress/integrations/woocommerce.php:240
-msgid "Other"
 msgstr ""
 
 #: includes/my-wordpress/integrations/woocommerce.php:308
@@ -7529,7 +7603,7 @@ msgid "Window tab registration requires a callable `template` that echoes the pa
 msgstr ""
 
 #. translators: 1: parent menu label, 2: submenu label
-#: includes/render/assets.php:1290
+#: includes/render/assets.php:1264
 #, php-format
 msgid "%1$s > %2$s"
 msgstr ""
@@ -7720,66 +7794,50 @@ msgstr ""
 msgid "Snow falling over a midnight sky. Flakes settle on the top edge of every window, pile into little drifts, then quietly melt away. Open the wallpaper settings to tune the wind, the snowfall, the flake size, and the colour of the night."
 msgstr ""
 
-#: includes/welcome-dialog.php:105
+#: includes/welcome-dialog.php:154
 msgid "Welcome to OpenStation"
 msgstr ""
 
-#: includes/welcome-dialog.php:106
-msgid "A floating, window-based workspace for the WordPress admin — more like a real OS, less like a webpage."
+#: includes/welcome-dialog.php:155
+msgid "Your admin, as a desktop. Keep several screens open at once and move between tasks without losing your place."
 msgstr ""
 
-#: includes/welcome-dialog.php:107
-msgid "OpenStation reimagines the WordPress admin as a true desktop environment. Open multiple admin screens side-by-side, drag and drop content between windows, and keep your work in view as you move between tasks."
+#: includes/welcome-dialog.php:158
+msgid "Switching…"
 msgstr ""
 
-#: includes/welcome-dialog.php:109
-msgid "Enable it now"
+#: includes/welcome-dialog.php:163
+msgid "Work in windows"
 msgstr ""
 
-#: includes/welcome-dialog.php:110
-msgid "Enabling…"
+#: includes/welcome-dialog.php:164
+msgid "Posts, media and settings side by side."
 msgstr ""
 
-#: includes/welcome-dialog.php:115
-msgid "Multi-window workspace"
+#: includes/welcome-dialog.php:168
+msgid "Apps for everyday tasks"
 msgstr ""
 
-#: includes/welcome-dialog.php:116
-msgid "Open Posts, Media and Plugins in their own draggable, resizable windows. Tile, cascade or stack them however you work best."
+#: includes/welcome-dialog.php:169
+msgid "Fast lists with bulk actions and previews."
 msgstr ""
 
-#: includes/welcome-dialog.php:120
-msgid "Native, table-driven apps"
+#: includes/welcome-dialog.php:173
+msgid "A dock for your screens"
 msgstr ""
 
-#: includes/welcome-dialog.php:121
-msgid "Posts, Pages, Users and Plugins are reimplemented as fast native windows with sticky headers, bulk actions, multi-select and inline previews."
+#: includes/welcome-dialog.php:174
+msgid "Pin what you use most, one click away."
 msgstr ""
 
-#: includes/welcome-dialog.php:125
-msgid "Wallpapers, dock & themes"
-msgstr ""
-
-#: includes/welcome-dialog.php:126
-msgid "Make it yours. Choose a wallpaper, pin your favorite screens to the dock, and switch accent colors — all from OpenStation Preferences."
-msgstr ""
-
-#: includes/welcome-dialog.php:130
-msgid "AI Copilot, built in"
-msgstr ""
-
-#: includes/welcome-dialog.php:131
-msgid "Press ⌘K anywhere to ask the AI Assistant — it can run commands, navigate windows and answer questions about your site."
-msgstr ""
-
-#: includes/welcome-dialog.php:510
-msgid "New here"
-msgstr ""
-
-#. translators: %s: the label of the admin bar button.
-#: includes/welcome-dialog.php:543
+#. translators: %s: the keyboard shortcut that opens search, e.g. ⌘K.
+#: includes/welcome-dialog.php:179
 #, php-format
-msgid "Prefer to switch yourself? Click %s in the top-right of your admin bar."
+msgid "Search with %s"
+msgstr ""
+
+#: includes/welcome-dialog.php:180
+msgid "Jump to any screen or run a command."
 msgstr ""
 
 #: includes/widgets/heartbeat.php:63
@@ -7882,39 +7940,39 @@ msgstr ""
 msgid "Window theme tokens must use CSS custom-property keys (start with \"--\")."
 msgstr ""
 
-#: includes/window-chrome.php:309
+#: includes/window-chrome.php:315
 msgid "Window control script registration requires a non-empty script handle."
 msgstr ""
 
-#: includes/window-chrome.php:354
+#: includes/window-chrome.php:360
 msgid "Window control registration requires a non-empty `id`."
 msgstr ""
 
-#: includes/window-chrome.php:360
+#: includes/window-chrome.php:366
 msgid "Window control registration requires a non-empty `label`."
 msgstr ""
 
-#: includes/window-chrome.php:368
+#: includes/window-chrome.php:374
 msgid "Window control `placement` must be one of \"left\", \"right\", \"controls\"."
 msgstr ""
 
-#: includes/window-chrome.php:555
+#: includes/window-chrome.php:567
 msgid "Window slot script registration requires a non-empty script handle."
 msgstr ""
 
-#: includes/window-chrome.php:593
+#: includes/window-chrome.php:605
 msgid "Window slot registration requires a non-empty `id`."
 msgstr ""
 
-#: includes/window-chrome.php:600
+#: includes/window-chrome.php:612
 msgid "Window slot registration requires a known `slot` name."
 msgstr ""
 
-#: includes/window-chrome.php:767
+#: includes/window-chrome.php:785
 msgid "Window chrome script registration requires a non-empty script handle."
 msgstr ""
 
-#: includes/window-chrome.php:806
+#: includes/window-chrome.php:824
 msgid "Window chrome registration requires a non-empty `id`."
 msgstr ""
 
