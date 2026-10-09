@@ -3,11 +3,11 @@
  * Plugin Name:       OpenStation
  * Plugin URI:        https://github.com/WordPress/openstation
  * Description:       Renders the WordPress admin as a desktop OS. Admin screens become draggable, resizable, minimizable windows floating on a desktop with a dock. Purely opt-in per user.
- * Version:           1.1.12
+ * Version:           1.1.13
  * Requires at least: 6.0
  * Requires PHP:      7.4
- * Author:            Daniel López Sánchez
- * Author URI:        https://github.com/allterraindeveloper
+ * Author:            WordPress.org
+ * Author URI:        https://wordpress.org
  * License:           GPLv2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       desktop-mode
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'OPENSTATION_VERSION', '1.1.12' );
+define( 'OPENSTATION_VERSION', '1.1.13' );
 define( 'OPENSTATION_FILE', __FILE__ );
 define( 'OPENSTATION_DIR', plugin_dir_path( __FILE__ ) );
 define( 'OPENSTATION_URL', plugin_dir_url( __FILE__ ) );
@@ -206,6 +206,7 @@ require_once OPENSTATION_DIR . 'includes/first-run/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/feedback/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/pwa.php';
 require_once OPENSTATION_DIR . 'includes/compat/divi.php';
+require_once OPENSTATION_DIR . 'includes/compat/elementor.php';
 
 // Admin-rendering modules — every hook these register (`admin_init`,
 // `admin_enqueue_scripts`, `in_admin_header`, `admin_head`,
