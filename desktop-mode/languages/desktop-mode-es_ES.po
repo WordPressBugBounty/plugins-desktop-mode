@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: OpenStation 0.9.8\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/desktop-mode\n"
-"POT-Creation-Date: 2026-10-09T10:50:18+00:00\n"
+"POT-Creation-Date: 2026-10-14T15:51:19+00:00\n"
 "PO-Revision-Date: 2026-04-19 20:42+0200\n"
 "Last-Translator: OpenStation team\n"
 "Language-Team: Español\n"
@@ -337,7 +337,7 @@ msgstr ""
 msgid "Untitled"
 msgstr ""
 
-#: src/ai-assistant/impl.ts:2035 src/desktop.ts:3762
+#: src/ai-assistant/impl.ts:2035 src/desktop.ts:3763
 msgid "Site assistant"
 msgstr ""
 
@@ -374,7 +374,7 @@ msgid "The window could not update."
 msgstr ""
 
 #. %s: HTTP status code, optionally followed by the reason phrase (e.g. "500 Internal Server Error").
-#: src/boot/tracked-fetch.ts:238
+#: src/boot/tracked-fetch.ts:241
 msgid "Request failed (HTTP %s)."
 msgstr ""
 
@@ -548,8 +548,8 @@ msgid "Contributors"
 msgstr ""
 
 #: src/content-graph/panel.ts:409 src/content-graph/panel.ts:713
-#: src/desktop-files/preview.ts:471 apps/comments/comments.os.php:37
-#: apps/my-wordpress/parts/dossiers.php:92
+#: src/desktop-files/preview.ts:471 src/plugins/pulse-monitor/sources.ts:111
+#: apps/comments/comments.os.php:37 apps/my-wordpress/parts/dossiers.php:92
 #: apps/my-wordpress/parts/dossiers.php:181 includes/ai-copilot/search.php:111
 #: includes/window-links.php:675 includes/window-links.php:676
 msgid "Comments"
@@ -617,7 +617,7 @@ msgstr ""
 
 #: src/content-graph/panel.ts:623 src/content-graph/panel.ts:711
 #: src/content-graph/panel.ts:725 src/desktop-files/preview.ts:390
-#: src/desktop-files/preview.ts:465 src/desktop.ts:5281
+#: src/desktop-files/preview.ts:465 src/desktop.ts:5282
 #: apps/my-wordpress/parts/sections.php:42 apps/posts/posts.os.php:39
 #: includes/my-wordpress/window.php:162 includes/welcome-dialog.php:572
 msgid "Posts"
@@ -708,7 +708,7 @@ msgstr ""
 msgid "Revision"
 msgstr ""
 
-#: src/content-graph/panel.ts:936 src/window/index.ts:4193
+#: src/content-graph/panel.ts:936 src/window/index.ts:4205
 msgid "Saved"
 msgstr ""
 
@@ -732,7 +732,7 @@ msgid "Loading details…"
 msgstr ""
 
 #: src/content-graph/panel.ts:1245 src/ui/inline-loader.ts:170
-#: src/widgets/layer.ts:581
+#: src/widgets/layer.ts:601
 msgid "Loading…"
 msgstr ""
 
@@ -993,8 +993,8 @@ msgstr ""
 msgid "Open in editor"
 msgstr ""
 
-#: src/desktop-files/recycle-bin-targets.ts:142 src/notes/layer.ts:640
-#: src/notes/layer.ts:955 src/plugins/drafts-widget/index.ts:717
+#: src/desktop-files/recycle-bin-targets.ts:142 src/notes/layer.ts:668
+#: src/notes/layer.ts:1000 src/plugins/drafts-widget/index.ts:717
 #: src/plugins/drafts-widget/index.ts:767
 msgid "Move to Trash"
 msgstr ""
@@ -1005,7 +1005,7 @@ msgstr ""
 
 #. %d is the number of pending items in a desktop-icon badge.
 #. %d is the number of pending items in a dock badge.
-#: src/desktop-icons.ts:539 src/dock.ts:2917 src/dock.ts:2930
+#: src/desktop-icons.ts:539 src/dock.ts:2924 src/dock.ts:2937
 msgid "%d notification"
 msgid_plural "%d notifications"
 msgstr[0] ""
@@ -1020,46 +1020,46 @@ msgid "Retry"
 msgstr ""
 
 #. %1$s is the workspace name, %2$d the windows kept, %3$d the windows on the desk.
-#: src/desktop.ts:2877
+#: src/desktop.ts:2878
 msgid ""
 "%1$s will open like this — the top %2$d of %3$d windows, where they are."
 msgstr ""
 
 #. %1$s is the workspace name, %2$d a number of windows.
-#: src/desktop.ts:2885
+#: src/desktop.ts:2886
 msgid "%1$s will open like this — %2$d windows, where they are."
 msgstr ""
 
 #. %s is an admin menu title (e.g. "Appearance").
-#: src/dock-constellation/index.ts:863
+#: src/dock-constellation/index.ts:865
 msgid "%s menu"
 msgstr ""
 
-#: src/dock-constellation/index.ts:1038 src/dock-rail/taskbar-renderer.ts:114
+#: src/dock-constellation/index.ts:1040 src/dock-rail/taskbar-renderer.ts:114
 msgid "Open windows"
 msgstr ""
 
 #. %d is a count of currently-open windows.
-#: src/dock-constellation/index.ts:1043
+#: src/dock-constellation/index.ts:1045
 msgid "%d open window"
 msgid_plural "%d open windows"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/dock-constellation/index.ts:1073
+#: src/dock-constellation/index.ts:1075
 msgid "Minimized"
 msgstr ""
 
-#: src/dock-constellation/index.ts:1073 src/dock-constellation/index.ts:1100
+#: src/dock-constellation/index.ts:1075 src/dock-constellation/index.ts:1102
 #: src/plugins/my-wordpress-woocommerce/index.ts:756
 #: src/plugins/my-wordpress-woocommerce/index.ts:844
 #: src/plugins/my-wordpress-woocommerce/index.ts:921
 #: src/plugins/my-wordpress-woocommerce/index.ts:1060 src/window/tabs.ts:632
-#: apps/network/network.os.php:153 apps/station-home/parts/view.php:373
+#: apps/network/network.os.php:153 apps/station-home/parts/view.php:404
 msgid "Open"
 msgstr "Abrir"
 
-#: src/dock-constellation/index.ts:1152
+#: src/dock-constellation/index.ts:1154
 msgid "(opens in a new tab)"
 msgstr ""
 
@@ -2017,7 +2017,7 @@ msgstr ""
 msgid "Inner line colour"
 msgstr ""
 
-#: src/mio/style-panel.ts:509
+#: src/mio/style-panel.ts:509 src/plugins/pulse-monitor/config.ts:203
 msgid "Glow"
 msgstr ""
 
@@ -2085,7 +2085,8 @@ msgstr ""
 msgid "Restore Mio"
 msgstr ""
 
-#: src/mio/style-panel.ts:669 src/shell-tour/index.ts:505
+#: src/mio/style-panel.ts:669 src/plugins/pulse-monitor/widget.ts:91
+#: src/shell-tour/index.ts:505
 msgid "Done"
 msgstr ""
 
@@ -2258,100 +2259,100 @@ msgstr ""
 msgid "Could not restore the note."
 msgstr ""
 
-#: src/notes/layer.ts:323 src/plugins/notes-widget/index.ts:422
+#: src/notes/layer.ts:342 src/plugins/notes-widget/index.ts:422
 msgid "Could not pin the note. Please try again."
 msgstr ""
 
-#: src/notes/layer.ts:443
+#: src/notes/layer.ts:471
 msgid "Pinned notes"
 msgstr ""
 
-#: src/notes/layer.ts:528
+#: src/notes/layer.ts:556
 msgid "Pinned note"
 msgstr ""
 
 #. %s: note author display name.
-#: src/notes/layer.ts:531
+#: src/notes/layer.ts:559
 msgid "Note by %s"
 msgstr ""
 
-#: src/notes/layer.ts:547
+#: src/notes/layer.ts:575
 msgid "Move note. Drag the pin, or press Enter then use the arrow keys."
 msgstr ""
 
-#: src/notes/layer.ts:626
+#: src/notes/layer.ts:654
 msgid "Convert to a draft post"
 msgstr ""
 
-#: src/notes/layer.ts:648
+#: src/notes/layer.ts:676
 msgid "Note text"
 msgstr ""
 
 #. %s: note author display name.
-#: src/notes/layer.ts:685
+#: src/notes/layer.ts:713
 msgid "Pinned by %s"
 msgstr ""
 
 #. %s: next paper color name.
-#: src/notes/layer.ts:717
+#: src/notes/layer.ts:745
 msgid "Change paper color (next: %s)"
 msgstr ""
 
-#: src/notes/layer.ts:736
+#: src/notes/layer.ts:764
 msgid "Public note — everyone can see it. Click to make private."
 msgstr ""
 
-#: src/notes/layer.ts:737
+#: src/notes/layer.ts:765
 msgid "Private note. Click to share with every desktop user."
 msgstr ""
 
-#: src/notes/layer.ts:938
+#: src/notes/layer.ts:983
 msgid "Note is now public."
 msgstr ""
 
-#: src/notes/layer.ts:939
+#: src/notes/layer.ts:984
 msgid "Note is now private."
 msgstr ""
 
-#: src/notes/layer.ts:953
+#: src/notes/layer.ts:998
 msgid "Move note to the Trash?"
 msgstr ""
 
-#: src/notes/layer.ts:954
+#: src/notes/layer.ts:999
 msgid "You can restore it from the Trash later."
 msgstr ""
 
-#: src/notes/layer.ts:1004
+#: src/notes/layer.ts:1049
 msgid "This note was changed in another session — showing the latest version."
 msgstr ""
 
-#: src/notes/layer.ts:1014
+#: src/notes/layer.ts:1059
 msgid "Could not save the note."
 msgstr ""
 
-#: src/notes/layer.ts:1058 src/plugins/notes-widget/index.ts:335
+#: src/notes/layer.ts:1103 src/plugins/notes-widget/index.ts:335
 msgid "Drop on the desktop to pin"
 msgstr ""
 
-#: src/notes/layer.ts:1059 src/plugins/notes-widget/index.ts:336
+#: src/notes/layer.ts:1104 src/plugins/notes-widget/index.ts:336
 msgid "Pin here"
 msgstr ""
 
-#: src/notes/layer.ts:1060 src/plugins/notes-widget/index.ts:337
+#: src/notes/layer.ts:1105 src/plugins/notes-widget/index.ts:337
 msgid "Can’t pin here"
 msgstr ""
 
-#: src/notes/layer.ts:1250
+#: src/notes/layer.ts:1295
 msgid ""
 "Moving note. Arrow keys to move, Enter to place, Escape to cancel, Delete to "
 "move to the Trash."
 msgstr ""
 
-#: src/notes/layer.ts:1266
+#: src/notes/layer.ts:1311
 msgid "Note placed."
 msgstr ""
 
-#: src/notes/layer.ts:1304
+#: src/notes/layer.ts:1349
 msgid "Move cancelled."
 msgstr ""
 
@@ -2849,6 +2850,7 @@ msgstr ""
 #: src/plugins/my-wordpress-woocommerce/index.ts:1592
 #: src/plugins/my-wordpress-woocommerce/index.ts:1993
 #: src/plugins/my-wordpress-woocommerce/index.ts:2253
+#: src/plugins/pulse-monitor/sources.ts:113
 #: apps/my-wordpress/parts/woocommerce.php:102
 #: includes/my-wordpress/integrations/woocommerce-relations.php:825
 #: includes/my-wordpress/integrations/woocommerce-relations.php:1112
@@ -3121,6 +3123,547 @@ msgstr ""
 msgid "Next paper color"
 msgstr ""
 
+#: src/plugins/pulse-monitor/config.ts:171
+msgid "Explore issues…"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:175
+msgid ""
+"What is holding the health score down, and every failed request, error and "
+"timeout with its URL and window."
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:179
+msgid "Wallpaper layout"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:181
+msgid "Trace area"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:182
+msgid "Whole wallpaper"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:183
+msgid "Reserved top band"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:185
+msgid "Band height"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:186
+msgid ""
+"A reserved band is kept for the trace and its numbers: windows, icons and "
+"widgets stay below it, even when moved by hand, and clicking the numbers "
+"opens the issues. Not used on phones."
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:190
+msgid "Monitor"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:192
+msgid "Trace"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:193 src/reveals/registry.ts:446
+msgid "Sweep"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:194
+msgid "Scroll"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:196
+msgid "Line color"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:197
+#: src/plugins/snow-wallpaper/index.ts:346
+msgid "Background color"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:198
+msgid "Failed beat color"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:199
+msgid ""
+"Beats in this colour failed, and their label says why: a status (\"request · "
+"404\"), an error message, or — when the site’s health changes the rhythm — "
+"the rhythm and its cause (\"PVC: slow responses\")."
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:200
+msgid "Speed"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:201
+msgid "Intensity"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:202
+msgid "Line width"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:204
+msgid "Line height"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:205
+msgid "Echo lines"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:206
+msgid "ECG paper grid"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:207
+msgid "Numbers (requests/min, ping, errors, visits/min)"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:208
+msgid "Name each spike (request, visit, comment…)"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:209
+msgid "Beep on every beat"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:209
+msgid "Also sounds the alarm when the site flatlines."
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:212
+msgid "Rhythm"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:214
+msgid "Resting heart rate (0 = flatline when quiet)"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:216
+msgid "Diagnose site health"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:219
+msgid ""
+"Failed requests, slow responses, JavaScript errors, Site Health issues and "
+"overdue cron change the rhythm: PVCs, fibrillation, tachycardia, flatline."
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:239
+msgid "Listening to — this browser"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:241
+msgid "Listening to — the whole site"
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:242
+msgid ""
+"Relayed over Heartbeat, so they arrive in batches and replay at their real "
+"spacing. Administrators only."
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:246
+msgid ""
+"Page views from visitors and bots are not counted: off by default, so the "
+"monitor never slows your site down. An administrator can turn on “Count site "
+"visitors in the Pulse Monitor” in Settings → Features → Extended options."
+msgstr ""
+
+#: src/plugins/pulse-monitor/config.ts:256
+#: src/plugins/snow-wallpaper/index.ts:360
+msgid "Reset to defaults"
+msgstr "Restablecer valores predeterminados"
+
+#. %d: percentage of failed requests.
+#: src/plugins/pulse-monitor/health.ts:270
+msgid "%d%% of requests failing"
+msgstr ""
+
+#. %s: latency in seconds, e.g. "2.4".
+#: src/plugins/pulse-monitor/health.ts:288
+msgid "slow responses (p95 %s s)"
+msgstr ""
+
+#. %d: number of JavaScript errors in the last minute.
+#: src/plugins/pulse-monitor/health.ts:299
+msgid "%d JavaScript errors/min"
+msgstr ""
+
+#: src/plugins/pulse-monitor/health.ts:304
+#: src/plugins/pulse-monitor/signals.ts:600
+#: src/plugins/pulse-monitor/signals.ts:601
+msgid "session expired"
+msgstr ""
+
+#. %d: number of critical Site Health issues.
+#: src/plugins/pulse-monitor/health.ts:317
+msgid "%d critical Site Health issues"
+msgstr ""
+
+#. %d: number of recommended Site Health improvements.
+#: src/plugins/pulse-monitor/health.ts:326
+msgid "%d Site Health recommendations"
+msgstr ""
+
+#. %d: percentage of site-wide requests ending in a server error.
+#: src/plugins/pulse-monitor/health.ts:336
+msgid "%d%% server errors site-wide"
+msgstr ""
+
+#. %d: minutes the scheduled tasks are overdue.
+#: src/plugins/pulse-monitor/health.ts:345
+msgid "cron %d min overdue"
+msgstr ""
+
+#: src/plugins/pulse-monitor/health.ts:371
+#: src/plugins/pulse-monitor/signals.ts:610
+#: src/plugins/pulse-monitor/signals.ts:611
+msgid "offline"
+msgstr ""
+
+#: src/plugins/pulse-monitor/health.ts:371
+msgid "server not answering"
+msgstr ""
+
+#: src/plugins/pulse-monitor/health.ts:412
+msgid "Sinus rhythm with PVCs"
+msgstr ""
+
+#: src/plugins/pulse-monitor/health.ts:414
+msgid "Atrial fibrillation"
+msgstr ""
+
+#: src/plugins/pulse-monitor/health.ts:416
+msgid "Ventricular tachycardia"
+msgstr ""
+
+#: src/plugins/pulse-monitor/health.ts:418
+msgid "Asystole"
+msgstr ""
+
+#: src/plugins/pulse-monitor/health.ts:420
+msgid "Normal sinus rhythm"
+msgstr ""
+
+#: src/plugins/pulse-monitor/index.ts:64
+msgid "Pulse Monitor: issues"
+msgstr ""
+
+#: src/plugins/pulse-monitor/index.ts:65
+msgid ""
+"Why the site’s health score is what it is, and every failed request and "
+"error with its URL."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:76
+msgid ""
+"Requests from this browser that got a 4xx or 5xx answer, or none at all, in "
+"the last minute. They are listed under Recent problems."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:78
+msgid ""
+"The slowest 5 % of the last minute’s requests took longer than 0.8 s. Calls "
+"that are long by design (AI, uploads) count for at most 10 s each."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:80
+msgid ""
+"Script errors in the shell or inside a window. Each is listed below with its "
+"file and line."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:82
+msgid "Your login expired. Sign in again to keep working."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:85
+msgid ""
+"From the last Site Health check. Open Site Health for the details and how to "
+"fix each one."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:87
+msgid ""
+"Other people’s requests — visitors, bots, apps — that ended in a server "
+"error. URLs are not relayed, for privacy; the server’s error log has them."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:89
+msgid ""
+"Scheduled tasks are running late. WP-Cron only runs when the site gets "
+"traffic, and fails when the site cannot call itself. Site Health’s scheduled "
+"events and loopback tests say which."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:114
+msgid "Open Site Health"
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:115 includes/ai-copilot/search.php:231
+msgid "Site Health"
+msgstr ""
+
+#. %s: id of the window the problem happened in.
+#: src/plugins/pulse-monitor/issues.ts:178
+msgid "window: %s"
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:181
+msgid "site-wide, from the server feed (no URL is relayed)"
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:198
+msgid "Nothing is holding the score down."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:203
+msgid "Clear"
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:207
+msgid "No problems since this page loaded."
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:211
+msgid "Why"
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:227
+msgid "/ 100"
+msgstr ""
+
+#. %d: number of problems listed.
+#: src/plugins/pulse-monitor/issues.ts:238
+msgid "Recent problems (%d)"
+msgstr ""
+
+#. %d: number of problems listed.
+#: src/plugins/pulse-monitor/issues.ts:238
+msgid "Recent problems"
+msgstr ""
+
+#: src/plugins/pulse-monitor/issues.ts:268
+msgid "Pulse Monitor — Issues"
+msgstr ""
+
+#: src/plugins/pulse-monitor/readout.ts:104
+msgid "req/min"
+msgstr ""
+
+#: src/plugins/pulse-monitor/readout.ts:104
+msgid "Requests this browser saw finish in the last minute."
+msgstr ""
+
+#: src/plugins/pulse-monitor/readout.ts:107
+msgid "ms"
+msgstr ""
+
+#: src/plugins/pulse-monitor/readout.ts:108
+msgid ""
+"Median response time over the last minute: half the requests were faster, "
+"half slower. The whole round trip, server work included."
+msgstr ""
+
+#: src/plugins/pulse-monitor/readout.ts:110
+msgid "errors"
+msgstr ""
+
+#: src/plugins/pulse-monitor/readout.ts:110
+msgid "Share of those requests that failed (4xx, 5xx, no response)."
+msgstr ""
+
+#: src/plugins/pulse-monitor/readout.ts:111
+msgid "visits/min"
+msgstr ""
+
+#: src/plugins/pulse-monitor/readout.ts:111
+msgid "Front-end page views across the whole site, from the server feed."
+msgstr ""
+
+#. 1: rhythm name, 2: requests per minute, 3: health score out of 100.
+#: src/plugins/pulse-monitor/readout.ts:199
+msgid "Site pulse: %1$s, %2$d requests per minute, health %3$d of 100"
+msgstr ""
+
+#. %s: the site pulse summary.
+#: src/plugins/pulse-monitor/readout.ts:207
+msgid "%s. Show issues"
+msgstr ""
+
+#: src/plugins/pulse-monitor/signals.ts:547
+#: src/plugins/pulse-monitor/signals.ts:548
+msgid "upload failed"
+msgstr ""
+
+#: src/plugins/pulse-monitor/signals.ts:556
+msgid "JavaScript error"
+msgstr ""
+
+#. %s: HTML tag name of the element that failed to load, e.g. "img".
+#: src/plugins/pulse-monitor/signals.ts:579
+msgid "%s failed to load"
+msgstr ""
+
+#: src/plugins/pulse-monitor/signals.ts:666
+msgid "connection lost"
+msgstr ""
+
+#: src/plugins/pulse-monitor/signals.ts:689
+msgid "failed"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:99
+msgid "API requests (fetch, XHR, REST, admin-ajax)"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:100
+msgid "Page loads in windows"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:101
+msgid "WordPress Heartbeat"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:102
+msgid "Scripts, styles, images and fonts"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:103
+msgid "Window and desktop events"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:104
+msgid "Clicks, typing and scrolling"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:105
+msgid "Messages between windows"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:106
+msgid "Notifications and toasts"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:107
+msgid "Uploads"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:108
+msgid "Errors (failed requests, JavaScript errors)"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:109
+msgid "Visitors"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:110
+msgid "Bots and crawlers"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:112
+msgid "Published posts"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:114
+msgid "Logins"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:115
+msgid "API and app requests"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:116
+msgid "Cron runs"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:117
+msgid "Other people working in the admin"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:127
+msgid "request"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:128
+msgid "page load"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:129
+msgid "heartbeat"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:130
+msgid "window"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:131
+msgid "notice"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:132
+msgid "upload"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:133
+msgid "error"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:134
+msgid "visit"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:135
+msgid "bot"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:136
+msgid "comment"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:137
+msgid "published"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:138
+msgid "order"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:139
+msgid "login"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:140
+msgid "API"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:141
+msgid "cron"
+msgstr ""
+
+#: src/plugins/pulse-monitor/sources.ts:142
+msgid "teammate"
+msgstr ""
+
+#: src/plugins/pulse-monitor/wallpaper.ts:242 includes/pulse-monitor.php:730
+#: includes/wallpapers.php:187
+msgid "Pulse Monitor"
+msgstr ""
+
+#: src/plugins/pulse-monitor/widget.ts:84
+msgid "Pulse Monitor widget settings"
+msgstr ""
+
+#: src/plugins/pulse-monitor/widget.ts:134
+msgid "Pulse Monitor settings"
+msgstr ""
+
 #: src/plugins/snow-wallpaper/index.ts:324
 msgid "Wind"
 msgstr ""
@@ -3132,14 +3675,6 @@ msgstr ""
 #: src/plugins/snow-wallpaper/index.ts:338
 msgid "Flake size"
 msgstr ""
-
-#: src/plugins/snow-wallpaper/index.ts:346
-msgid "Background color"
-msgstr ""
-
-#: src/plugins/snow-wallpaper/index.ts:360
-msgid "Reset to defaults"
-msgstr "Restablecer valores predeterminados"
 
 #: src/plugins/snow-wallpaper/index.ts:386 includes/wallpapers.php:167
 msgid "Snow"
@@ -3228,10 +3763,6 @@ msgstr ""
 
 #: src/release-card.ts:354 src/update-notice.ts:185
 msgid "Update now"
-msgstr ""
-
-#: src/reveals/registry.ts:446
-msgid "Sweep"
 msgstr ""
 
 #: src/reveals/registry.ts:447
@@ -3572,7 +4103,7 @@ msgstr ""
 msgid "Remove %s"
 msgstr "Eliminar %s"
 
-#: src/widgets/layer.ts:651 src/widgets/layer.ts:658 src/widgets/picker.ts:56
+#: src/widgets/layer.ts:671 src/widgets/layer.ts:678 src/widgets/picker.ts:56
 #: src/widgets/picker.ts:60
 msgid "Add widget"
 msgstr "Añadir widget"
@@ -3607,7 +4138,7 @@ msgstr "Minimizar"
 msgid "Maximize"
 msgstr "Maximizar"
 
-#: src/window-chrome/controls/built-ins.ts:63 src/window/index.ts:2873
+#: src/window-chrome/controls/built-ins.ts:63 src/window/index.ts:2882
 msgid "Enter fullscreen"
 msgstr "Entrar en pantalla completa"
 
@@ -3615,7 +4146,7 @@ msgstr "Entrar en pantalla completa"
 msgid "Loading window content"
 msgstr ""
 
-#: src/window/dom.ts:578 src/window/index.ts:1309
+#: src/window/dom.ts:578 src/window/index.ts:1318
 msgid "Window actions"
 msgstr "Acciones de ventana"
 
@@ -3650,37 +4181,37 @@ msgstr ""
 msgid "%s sub-pages"
 msgstr "Subpáginas de %s"
 
-#: src/window/iframe-bridge.ts:311
+#: src/window/iframe-bridge.ts:322
 msgid "Unsaved changes"
 msgstr ""
 
-#: src/window/iframe-bridge.ts:312
+#: src/window/iframe-bridge.ts:323
 msgid "You have unsaved changes. Are you sure you want to close this window?"
 msgstr ""
 
-#: src/window/iframe-bridge.ts:313
+#: src/window/iframe-bridge.ts:324
 msgid "Close window"
 msgstr ""
 
-#: src/window/iframe-bridge.ts:650
+#: src/window/iframe-bridge.ts:627
 msgid "Request failed."
 msgstr ""
 
 #. %d: HTTP status code of the failed request.
-#: src/window/iframe-bridge.ts:653
+#: src/window/iframe-bridge.ts:630
 msgid "Request failed (HTTP %d)."
 msgstr ""
 
-#: src/window/index.ts:2873
+#: src/window/index.ts:2882
 msgid "Exit fullscreen"
 msgstr "Salir de pantalla completa"
 
-#: src/window/index.ts:4196
+#: src/window/index.ts:4208
 msgid "Not saved."
 msgstr ""
 
 #. %s: error message explaining why the change could not be saved.
-#: src/window/index.ts:4199
+#: src/window/index.ts:4211
 msgid "Not saved. %s"
 msgstr ""
 
@@ -4114,7 +4645,7 @@ msgstr ""
 msgid "Delete workspace"
 msgstr ""
 
-#: src/workspaces/wizard.ts:1046 apps/station-home/parts/view.php:252
+#: src/workspaces/wizard.ts:1046 apps/station-home/parts/view.php:282
 #: includes/ai-copilot/search.php:123
 msgid "Customize"
 msgstr ""
@@ -4137,7 +4668,7 @@ msgid "post"
 msgstr ""
 
 #. 1: a list of menu item names so far, 2: the next name.
-#: src/window/index.ts:1314
+#: src/window/index.ts:1323
 msgctxt "list of menu item names"
 msgid "%1$s, %2$s"
 msgstr ""
@@ -4178,7 +4709,7 @@ msgid "Code Blue"
 msgstr ""
 
 #: apps/code-blue/code-blue.os.php:79 apps/my-wordpress/my-wordpress.os.php:126
-#: apps/station-home/parts/view.php:211
+#: apps/station-home/parts/view.php:241
 msgid "Refresh"
 msgstr ""
 
@@ -4963,6 +5494,14 @@ msgid_plural "%d items could not be moved to the trash."
 msgstr[0] ""
 msgstr[1] ""
 
+#. translators: %d: number of rows that could not be restored.
+#: apps/posts/parts/query.php:381
+#, php-format
+msgid "%d item could not be restored."
+msgid_plural "%d items could not be restored."
+msgstr[0] ""
+msgstr[1] ""
+
 #: apps/posts/parts/terms-rest.php:51
 msgid "Number of non-trashed posts (any status) in this term."
 msgstr ""
@@ -5022,7 +5561,7 @@ msgstr ""
 
 #. translators: %s: update count.
 #. translators: %s: number of pending updates.
-#: apps/station-home/parts/snapshot.php:295 includes/core/payload.php:1732
+#: apps/station-home/parts/snapshot.php:295 includes/core/payload.php:1746
 #, php-format
 msgid "%s update available"
 msgid_plural "%s updates available"
@@ -5071,79 +5610,89 @@ msgstr ""
 msgid "Good evening, %s"
 msgstr ""
 
-#: apps/station-home/parts/view.php:166 apps/station-home/parts/view.php:179
-#: apps/station-home/station-home.os.php:43
+#: apps/station-home/parts/view.php:168
+msgid "The Big Legacy of Eric Binnion"
+msgstr ""
+
+#. translators: %s: Eric, the name the heart wraps itself around.
+#: apps/station-home/parts/view.php:176
+#, php-format
+msgid "Thank you, %s"
+msgstr ""
+
+#: apps/station-home/parts/view.php:195 apps/station-home/parts/view.php:208
+#: apps/station-home/station-home.os.php:44
 msgid "Station Home"
 msgstr ""
 
-#: apps/station-home/parts/view.php:182
+#: apps/station-home/parts/view.php:211
 msgid "Quick actions"
 msgstr ""
 
 #. translators: %s: site name.
-#: apps/station-home/parts/view.php:199
+#: apps/station-home/parts/view.php:229
 #, php-format
 msgid "Pick up where you left off on %s."
 msgstr ""
 
-#: apps/station-home/parts/view.php:201
+#: apps/station-home/parts/view.php:231
 msgid "Pick up where you left off."
 msgstr ""
 
-#: apps/station-home/parts/view.php:210
+#: apps/station-home/parts/view.php:240
 msgid "Refresh Station Home"
 msgstr ""
 
-#: apps/station-home/parts/view.php:218
+#: apps/station-home/parts/view.php:248
 msgid "Continue working"
 msgstr ""
 
-#: apps/station-home/parts/view.php:225
+#: apps/station-home/parts/view.php:255
 msgid "Site pulse"
 msgstr ""
 
-#: apps/station-home/parts/view.php:240
+#: apps/station-home/parts/view.php:270
 #: includes/my-wordpress/integrations/woocommerce.php:214
 msgid "Needs attention"
 msgstr ""
 
-#: apps/station-home/parts/view.php:249
+#: apps/station-home/parts/view.php:279
 msgid "From your plugins"
 msgstr ""
 
-#: apps/station-home/parts/view.php:279
+#: apps/station-home/parts/view.php:310
 msgid "Your desk is clear"
 msgstr ""
 
-#: apps/station-home/parts/view.php:280
+#: apps/station-home/parts/view.php:311
 msgid "Start something new and it will be waiting here when you return."
 msgstr ""
 
-#: apps/station-home/parts/view.php:315
+#: apps/station-home/parts/view.php:346
 msgid "All clear"
 msgstr ""
 
-#: apps/station-home/parts/view.php:316
+#: apps/station-home/parts/view.php:347
 msgid "Nothing needs your attention right now."
 msgstr ""
 
-#: apps/station-home/parts/view.php:351
+#: apps/station-home/parts/view.php:382
 msgid "Make this space yours"
 msgstr ""
 
-#: apps/station-home/parts/view.php:352
+#: apps/station-home/parts/view.php:383
 msgid "Use Customize to opt in to information from your plugins."
 msgstr ""
 
-#: apps/station-home/parts/view.php:404
+#: apps/station-home/parts/view.php:435
 msgid "Customize Station Home"
 msgstr ""
 
-#: apps/station-home/parts/view.php:408
+#: apps/station-home/parts/view.php:439
 msgid "Choose which plugin cards can show information on your Station Home."
 msgstr ""
 
-#: apps/station-home/station-home.os.php:78
+#: apps/station-home/station-home.os.php:79
 msgid "That Station Home card is not available."
 msgstr ""
 
@@ -5552,7 +6101,7 @@ msgstr ""
 msgid "No conversation with that id exists."
 msgstr ""
 
-#: includes/agents/draft.php:72 includes/agents/runner.php:1019
+#: includes/agents/draft.php:72 includes/agents/runner.php:1063
 msgid "The WordPress AI Client is not available on this site."
 msgstr ""
 
@@ -5748,43 +6297,43 @@ msgid "This agent reached its limit of %d runs this hour. Try again later."
 msgstr ""
 
 #. translators: %s is the tool name the model called.
-#: includes/agents/runner.php:588
+#: includes/agents/runner.php:627
 #, php-format
 msgid "Tool \"%s\" is not on this agent's allowlist."
 msgstr ""
 
 #. translators: %d is the number of turns the run made.
-#: includes/agents/runner.php:670
+#: includes/agents/runner.php:714
 #, php-format
 msgid "Agent stopped after %d turns without a final answer."
 msgstr ""
 
-#: includes/agents/runner.php:951
+#: includes/agents/runner.php:995
 msgid ""
 "The AI provider returned an empty answer — its safety system most likely "
 "declined this request. Rephrase and try again, or switch the provider in "
 "Settings → Connectors."
 msgstr ""
 
-#: includes/agents/runner.php:962
+#: includes/agents/runner.php:1006
 msgid ""
 "The reply ran past the output-token limit before it finished, so it was "
 "discarded rather than acted on incomplete. Ask for something shorter, or "
 "raise max_tokens with the openstation_ai_model_config filter."
 msgstr ""
 
-#: includes/agents/runner.php:973
+#: includes/agents/runner.php:1017
 msgid ""
 "The model ran out of room before writing its answer — it most likely spent "
 "the whole output budget reasoning. Try a narrower request, or try again."
 msgstr ""
 
-#: includes/agents/runner.php:1296
+#: includes/agents/runner.php:1340
 msgid "The Abilities API is not available on this site."
 msgstr ""
 
 #. translators: %s is the ability slug.
-#: includes/agents/runner.php:1305
+#: includes/agents/runner.php:1349
 #, php-format
 msgid "Ability \"%s\" is not registered on this site."
 msgstr ""
@@ -5935,6 +6484,14 @@ msgstr ""
 msgid ""
 "No issue in the current log has that signature — it may have been cleared or "
 "aged out. Call list_log_issues again."
+msgstr ""
+
+#: includes/ai-copilot/abilities-media.php:41
+msgid "Search media"
+msgstr "Buscar medios"
+
+#: includes/ai-copilot/abilities-media.php:65
+msgid "Find unused media"
 msgstr ""
 
 #: includes/ai-copilot/abilities.php:40
@@ -6206,10 +6763,6 @@ msgstr ""
 msgid "Export all site content as XML."
 msgstr ""
 
-#: includes/ai-copilot/search.php:231
-msgid "Site Health"
-msgstr ""
-
 #: includes/ai-copilot/search.php:234
 msgid "Performance and security recommendations for the site."
 msgstr ""
@@ -6359,7 +6912,7 @@ msgid "Go to Themes"
 msgstr ""
 
 #. translators: 1: kind ("Command"/"Settings-tab"/"Title-bar button"), 2: handle.
-#: includes/core/payload.php:2496
+#: includes/core/payload.php:2526
 #, php-format
 msgid ""
 "%1$s script handle \"%2$s\" could not be resolved: no "
@@ -6384,6 +6937,12 @@ msgstr ""
 
 #: includes/core/routing.php:170 includes/core/routing.php:177
 msgid "Admin target does not exist."
+msgstr ""
+
+#. translators: %s: Host name of the site the link opens, e.g. woocommerce.com.
+#: includes/core/routing.php:821
+#, php-format
+msgid "Continue to %s"
 msgstr ""
 
 #: includes/default-window.php:200
@@ -7825,6 +8384,13 @@ msgstr ""
 msgid "Could not save presence."
 msgstr ""
 
+#: includes/pulse-monitor.php:731
+msgid ""
+"A heart monitor for your site: every request, visitor, comment and Heartbeat "
+"tick is a labelled beat, failed ones say why, and the rhythm shows how "
+"healthy the site is."
+msgstr ""
+
 #. translators: %s: site name
 #: includes/pwa.php:513
 #, php-format
@@ -8017,7 +8583,7 @@ msgid ""
 msgstr ""
 
 #. translators: 1: parent menu label, 2: submenu label
-#: includes/render/assets.php:1301
+#: includes/render/assets.php:1297
 #, php-format
 msgid "%1$s > %2$s"
 msgstr ""
@@ -8233,6 +8799,15 @@ msgid ""
 "window, pile into little drifts, then quietly melt away. Open the wallpaper "
 "settings to tune the wind, the snowfall, the flake size, and the colour of "
 "the night."
+msgstr ""
+
+#: includes/wallpapers.php:191
+msgid ""
+"A heart monitor wired to your site. Every request, visitor, comment, login, "
+"Heartbeat tick and click is a beat. A healthy site keeps a steady sinus "
+"rhythm; errors, slow responses and outages show up as skipped beats, "
+"fibrillation, tachycardia or a flatline. Open the wallpaper settings to "
+"choose what it listens to, the colours, the sweep speed and the intensity."
 msgstr ""
 
 #: includes/welcome-dialog.php:164
@@ -8770,9 +9345,6 @@ msgstr ""
 #~ msgstr "Error al subir."
 
 #~ msgid "Search media…"
-#~ msgstr "Buscar medios"
-
-#~ msgid "Search media"
 #~ msgstr "Buscar medios"
 
 #~ msgid "Delete media?"

@@ -3,7 +3,7 @@
  * Plugin Name:       OpenStation
  * Plugin URI:        https://github.com/WordPress/openstation
  * Description:       Renders the WordPress admin as a desktop OS. Admin screens become draggable, resizable, minimizable windows floating on a desktop with a dock. Purely opt-in per user.
- * Version:           1.1.13
+ * Version:           1.1.14
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            WordPress.org
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'OPENSTATION_VERSION', '1.1.13' );
+define( 'OPENSTATION_VERSION', '1.1.14' );
 define( 'OPENSTATION_FILE', __FILE__ );
 define( 'OPENSTATION_DIR', plugin_dir_path( __FILE__ ) );
 define( 'OPENSTATION_URL', plugin_dir_url( __FILE__ ) );
@@ -110,6 +110,7 @@ require_once OPENSTATION_DIR . 'includes/mobile.php';
 // bootstraps cannot skip it while classifying the request shape.
 require_once OPENSTATION_DIR . 'includes/about-feed.php';
 require_once OPENSTATION_DIR . 'includes/seen-intros.php';
+require_once OPENSTATION_DIR . 'includes/remembering.php';
 // One-time data migrations. After os-settings.php and seen-intros.php,
 // whose meta-key constants and helpers the migrations call.
 //
@@ -171,6 +172,7 @@ require_once OPENSTATION_DIR . 'includes/ai-copilot/bootstrap.php';
 // Content-changes must load before the recycle bin — the bin's
 // changelog delegates into the generic recorder.
 require_once OPENSTATION_DIR . 'includes/content-changes.php';
+require_once OPENSTATION_DIR . 'includes/pulse-monitor.php';
 require_once OPENSTATION_DIR . 'includes/recycle-bin/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/desktop-files/bootstrap.php';
 require_once OPENSTATION_DIR . 'includes/desktop-themes/bootstrap.php';

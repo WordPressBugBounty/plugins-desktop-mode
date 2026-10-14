@@ -4,7 +4,7 @@ Tags: admin, dashboard, desktop, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.13
+Stable tag: 1.1.14
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -196,6 +196,31 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * **[LDNOOBW English list](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)** (CC-BY 4.0) — used as an exclusion filter.
 
 == Changelog ==
+
+= 1.1.14 =
+* Posts: hand the bulk-actions and columns filters the window mode
+* Posts: add bulk restore action for trashed posts and pages
+* Preserve table selection across search queries
+* WP Explorer: Keep the details pane open and make it narrower
+* Agents: carry token usage and the resolved model out of the runner
+* Os-segmented: one tab stop with arrow-key roving
+* Dock: Light the menu tile of every window under that menu
+* Notes: Fix stray copies and lost text when converting a note
+* Shell tour: Keep the open-window card on its dock tile
+* Html: decide attribute omission on the value, not the composed text
+* One handle-keyed script map for native windows and every other list
+* Widgets: reflow floating cards when the desktop resizes
+* Site assistant: Find unused media and where an item is used
+* REST: Send PUT, PATCH and DELETE as POST with a method override
+* Repair focus trap for shadow-DOM slotted components
+* Windows: Relay embedded pages' error and network reports
+* Editor: Let Cmd+K open Add Link in a block
+* Windows: Follow off-site redirects in the tab, not the window
+* Wallpapers: Add the Pulse Monitor wallpaper and widget
+* WP Explorer: Render comment body in preview pane
+* Windows: Reload a saved new post, not an empty draft
+* Pulse Monitor: Cost page views nothing unless visitor counting is on
+* Station Home: Add a tribute to Eric Binnion
 
 = 1.1.13 =
 * Agents: Save conversations as sent for every role
