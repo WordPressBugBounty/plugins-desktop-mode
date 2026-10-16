@@ -2,14 +2,14 @@
 # This file is distributed under the GPLv2 or later.
 msgid ""
 msgstr ""
-"Project-Id-Version: OpenStation 1.1.14\n"
+"Project-Id-Version: OpenStation 1.1.15\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/desktop-mode\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-10-14T15:51:19+00:00\n"
+"POT-Creation-Date: 2026-10-16T15:38:25+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: desktop-mode\n"
@@ -382,7 +382,7 @@ msgid "The window could not update."
 msgstr ""
 
 #. %s: HTTP status code, optionally followed by the reason phrase (e.g. "500 Internal Server Error").
-#: src/boot/tracked-fetch.ts:241
+#: src/boot/tracked-fetch.ts:238
 msgid "Request failed (HTTP %s)."
 msgstr ""
 
@@ -4015,6 +4015,36 @@ msgstr ""
 msgid "Dismiss notice"
 msgstr ""
 
+#. 1: row label, 2: row position, 3: total rows.
+#: src/ui/components/os-repeater/os-repeater.ts:352
+msgid "Remove %1$s (%2$d of %3$d)"
+msgstr ""
+
+#. 1: row label, 2: row position, 3: total rows.
+#: src/ui/components/os-repeater/os-repeater.ts:359
+msgid "Move %1$s (%2$d of %3$d) up"
+msgstr ""
+
+#. 1: row label, 2: row position, 3: total rows.
+#: src/ui/components/os-repeater/os-repeater.ts:366
+msgid "Move %1$s (%2$d of %3$d) down"
+msgstr ""
+
+#. 1: row label, 2: row position, 3: total rows.
+#: src/ui/components/os-repeater/os-repeater.ts:377
+msgid "Remove %1$s %2$d of %3$d"
+msgstr ""
+
+#. 1: row label, 2: row position.
+#: src/ui/components/os-repeater/os-repeater.ts:384
+msgid "Move %1$s %2$d up"
+msgstr ""
+
+#. 1: row label, 2: row position.
+#: src/ui/components/os-repeater/os-repeater.ts:390
+msgid "Move %1$s %2$d down"
+msgstr ""
+
 #: src/ui/components/os-split/os-split.ts:258
 msgid "Resize panes"
 msgstr ""
@@ -4112,12 +4142,12 @@ msgid "Local time and date, refreshed every second."
 msgstr ""
 
 #. %s is the widget label (e.g., "Clock")
-#: src/widgets/frame.ts:307
+#: src/widgets/frame.ts:329
 msgid "Dock %s back to widget column"
 msgstr ""
 
 #. %s is the widget label (e.g., "Clock")
-#: src/widgets/frame.ts:344
+#: src/widgets/frame.ts:366
 msgid "Remove %s"
 msgstr ""
 
@@ -4436,7 +4466,7 @@ msgstr ""
 #: src/workspaces/wizard.ts:194
 #: src/workspaces/wizard.ts:707
 #: includes/ai-copilot/search.php:129
-#: includes/render/shell.php:96
+#: includes/render/shell.php:93
 #: includes/wp-icon-registry.php:48
 msgid "Widgets"
 msgstr ""
@@ -4693,7 +4723,7 @@ msgstr ""
 
 #. Plugin URI of the plugin
 #: desktop-mode.php
-msgid "https://github.com/WordPress/openstation"
+msgid "https://openstation.me"
 msgstr ""
 
 #. Description of the plugin
@@ -5557,7 +5587,7 @@ msgstr ""
 #. translators: %s: update count.
 #. translators: %s: number of pending updates.
 #: apps/station-home/parts/snapshot.php:295
-#: includes/core/payload.php:1746
+#: includes/core/payload.php:1739
 #, php-format
 msgid "%s update available"
 msgid_plural "%s updates available"
@@ -6889,30 +6919,30 @@ msgid "Go to Themes"
 msgstr ""
 
 #. translators: 1: kind ("Command"/"Settings-tab"/"Title-bar button"), 2: handle.
-#: includes/core/payload.php:2526
+#: includes/core/payload.php:2519
 #, php-format
 msgid "%1$s script handle \"%2$s\" could not be resolved: no `wp_register_script( '%2$s', … )` call had run by the time the shell harvested its payload. Register the handle on `admin_enqueue_scripts` at priority 5 or earlier — the harvest itself runs at priority 10, and a handle registered alongside it may or may not exist yet depending on plugin load order. Until then the script will not load."
 msgstr ""
 
-#: includes/core/routing.php:143
+#: includes/core/routing.php:140
 msgid "Admin target cannot be empty."
 msgstr ""
 
-#: includes/core/routing.php:150
+#: includes/core/routing.php:147
 msgid "Admin target contains invalid path characters."
 msgstr ""
 
-#: includes/core/routing.php:161
+#: includes/core/routing.php:158
 msgid "Admin target must be a plain .php filename."
 msgstr ""
 
-#: includes/core/routing.php:170
-#: includes/core/routing.php:177
+#: includes/core/routing.php:167
+#: includes/core/routing.php:174
 msgid "Admin target does not exist."
 msgstr ""
 
 #. translators: %s: Host name of the site the link opens, e.g. woocommerce.com.
-#: includes/core/routing.php:821
+#: includes/core/routing.php:818
 #, php-format
 msgid "Continue to %s"
 msgstr ""
@@ -8408,135 +8438,135 @@ msgstr ""
 msgid "Failed to permanently delete comment."
 msgstr ""
 
-#: includes/registries/icons.php:97
+#: includes/registries/icons.php:91
 msgid "Desktop icon id is required and must be a valid slug."
 msgstr ""
 
-#: includes/registries/icons.php:122
+#: includes/registries/icons.php:116
 msgid "Desktop icon `icon_svg` must not contain a <script> tag."
 msgstr ""
 
-#: includes/registries/icons.php:129
+#: includes/registries/icons.php:123
 msgid "Desktop icon `icon_svg` must start with a <svg> root element."
 msgstr ""
 
 #. translators: %s: capability slug.
-#: includes/registries/icons.php:142
+#: includes/registries/icons.php:136
 #, php-format
 msgid "Current user lacks the %s capability required to register this desktop icon."
 msgstr ""
 
-#: includes/registries/icons.php:156
+#: includes/registries/icons.php:150
 msgid "Desktop icon registration requires a non-empty `title`."
 msgstr ""
 
-#: includes/registries/icons.php:166
+#: includes/registries/icons.php:160
 msgid "Desktop icon cannot declare both `window` and `url`; pick one target."
 msgstr ""
 
-#: includes/registries/icons.php:173
+#: includes/registries/icons.php:167
 msgid "Desktop icon must declare a `window` id or a `url` target."
 msgstr ""
 
-#: includes/registries/icons.php:185
+#: includes/registries/icons.php:179
 msgid "Desktop icon `url` must be a valid http(s) URL."
 msgstr ""
 
-#: includes/registries/native-windows.php:234
+#: includes/registries/native-windows.php:232
 msgid "Native window id is required and must be a valid slug."
 msgstr ""
 
 #. translators: %s: capability slug.
-#: includes/registries/native-windows.php:283
+#: includes/registries/native-windows.php:281
 #, php-format
 msgid "Current user lacks the %s capability required to register this native window."
 msgstr ""
 
-#: includes/registries/native-windows.php:298
+#: includes/registries/native-windows.php:296
 msgid "Native window registration requires a non-empty `title`."
 msgstr ""
 
-#: includes/registries/native-windows.php:305
+#: includes/registries/native-windows.php:303
 msgid "Native window registration requires a callable `template` that echoes the template body."
 msgstr ""
 
-#: includes/registries/wallpapers.php:99
+#: includes/registries/wallpapers.php:95
 msgid "Wallpaper id is required."
 msgstr ""
 
 #. translators: %s: capability slug.
-#: includes/registries/wallpapers.php:121
+#: includes/registries/wallpapers.php:117
 #, php-format
 msgid "Current user lacks the %s capability required to register this wallpaper."
 msgstr ""
 
-#: includes/registries/wallpapers.php:134
+#: includes/registries/wallpapers.php:130
 msgid "Wallpaper registration requires a non-empty `label`."
 msgstr ""
 
-#: includes/registries/wallpapers.php:148
+#: includes/registries/wallpapers.php:144
 msgid "Canvas wallpaper registration requires a `script` handle that publishes the def."
 msgstr ""
 
-#: includes/registries/widgets.php:88
+#: includes/registries/widgets.php:93
 msgid "Widget id is required."
 msgstr ""
 
 #. translators: %s: capability slug.
-#: includes/registries/widgets.php:115
+#: includes/registries/widgets.php:121
 #, php-format
 msgid "Current user lacks the %s capability required to register this widget."
 msgstr ""
 
-#: includes/registries/widgets.php:132
+#: includes/registries/widgets.php:138
 msgid "Widget registration requires a non-empty `label`."
 msgstr ""
 
-#: includes/registries/window-tabs.php:102
+#: includes/registries/window-tabs.php:99
 msgid "Window id is required when registering a tab."
 msgstr ""
 
 #. translators: %s: capability slug.
-#: includes/registries/window-tabs.php:122
+#: includes/registries/window-tabs.php:119
 #, php-format
 msgid "Current user lacks the %s capability required to register this window tab."
 msgstr ""
 
-#: includes/registries/window-tabs.php:144
+#: includes/registries/window-tabs.php:141
 msgid "Window tab registration requires a non-empty `value`."
 msgstr ""
 
 #. translators: %s: the invalid value.
-#: includes/registries/window-tabs.php:153
+#: includes/registries/window-tabs.php:150
 #, php-format
 msgid "Window tab `value` \"%s\" must match /^[a-z0-9_-]+(\\/[a-z0-9_-]+)?$/ — lowercase alphanum + hyphen/underscore, with at most one `vendor/sub-id` slash."
 msgstr ""
 
 #. translators: %s: the reserved value.
-#: includes/registries/window-tabs.php:168
+#: includes/registries/window-tabs.php:165
 #, php-format
 msgid "The tab value \"%s\" is reserved for the window's own template tab."
 msgstr ""
 
-#: includes/registries/window-tabs.php:180
+#: includes/registries/window-tabs.php:177
 msgid "Window tab registration requires a non-empty `label`."
 msgstr ""
 
-#: includes/registries/window-tabs.php:187
+#: includes/registries/window-tabs.php:184
 msgid "Window tab registration requires a callable `template` that echoes the pane body."
 msgstr ""
 
 #. translators: 1: parent menu label, 2: submenu label
-#: includes/render/assets.php:1297
+#: includes/render/assets.php:1294
 #, php-format
 msgid "%1$s > %2$s"
 msgstr ""
 
-#: includes/render/shell.php:61
+#: includes/render/shell.php:58
 msgid "Desktop shell"
 msgstr ""
 
-#: includes/render/shell.php:83
+#: includes/render/shell.php:80
 msgid "Admin navigation"
 msgstr ""
 
@@ -8848,11 +8878,11 @@ msgstr ""
 msgid "Sparkline of page views over the last 7 days with week-over-week delta."
 msgstr ""
 
-#: includes/widgets/widget-starter.php:173
+#: includes/widgets/widget-starter.php:175
 msgid "Starter Widget"
 msgstr ""
 
-#: includes/widgets/widget-starter.php:174
+#: includes/widgets/widget-starter.php:176
 msgid "A skeleton widget — copy this to build your own."
 msgstr ""
 

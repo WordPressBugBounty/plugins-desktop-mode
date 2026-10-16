@@ -4,7 +4,7 @@ Tags: admin, dashboard, desktop, productivity, ai
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.14
+Stable tag: 1.1.15
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -196,6 +196,20 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * **[LDNOOBW English list](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)** (CC-BY 4.0) — used as an exclusion filter.
 
 == Changelog ==
+
+= 1.1.15 =
+* Plugin: Point the Plugin URI at openstation.me
+* Desktop files: Cascade-trash comment shortcuts when a comment is trashed
+* Posts: Show "View" link for published posts
+* Components: route properties assigned before upgrade through the class
+* Native windows: load the kit tags a multi-tab window's wrap is made of
+* Center empty state description when rail panel is widened
+* Preferences: accent ink and links keep contrast with the picked accent
+* Widgets: let a floating card grow to fit its content (opt-in)
+* Widgets: End the drag that drags a card out of the column
+* Remove plan-tracking labels from code comments
+* Widgets: Fit a card dragged out of the column inside the work area
+* Make repeater row button names unique
 
 = 1.1.14 =
 * Posts: hand the bulk-actions and columns filters the window mode

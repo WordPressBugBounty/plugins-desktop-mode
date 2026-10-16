@@ -1348,6 +1348,18 @@
             "Mosaic": [
                 ""
             ],
+            "Move %1$s %2$d down": [
+                ""
+            ],
+            "Move %1$s %2$d up": [
+                ""
+            ],
+            "Move %1$s (%2$d of %3$d) down": [
+                ""
+            ],
+            "Move %1$s (%2$d of %3$d) up": [
+                ""
+            ],
             "Move cancelled.": [
                 ""
             ],
@@ -1850,6 +1862,12 @@
                 ""
             ],
             "Reload": [
+                ""
+            ],
+            "Remove %1$s %2$d of %3$d": [
+                ""
+            ],
+            "Remove %1$s (%2$d of %3$d)": [
                 ""
             ],
             "Remove %s": [

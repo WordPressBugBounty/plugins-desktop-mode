@@ -44,7 +44,7 @@ function openstation_posts_window_default_query_args() {
 		// another user is currently editing the row, so the title cell
 		// can paint a small lock icon without an extra fetch.
 		'_fields' =>
-			'id,title,status,date,date_gmt,modified,modified_gmt,author,categories,tags,comment_status,excerpt,openstation_lock,_links,_embedded',
+			'id,title,status,date,date_gmt,modified,modified_gmt,author,categories,tags,comment_status,excerpt,openstation_lock,link,_links,_embedded',
 	);
 
 	/**

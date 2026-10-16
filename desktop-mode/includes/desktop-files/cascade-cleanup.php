@@ -19,6 +19,8 @@
  *                            skips `wp_trash_post`.
  *   - `deleted_user`       — user account removed (with or without
  *                            content reassignment).
+ *   - `trashed_comment`    — comment moved to WP trash.
+ *   - `deleted_comment`    — comment hard-deleted.
  *
  * Implementation is a bulk UPDATE that bypasses the per-placement
  * permission check used by user-initiated trash. The trashing
@@ -232,3 +234,24 @@ function openstation_files_cascade_on_user_delete( $user_id ) {
 }
 
 add_action( 'deleted_user', 'openstation_files_cascade_on_user_delete', 10, 1 );
+
+/**
+ * Wrap a `(comment_id)` Core action so it cascades against
+ * `file_type='comment'`. Fires when a comment is trashed or
+ * permanently deleted so shortcuts pointing at it are soft-trashed.
+ *
+ * @param int $comment_id Comment id.
+ */
+function openstation_files_cascade_on_comment_trash( $comment_id ) {
+	$comment_id = (int) $comment_id;
+	if ( $comment_id <= 0 ) {
+		return;
+	}
+	openstation_files_cascade_trash_placements_for_entity(
+		'comment',
+		(string) $comment_id
+	);
+}
+
+add_action( 'trashed_comment', 'openstation_files_cascade_on_comment_trash', 10, 1 );
+add_action( 'deleted_comment', 'openstation_files_cascade_on_comment_trash', 10, 1 );
