@@ -933,6 +933,13 @@ add_action( 'rest_api_init', 'openstation_my_wordpress_woo_register_coupon_field
  * widen that payload. The section declares the field in `listFields`
  * so `_fields` doesn't strip it back out.
  *
+ * Gated on the site window's own gate. `wp/v2/product` lists published
+ * products to anyone, logged out included, and `stockLevel` is the
+ * exact inventory count — a number WooCommerce itself keeps off the
+ * storefront when the store's stock display is set to never show it.
+ * A caller who cannot open the window has no tile to paint and gets
+ * `null`.
+ *
  * @return void
  */
 function openstation_my_wordpress_woo_register_rest_field() {
@@ -945,6 +952,9 @@ function openstation_my_wordpress_woo_register_rest_field() {
 		'openstation_woo',
 		array(
 			'get_callback' => static function ( $post ) {
+				if ( ! is_user_logged_in() || ! openstation_my_wordpress_user_can_use() ) {
+					return null;
+				}
 				$product = wc_get_product( isset( $post['id'] ) ? (int) $post['id'] : 0 );
 				if ( ! $product ) {
 					return null;

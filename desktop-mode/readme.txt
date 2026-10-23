@@ -4,7 +4,7 @@ Tags: admin dashboard, notes, sticky notes, dashboard notes, custom dashboard
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.16
+Stable tag: 1.1.17
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -212,6 +212,19 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * **[LDNOOBW English list](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words)** (CC-BY 4.0) — used as an exclusion filter.
 
 == Changelog ==
+
+= 1.1.17 =
+* Enforce Core parity for spam and trash row actions.
+* Prevent z-index occlusion during minimize/restore flights
+* Drop menu entries plugins remove on admin_head
+* Dock: Make it easier to find where to customize the menus
+* Show plugins' own row links in the native Plugins window
+* Add a security policy
+* Notes: Render Markdown and checklists on pinned notes
+* Notifications: Show notifications when the admin bar is hidden
+* Extensions: Fix the base library's migration note
+* Bring the README up to date with the code
+* Add AI agent prompts and an openstation-extension skill
 
 = 1.1.16 =
 * Add stack-on-phone attribute to os-table
