@@ -4,7 +4,7 @@ Tags: admin dashboard, notes, sticky notes, dashboard notes, custom dashboard
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.18
+Stable tag: 1.1.19
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -213,7 +213,19 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 
 == Changelog ==
 
+= 1.1.19 =
+* Mobile: Let a user keep classic wp-admin on their phone
+* Route WooCommerce order row clicks to separate windows.
+* App Framework: Serve bundled app assets when the plugin is symlinked
+* Tooling: Add a software factory that builds factory-labeled issues into PRs
+* Factory: Reproduce a bug before fixing it, and keep a job moving past a tooling gate failure
+* Factory: Skip forked-subagent transcripts when computing a job's cost
+* Pages: Fill the window with the Add Page editor
+* Tooling: Add the pr-writer skill to the project skill library
+* Readme: Record the security fixes of 1.1.17 and 1.1.18 in the changelog
+
 = 1.1.18 =
+* Security: Fix four authorization gaps found after 1.1.17: agent conversations were readable and writable by Editors through the generic post abilities, agents of another site were readable and runnable on multisite, the placement PATCH response and the recycle-bin listing returned the title of content the viewer could not read (the rest of CVE-2026-109592), and the WooCommerce stock field answered any `edit_posts` holder. See [GHSA-2chh-6p94-3c3r](https://github.com/WordPress/openstation/security/advisories/GHSA-2chh-6p94-3c3r). Update now.
 * Tell apart script URLs that differ only in their query
 * Release: Commit new translation JSONs in the bump commit
 * I18n: Load the WooCommerce window's translations from the plugin
@@ -224,6 +236,7 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 * Extensions: Remove the Code Editor and Cron Manager extensions
 
 = 1.1.17 =
+* Security: Fix multiple authorization bypasses reachable by logged-in users, and one anonymous one: the phpMyAdmin extension answered unauthenticated requests on `local` environments (the extension is removed), the WP Explorer, dossier, window-link and heartbeat read paths let a Contributor or Subscriber read posts, comments and files they could not read in wp-admin, folder shares cascaded through a folder the sharer did not own, uploaded desktop themes could load external XML entities, and the OAuth relay failed open without a cookie. This also fixes the orphaned-placement half of CVE-2026-109592. See [GHSA-m4m2-2fjq-w8g9](https://github.com/WordPress/openstation/security/advisories/GHSA-m4m2-2fjq-w8g9). Update now.
 * Enforce Core parity for spam and trash row actions.
 * Prevent z-index occlusion during minimize/restore flights
 * Drop menu entries plugins remove on admin_head
@@ -622,6 +635,12 @@ The **Inkfall** game's word list (`assets/games/inkfall/words.txt`) is generated
 Earlier releases are on the [GitHub releases page](https://github.com/WordPress/openstation/releases).
 
 == Upgrade Notice ==
+
+= 1.1.18 =
+Security release. Fixes four authorization gaps for logged-in users (agent conversations, cross-site agents on multisite, placement responses, WooCommerce stock field). See GHSA-2chh-6p94-3c3r. Update now.
+
+= 1.1.17 =
+Security release. Fixes multiple authorization bypasses, one reachable anonymously through the phpMyAdmin extension, which is removed. See GHSA-m4m2-2fjq-w8g9. Update now.
 
 = 1.0.0 =
 Desktop Mode is now OpenStation. Everything carries over: settings, files, sessions, desktop layouts. Plugin authors: `wp.desktop` is now `wp.os`; see the changelog for the rename map.
